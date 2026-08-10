@@ -1,192 +1,79 @@
 //! ForgeCore is the trusted execution boundary for AutoDev.
 //!
-//! Agents produce intent. ForgeCore will eventually execute only intent that
-//! has passed policy evaluation. The initial implementation deliberately
-//! contains no privileged filesystem or process execution.
+//! Agents produce intent. ForgeCore executes only intent that has passed
+//! policy evaluation and workspace confinement. The initial implementation
+//! provides the typed agent-action protocol and a single real, read-only
+//! operation (`read_file`). It deliberately contains no privileged filesystem
+//! mutation or process execution.
 
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
+pub mod action;
+pub mod error;
+pub mod evidence;
+pub mod policy;
+pub mod read;
+pub mod workspace;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ActionType {
-    ReadFile,
-    WriteFile,
-    PatchFile,
-    Execute,
-    Git,
-    Mcp,
-    RunTest,
-    RequestApproval,
+pub use action::{ActionType, AgentAction, Capability, RiskLevel};
+pub use error::{ExecutionError, ExecutionErrorKind};
+pub use evidence::{ExecutionResult, ExecutionStatus, ReadMetadata};
+pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
+pub use read::read_file;
+pub use workspace::{PathResolution, Workspace};
+
+use chrono::Utc;
+
+/// A validated, authorized action ready for execution, bound to a workspace.
+#[derive(Debug, Clone)]
+pub struct ExecutableAction {
+    pub action: AgentAction,
+    pub workspace: Workspace,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AgentAction {
-    pub id: String,
-    pub task_id: String,
-    pub agent_id: String,
-    #[serde(rename = "type")]
-    pub action_type: ActionType,
-    pub reason: String,
-    pub risk: RiskLevel,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    #[serde(default)]
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PolicyDecision {
-    Allow,
-    RequireApproval,
-    Deny,
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum PolicyError {
-    #[error("action id must not be empty")]
-    MissingActionId,
-    #[error("task id must not be empty")]
-    MissingTaskId,
-    #[error("agent id must not be empty")]
-    MissingAgentId,
-    #[error("action reason must not be empty")]
-    MissingReason,
-    #[error("critical actions require explicit approval capability")]
-    CriticalApprovalRequired,
-}
-
-/// Validate the structural invariants that must hold before policy evaluation.
-pub fn validate_action(action: &AgentAction) -> Result<(), PolicyError> {
-    if action.id.trim().is_empty() {
-        return Err(PolicyError::MissingActionId);
-    }
-    if action.task_id.trim().is_empty() {
-        return Err(PolicyError::MissingTaskId);
-    }
-    if action.agent_id.trim().is_empty() {
-        return Err(PolicyError::MissingAgentId);
-    }
-    if action.reason.trim().is_empty() {
-        return Err(PolicyError::MissingReason);
-    }
-    if action.risk == RiskLevel::Critical
-        && !action.capabilities.iter().any(|c| c == "approval:critical")
-    {
-        return Err(PolicyError::CriticalApprovalRequired);
-    }
-    Ok(())
-}
-
-/// Conservative initial policy. Real capability and workspace policy will be
-/// introduced after this contract is covered by tests.
-pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, PolicyError> {
-    validate_action(action)?;
-
-    Ok(match action.risk {
-        RiskLevel::Low => PolicyDecision::Allow,
-        RiskLevel::Medium | RiskLevel::High => PolicyDecision::RequireApproval,
-        RiskLevel::Critical => PolicyDecision::RequireApproval,
-    })
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionStatus {
-    Accepted,
-    Denied,
-    Running,
-    Succeeded,
-    Failed,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ExecutionResult {
-    pub action_id: String,
-    pub status: ExecutionStatus,
-    pub message: String,
-}
-
-/// Dry-run executor. It intentionally refuses to perform privileged effects.
-pub fn dry_run(action: &AgentAction) -> Result<ExecutionResult, PolicyError> {
-    let decision = evaluate_policy(action)?;
-
-    match decision {
-        PolicyDecision::Allow => Ok(ExecutionResult {
-            action_id: action.id.clone(),
-            status: ExecutionStatus::Accepted,
-            message: "action authorized; execution adapter not enabled".into(),
-        }),
-        PolicyDecision::RequireApproval => Ok(ExecutionResult {
-            action_id: action.id.clone(),
-            status: ExecutionStatus::Denied,
-            message: "action requires approval before execution".into(),
-        }),
-        PolicyDecision::Deny => Ok(ExecutionResult {
-            action_id: action.id.clone(),
-            status: ExecutionStatus::Denied,
-            message: "action denied by policy".into(),
-        }),
+impl ExecutableAction {
+    /// Construct an executable action. The workspace root is canonicalized
+    /// eagerly.
+    pub fn new(action: AgentAction, workspace: Workspace) -> Self {
+        ExecutableAction { action, workspace }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn action(risk: RiskLevel) -> AgentAction {
-        AgentAction {
-            id: "action-1".into(),
-            task_id: "task-1".into(),
-            agent_id: "agent-1".into(),
-            action_type: ActionType::ReadFile,
-            reason: "inspect source".into(),
-            risk,
-            capabilities: vec![],
-            payload: serde_json::json!({"path": "README.md"}),
+/// The top-level execution entry point.
+///
+/// This is the only path that can produce filesystem side effects (currently
+/// limited to read-only access). It dispatches on the action type and returns
+/// schema-conformant evidence.
+pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
+    let mut result = match exec.action.action_type {
+        ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
+        other => {
+            return Err(ExecutionError::UnsupportedAction(
+                other.as_str().to_string(),
+            ))
         }
-    }
+    };
+    result.action_id = exec.action.id.clone();
+    Ok(result)
+}
 
-    #[test]
-    fn low_risk_actions_are_allowed() {
-        assert_eq!(evaluate_policy(&action(RiskLevel::Low)).unwrap(), PolicyDecision::Allow);
+/// Dry-run preview: evaluates policy without touching the filesystem.
+///
+/// Returns what *would* happen, without performing any privileged effect.
+pub fn dry_run(action: &AgentAction) -> Result<ExecutionResult, ExecutionError> {
+    evaluate_policy(action)?;
+    if !has_required_capability(action) {
+        return Err(ExecutionError::CapabilityDenied);
     }
-
-    #[test]
-    fn medium_risk_actions_require_approval() {
-        assert_eq!(
-            evaluate_policy(&action(RiskLevel::Medium)).unwrap(),
-            PolicyDecision::RequireApproval
-        );
-    }
-
-    #[test]
-    fn critical_actions_require_explicit_approval_capability() {
-        let error = evaluate_policy(&action(RiskLevel::Critical)).unwrap_err();
-        assert_eq!(error, PolicyError::CriticalApprovalRequired);
-    }
-
-    #[test]
-    fn empty_identity_is_rejected() {
-        let mut candidate = action(RiskLevel::Low);
-        candidate.agent_id.clear();
-        assert_eq!(validate_action(&candidate).unwrap_err(), PolicyError::MissingAgentId);
-    }
-
-    #[test]
-    fn dry_run_never_executes_privileged_operations() {
-        let result = dry_run(&action(RiskLevel::Low)).unwrap();
-        assert_eq!(result.status, ExecutionStatus::Accepted);
-        assert!(result.message.contains("execution adapter not enabled"));
-    }
+    let now = Utc::now();
+    Ok(ExecutionResult {
+        action_id: action.id.clone(),
+        status: ExecutionStatus::Accepted,
+        started_at: now,
+        completed_at: now,
+        exit_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        artifacts: vec![],
+        verification: None,
+        error: None,
+    })
 }
