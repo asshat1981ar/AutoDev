@@ -307,6 +307,10 @@ pub fn default_skills() -> SkillRegistry {
     registry
 }
 
+// This private catalog constructor is intentionally declarative: keeping all
+// skill metadata visible at each call site is clearer than hiding fields behind
+// a builder, and it is not part of the runtime API.
+#[allow(clippy::too_many_arguments)]
 fn skill(
     id: &str,
     description: &str,
