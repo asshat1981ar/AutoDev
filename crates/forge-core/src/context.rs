@@ -66,11 +66,7 @@ impl Default for ContextPolicy {
 /// Scoring combines query-token matches, path matches, filename matches, and
 /// common source/documentation signals. Ties are resolved by path, making the
 /// result reproducible across runs and machines.
-pub fn select_context(
-    files: &[ContextFile],
-    query: &str,
-    policy: &ContextPolicy,
-) -> ContextPack {
+pub fn select_context(files: &[ContextFile], query: &str, policy: &ContextPolicy) -> ContextPack {
     let query_tokens = tokenize(query);
     let mut ranked: Vec<ContextItem> = files
         .iter()
@@ -156,8 +152,8 @@ fn score_file(file: &ContextFile, query_tokens: &BTreeSet<String>) -> ContextIte
 
 fn tokenize(input: &str) -> BTreeSet<String> {
     let stop = [
-        "a", "an", "and", "are", "for", "from", "how", "in", "into", "is", "of", "on",
-        "or", "the", "to", "with", "this", "that", "it", "make", "add", "fix",
+        "a", "an", "and", "are", "for", "from", "how", "in", "into", "is", "of", "on", "or", "the",
+        "to", "with", "this", "that", "it", "make", "add", "fix",
     ];
     input
         .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
@@ -174,21 +170,44 @@ fn tokenize(input: &str) -> BTreeSet<String> {
 
 fn is_source_file(path: &str) -> bool {
     matches!(
-        path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase().as_str(),
-        "rs" | "kt" | "kts" | "go" | "ts" | "tsx" | "js" | "jsx" | "py" | "java" | "c" | "cpp" | "h"
+        path.rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "rs" | "kt"
+            | "kts"
+            | "go"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "java"
+            | "c"
+            | "cpp"
+            | "h"
     )
 }
 
 fn is_project_manifest(path: &str) -> bool {
     matches!(
         path.rsplit('/').next().unwrap_or(path),
-        "Cargo.toml" | "package.json" | "pyproject.toml" | "go.mod" | "build.gradle" | "settings.gradle"
+        "Cargo.toml"
+            | "package.json"
+            | "pyproject.toml"
+            | "go.mod"
+            | "build.gradle"
+            | "settings.gradle"
     )
 }
 
 fn is_test_file(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.contains("/test") || lower.contains("tests/") || lower.ends_with("_test.rs") || lower.ends_with("_test.go")
+    lower.contains("/test")
+        || lower.contains("tests/")
+        || lower.ends_with("_test.rs")
+        || lower.ends_with("_test.go")
 }
 
 #[cfg(test)]
