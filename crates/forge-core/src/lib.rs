@@ -2,8 +2,8 @@
 //!
 //! Agents produce intent. ForgeCore executes only intent that has passed
 //! policy evaluation and workspace confinement. The kernel also provides
-//! deterministic repository exploration primitives that can prepare bounded
-//! evidence for model requests.
+//! deterministic repository exploration and skill-routing primitives that can
+//! prepare bounded evidence and execution plans for model requests.
 
 pub mod action;
 pub mod agent;
@@ -17,6 +17,7 @@ pub mod patch;
 pub mod policy;
 pub mod read;
 pub mod runtime;
+pub mod skill;
 pub mod verification;
 pub mod workspace;
 pub mod write;
@@ -52,6 +53,10 @@ pub use policy::{evaluate_policy, has_required_capability, validate_action, Poli
 pub use read::read_file;
 pub use runtime::{
     AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
+};
+pub use skill::{
+    default_skills, route_skills, DevelopmentContract, SkillDefinition, SkillError, SkillRegistry,
+    SkillRoute, SkillRoutingEvidence,
 };
 pub use verification::{
     command_verifier, default_fabric, mock_verifier, verdict_from_report, Finding,
