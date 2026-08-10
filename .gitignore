@@ -24,7 +24,6 @@ captures/
 
 # Rust
 **/target/
-Cargo.lock
 *.rs.bk
 
 # Go
