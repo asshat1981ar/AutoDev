@@ -103,3 +103,27 @@ fn execute_writes_a_file_end_to_end() {
     assert!(v["diff"].is_string());
     assert_eq!(v["created"], false);
 }
+
+#[test]
+fn execute_patches_a_file_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    std::fs::write(dir.path().join("p.txt"), b"one\ntwo\nthree\n").unwrap();
+
+    let mut a = action("p.txt");
+    a.action_type = ActionType::PatchFile;
+    a.capabilities = vec![Capability::PatchFile];
+    a.payload = json!({
+        "path": "p.txt",
+        "patch": "--- a/p.txt\n+++ b/p.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n"
+    });
+
+    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("p.txt")).unwrap(),
+        "one\n2nd\nthree\n"
+    );
+    let v = result.verification.unwrap();
+    assert_eq!(v["applied_hunks"], 1);
+}

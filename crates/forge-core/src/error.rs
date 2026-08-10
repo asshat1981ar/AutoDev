@@ -48,6 +48,10 @@ pub enum ExecutionError {
     FileNotFound(PathBuf),
     #[error("path '{0}' is a directory, expected a file")]
     IsDirectory(PathBuf),
+    #[error("patch is malformed: {0}")]
+    InvalidPatch(String),
+    #[error("patch could not be applied: {0}")]
+    PatchConflict(String),
     #[error("file '{0}' exceeds the maximum allowed size of {1} bytes")]
     OversizedFile(PathBuf, u64),
 
@@ -94,6 +98,9 @@ impl ExecutionError {
             | ExecutionError::IsDirectory(_)
             | ExecutionError::OversizedFile(_, _)
             | ExecutionError::InvalidUtf8(_) => ExecutionErrorKind::Read,
+            ExecutionError::InvalidPatch(_) | ExecutionError::PatchConflict(_) => {
+                ExecutionErrorKind::Patch
+            }
             ExecutionError::NotARepository(_)
             | ExecutionError::GitFailed(_, _)
             | ExecutionError::GitCapabilityDenied(_)
@@ -113,6 +120,7 @@ pub enum ExecutionErrorKind {
     InvalidPayload,
     Read,
     Git,
+    Patch,
     Unsupported,
     Io,
 }

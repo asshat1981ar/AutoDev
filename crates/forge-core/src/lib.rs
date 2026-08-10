@@ -14,6 +14,7 @@ pub mod git;
 pub mod model;
 pub mod orchestrator;
 pub mod patch;
+pub mod patch_exec;
 pub mod policy;
 pub mod read;
 pub mod runtime;
@@ -47,6 +48,7 @@ pub use patch::{
     ApplyMode, LineKind, Patch, PatchFailure, PatchFailureReason, PatchHunk, PatchLine,
     PatchParseError, PatchResult,
 };
+pub use patch_exec::{patch_file, PatchMode};
 pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
 pub use read::read_file;
 pub use runtime::{
@@ -87,6 +89,9 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
         ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
         ActionType::WriteFile => {
             write::write_file(&exec.action, &exec.workspace, WriteMode::Atomic)?
+        }
+        ActionType::PatchFile => {
+            patch_exec::patch_file(&exec.action, &exec.workspace, PatchMode::Apply)?
         }
         ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
         other => {
