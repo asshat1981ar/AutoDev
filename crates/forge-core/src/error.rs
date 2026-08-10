@@ -54,6 +54,17 @@ pub enum ExecutionError {
     #[error("file '{0}' is not valid UTF-8")]
     InvalidUtf8(PathBuf),
 
+    #[error("'{0}' is not a git repository")]
+    NotARepository(PathBuf),
+    #[error("git operation '{0}' failed: {1}")]
+    GitFailed(&'static str, String),
+    #[error("git operation requires the '{0}' capability")]
+    GitCapabilityDenied(&'static str),
+    #[error("git operation '{0}' requires approval")]
+    GitRequiresApproval(&'static str),
+    #[error("git operation '{0}' is forbidden without explicit policy authorization")]
+    GitOperationForbidden(String),
+
     #[error("I/O error accessing '{0}': {1}")]
     Io(PathBuf, std::io::Error),
 }
@@ -83,6 +94,11 @@ impl ExecutionError {
             | ExecutionError::IsDirectory(_)
             | ExecutionError::OversizedFile(_, _)
             | ExecutionError::InvalidUtf8(_) => ExecutionErrorKind::Read,
+            ExecutionError::NotARepository(_)
+            | ExecutionError::GitFailed(_, _)
+            | ExecutionError::GitCapabilityDenied(_)
+            | ExecutionError::GitRequiresApproval(_)
+            | ExecutionError::GitOperationForbidden(_) => ExecutionErrorKind::Git,
             ExecutionError::Io(_, _) => ExecutionErrorKind::Io,
         }
     }
@@ -96,6 +112,7 @@ pub enum ExecutionErrorKind {
     Workspace,
     InvalidPayload,
     Read,
+    Git,
     Unsupported,
     Io,
 }

@@ -41,7 +41,7 @@ fn execute_unsupported_action_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     let mut a = action("a.txt");
-    a.action_type = ActionType::WriteFile; // not yet implemented
+    a.action_type = ActionType::Execute; // not yet implemented
     let exec = ExecutableAction::new(a, ws);
     let err = forge_core::execute(&exec).unwrap_err();
     assert!(matches!(err, ExecutionError::UnsupportedAction(_)));
@@ -80,4 +80,26 @@ fn workspace_requires_existing_root() {
     // Workspace creation should not panic even if the root does not exist.
     let ws = Workspace::new(&root, 1024).unwrap();
     assert_eq!(ws.root(), root);
+}
+
+#[test]
+fn execute_writes_a_file_end_to_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    std::fs::write(dir.path().join("c.txt"), b"old").unwrap();
+
+    let mut a = action("c.txt");
+    a.action_type = ActionType::WriteFile;
+    a.capabilities = vec![Capability::WriteFile];
+    a.payload = json!({ "path": "c.txt", "content": "new" });
+
+    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
+        "new"
+    );
+    let v = result.verification.unwrap();
+    assert!(v["diff"].is_string());
+    assert_eq!(v["created"], false);
 }

@@ -7,18 +7,58 @@
 //! mutation or process execution.
 
 pub mod action;
+pub mod agent;
 pub mod error;
 pub mod evidence;
+pub mod git;
+pub mod model;
+pub mod orchestrator;
+pub mod patch;
 pub mod policy;
 pub mod read;
+pub mod runtime;
+pub mod verification;
 pub mod workspace;
+pub mod write;
 
 pub use action::{ActionType, AgentAction, Capability, RiskLevel};
+pub use agent::{
+    default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
+    AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
+};
 pub use error::{ExecutionError, ExecutionErrorKind};
-pub use evidence::{ExecutionResult, ExecutionStatus, ReadMetadata};
+pub use evidence::{
+    action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
+    ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
+    ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
+};
+pub use git::{execute_git, BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
+pub use model::{
+    route, Message, MockProvider, Model, ModelCapabilities, ModelError, ModelHealth, ModelOptions,
+    ModelProvider, ModelRequest, ModelResponse, OllamaProvider, RouteCandidate, RoutingFactor,
+    RoutingPolicy, Usage,
+};
+pub use orchestrator::{
+    default_repairer, default_verifier, Assigner, Checkpointer, Decomposer, ExecResult,
+    Orchestrator, OrchestratorError, Phase, Planner, Repairer, TaskExecutor, TaskGraph, TaskNode,
+    TaskStatus, Transition, Verdict, Verifier,
+};
+pub use patch::{
+    ApplyMode, LineKind, Patch, PatchFailure, PatchFailureReason, PatchHunk, PatchLine,
+    PatchParseError, PatchResult,
+};
 pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
 pub use read::read_file;
+pub use runtime::{
+    AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
+};
+pub use verification::{
+    command_verifier, default_fabric, mock_verifier, verdict_from_report, Finding,
+    VerificationContext, VerificationError, VerificationFabric, VerificationKind,
+    VerificationReport, VerificationResult, VerificationStatus, VerificationVerdict, VerifierFn,
+};
 pub use workspace::{PathResolution, Workspace};
+pub use write::{write_file, WriteMode};
 
 use chrono::Utc;
 
@@ -45,6 +85,10 @@ impl ExecutableAction {
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
     let mut result = match exec.action.action_type {
         ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
+        ActionType::WriteFile => {
+            write::write_file(&exec.action, &exec.workspace, WriteMode::Atomic)?
+        }
+        ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
         other => {
             return Err(ExecutionError::UnsupportedAction(
                 other.as_str().to_string(),

@@ -81,6 +81,10 @@ pub enum Capability {
     PatchFile,
     Execute,
     Git,
+    /// Mutating Git operations (checkpoint, commit preparation / staging).
+    GitWrite,
+    /// Destructive Git operations (reset --hard, checkout, revert).
+    GitDestructive,
     Mcp,
     RunTest,
     RequestApproval,
@@ -97,6 +101,8 @@ impl Capability {
             "patch_file" => Capability::PatchFile,
             "execute" => Capability::Execute,
             "git" => Capability::Git,
+            "git:write" => Capability::GitWrite,
+            "git:destructive" => Capability::GitDestructive,
             "mcp" => Capability::Mcp,
             "run_test" => Capability::RunTest,
             "request_approval" => Capability::RequestApproval,
@@ -113,6 +119,8 @@ impl Capability {
             Capability::PatchFile => "patch_file",
             Capability::Execute => "execute",
             Capability::Git => "git",
+            Capability::GitWrite => "git:write",
+            Capability::GitDestructive => "git:destructive",
             Capability::Mcp => "mcp",
             Capability::RunTest => "run_test",
             Capability::RequestApproval => "request_approval",
