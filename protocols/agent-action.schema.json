@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/schemas/agent-action.schema.json",
+  "title": "AutoDev Agent Action",
+  "description": "Typed intent emitted by an agent and evaluated by AutoDev policy before execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "task_id", "agent_id", "type", "reason", "risk", "payload"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": ["read_file", "write_file", "patch_file", "execute", "git", "mcp", "run_test", "request_approval"]
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "risk": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "payload": { "type": "object" },
+    "expected": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    }
+  }
+}
