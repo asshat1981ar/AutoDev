@@ -42,7 +42,8 @@ impl DevelopmentContract {
     }
 
     fn searchable_text(&self) -> String {
-        let mut parts = Vec::with_capacity(1 + self.acceptance_criteria.len() + self.constraints.len());
+        let mut parts =
+            Vec::with_capacity(1 + self.acceptance_criteria.len() + self.constraints.len());
         parts.push(self.goal.as_str());
         parts.extend(self.acceptance_criteria.iter().map(String::as_str));
         parts.extend(self.constraints.iter().map(String::as_str));
@@ -210,7 +211,13 @@ pub fn default_skills() -> SkillRegistry {
         skill(
             "map-repository",
             "Inspect repository structure, entrypoints, manifests, tests, CI, and architecture boundaries.",
-            &["repository", "architecture", "entrypoint", "codebase", "inspect"],
+            &[
+                "repository",
+                "architecture",
+                "entrypoint",
+                "codebase",
+                "inspect",
+            ],
             &[Capability::ReadFile, Capability::Git],
             &[AgentRole::Researcher, AgentRole::Architect],
             RiskLevel::Low,
@@ -230,8 +237,18 @@ pub fn default_skills() -> SkillRegistry {
         skill(
             "build-vertical-slice",
             "Implement the smallest end-to-end path that proves a design.",
-            &["implement", "build", "feature", "continue development", "vertical slice"],
-            &[Capability::ReadFile, Capability::WriteFile, Capability::PatchFile],
+            &[
+                "implement",
+                "build",
+                "feature",
+                "continue development",
+                "vertical slice",
+            ],
+            &[
+                Capability::ReadFile,
+                Capability::WriteFile,
+                Capability::PatchFile,
+            ],
             &[AgentRole::Developer],
             RiskLevel::Medium,
             &["focused tests pass", "acceptance criteria are met"],
@@ -260,15 +277,26 @@ pub fn default_skills() -> SkillRegistry {
         skill(
             "review-change-gate",
             "Review a completed patch for correctness, security, maintainability, and architecture drift.",
-            &["review", "gate", "maintainability", "architecture drift"],
+            &[
+                "review",
+                "gate",
+                "maintainability",
+                "architecture drift",
+            ],
             &[Capability::ReadFile, Capability::Git],
-            &[AgentRole::Architect, AgentRole::SecurityReviewer, AgentRole::Tester],
+            &[
+                AgentRole::Architect,
+                AgentRole::SecurityReviewer,
+                AgentRole::Tester,
+            ],
             RiskLevel::Low,
             &["change-gate findings recorded"],
             1,
         ),
     ] {
-        registry.register(skill).expect("default skill ids are unique");
+        registry
+            .register(skill)
+            .expect("default skill ids are unique");
     }
     registry
 }
@@ -351,6 +379,9 @@ mod tests {
             cost_hint: 1,
         };
         registry.register(s.clone()).unwrap();
-        assert_eq!(registry.register(s), Err(SkillError::Duplicate("same".into())));
+        assert_eq!(
+            registry.register(s),
+            Err(SkillError::Duplicate("same".into()))
+        );
     }
 }
