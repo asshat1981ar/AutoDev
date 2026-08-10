@@ -1,13 +1,13 @@
 //! ForgeCore is the trusted execution boundary for AutoDev.
 //!
 //! Agents produce intent. ForgeCore executes only intent that has passed
-//! policy evaluation and workspace confinement. The initial implementation
-//! provides the typed agent-action protocol and a single real, read-only
-//! operation (`read_file`). It deliberately contains no privileged filesystem
-//! mutation or process execution.
+//! policy evaluation and workspace confinement. The kernel also provides
+//! deterministic repository exploration primitives that can prepare bounded
+//! evidence for model requests.
 
 pub mod action;
 pub mod agent;
+pub mod context;
 pub mod error;
 pub mod evidence;
 pub mod git;
@@ -26,6 +26,7 @@ pub use agent::{
     default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
 };
+pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use error::{ExecutionError, ExecutionErrorKind};
 pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
@@ -79,9 +80,9 @@ impl ExecutableAction {
 
 /// The top-level execution entry point.
 ///
-/// This is the only path that can produce filesystem side effects (currently
-/// limited to read-only access). It dispatches on the action type and returns
-/// schema-conformant evidence.
+/// This is the only path that can produce workspace side effects. Every action
+/// is dispatched only after the typed policy/capability boundary has been
+/// established by its executor module.
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
     let mut result = match exec.action.action_type {
         ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
