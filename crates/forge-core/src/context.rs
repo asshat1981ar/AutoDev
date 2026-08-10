@@ -9,7 +9,7 @@
 //! The design follows a useful agent boundary: exploration produces evidence;
 //! the model decides what that evidence means. The selector never edits files.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
