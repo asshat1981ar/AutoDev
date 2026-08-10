@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/schemas/execution-result.schema.json",
+  "title": "AutoDev Execution Result",
+  "description": "Evidence returned by the execution layer after an authorized agent action.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action_id", "status", "started_at", "completed_at"],
+  "properties": {
+    "action_id": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["accepted", "denied", "running", "succeeded", "failed", "cancelled"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "exit_code": { "type": ["integer", "null"] },
+    "stdout": { "type": "string" },
+    "stderr": { "type": "string" },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "error": { "type": ["string", "null"] }
+  }
+}
