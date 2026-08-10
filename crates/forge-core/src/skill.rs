@@ -227,7 +227,13 @@ pub fn default_skills() -> SkillRegistry {
         skill(
             "design-context-fabric",
             "Design or improve bounded repository context selection and project memory.",
-            &["context", "retrieval", "memory", "repository intelligence"],
+            &[
+                "context",
+                "context routing",
+                "retrieval",
+                "memory",
+                "repository intelligence",
+            ],
             &[Capability::ReadFile],
             &[AgentRole::Architect, AgentRole::Researcher],
             RiskLevel::Low,
