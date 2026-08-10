@@ -8,8 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AgentProfile, AgentRegistry, AgentRole, Capability, ModelRequirement, SkillRegistry,
-    SkillRoute,
+    AgentProfile, AgentRegistry, AgentRole, Capability, ModelRequirement, SkillRegistry, SkillRoute,
 };
 
 /// One skill assigned to one logical agent profile.
@@ -156,11 +155,7 @@ mod tests {
     #[test]
     fn preserves_model_requirement_as_dispatch_evidence() {
         let skills = default_skills();
-        let route = route_skills(
-            &skills,
-            &DevelopmentContract::new("implement a feature"),
-            1,
-        );
+        let route = route_skills(&skills, &DevelopmentContract::new("implement a feature"), 1);
         let plan = plan_dispatch(&route, &skills, &registry());
         assert_eq!(plan.assignments[0].model.preferred, "qwen2.5-coder");
         assert!(plan.assignments[0].model.min_context_tokens >= 8192);
@@ -169,11 +164,7 @@ mod tests {
     #[test]
     fn reports_unassigned_when_capabilities_do_not_fit() {
         let skills = default_skills();
-        let route = route_skills(
-            &skills,
-            &DevelopmentContract::new("implement a feature"),
-            1,
-        );
+        let route = route_skills(&skills, &DevelopmentContract::new("implement a feature"), 1);
         let agents = AgentRegistry::new();
         let plan = plan_dispatch(&route, &skills, &agents);
         assert!(plan.assignments.is_empty());
