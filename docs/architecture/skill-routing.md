@@ -21,9 +21,17 @@ DevelopmentContract
        v
     SkillRoute
        |
-       +--> selected skill ids
-       +--> scores
-       +--> routing reasons
+       v
+  Dispatch Planner
+(role + capabilities + risk + least privilege)
+       |
+       v
+   DispatchPlan
+       |
+       +--> skill -> agent role
+       +--> model requirement
+       +--> dispatch reasons
+       +--> unassigned skills
 ```
 
 ## DevelopmentContract
@@ -52,6 +60,22 @@ Every selected skill includes a deterministic score and reasons such as `term:co
 
 Routing is bounded by `max_skills` and rejects skills above the contract risk ceiling. Equal scores prefer lower-cost skills, then stable skill ids.
 
+## Dispatch planning
+
+`plan_dispatch` binds a `SkillRoute` to the logical profiles in `AgentRegistry` without starting an agent or contacting a model.
+
+A profile is eligible only when:
+
+- its role is listed by the skill;
+- its risk ceiling covers the skill risk;
+- it owns all capabilities required by the skill.
+
+If several profiles qualify, the planner favors the profile with the fewest capabilities beyond those required by the skill. This makes least privilege part of deterministic agent selection rather than a post-hoc policy check.
+
+Each `SkillAssignment` carries the selected agent role, the profile's provider/model requirement, and explicit dispatch reasons. Skills with no safe eligible profile are retained in `unassigned` rather than silently falling back to an incompatible agent.
+
+The dispatch planner deliberately carries a model requirement rather than selecting a live model. Provider availability, health, context capacity, latency, privacy, and cost belong to the model fabric and can be resolved in the next planning stage.
+
 ## Current catalog
 
 The initial catalog contains broad primitives:
@@ -68,10 +92,10 @@ The catalog is intentionally small. Additional ForgeLoop skills should be added 
 ## Evolution path
 
 1. Add richer contract signals from repository observation and ContextPack evidence.
-2. Add agent-role compatibility to the routing decision.
-3. Record routes and outcomes as durable evidence.
+2. Resolve dispatch model requirements against live provider/model health and capabilities.
+3. Record routes, dispatch plans, and outcomes as durable evidence.
 4. Build an evaluation dataset from historical tasks.
 5. Compare deterministic routing with learned/model routing.
 6. Permit learned routing only when it improves measured selection quality without weakening policy controls.
 
-The policy layer remains authoritative regardless of how a skill is selected.
+The policy layer remains authoritative regardless of how a skill or agent is selected.
