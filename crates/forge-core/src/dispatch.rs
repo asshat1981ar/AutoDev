@@ -7,7 +7,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AgentProfile, AgentRegistry, AgentRole, Capability, ModelRequirement, SkillRegistry, SkillRoute};
+use crate::{
+    AgentProfile, AgentRegistry, AgentRole, Capability, ModelRequirement, SkillRegistry,
+    SkillRoute,
+};
 
 /// One skill assigned to one logical agent profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
