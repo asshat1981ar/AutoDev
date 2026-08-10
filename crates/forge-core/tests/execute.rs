@@ -41,10 +41,23 @@ fn execute_unsupported_action_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     let mut a = action("a.txt");
-    a.action_type = ActionType::Execute; // not yet implemented
+    a.action_type = ActionType::Mcp; // not yet implemented
     let exec = ExecutableAction::new(a, ws);
     let err = forge_core::execute(&exec).unwrap_err();
     assert!(matches!(err, ExecutionError::UnsupportedAction(_)));
+}
+
+#[test]
+fn execute_process_is_fail_closed_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut a = action("a.txt");
+    a.action_type = ActionType::Execute;
+    a.capabilities = vec![Capability::Execute];
+    a.payload = json!({ "command": "echo", "args": ["hello"], "timeout_secs": 5 });
+    let exec = ExecutableAction::new(a, ws);
+    let err = forge_core::execute(&exec).unwrap_err();
+    assert!(matches!(err, ExecutionError::ProcessSandboxRequired));
 }
 
 #[test]

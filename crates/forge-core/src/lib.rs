@@ -10,6 +10,7 @@ pub mod action;
 pub mod agent;
 pub mod error;
 pub mod evidence;
+pub mod execute;
 pub mod git;
 pub mod model;
 pub mod orchestrator;
@@ -33,6 +34,7 @@ pub use evidence::{
     ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
     ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
 };
+pub use execute::execute_process;
 pub use git::{execute_git, BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
 pub use model::{
     route, Message, MockProvider, Model, ModelCapabilities, ModelError, ModelHealth, ModelOptions,
@@ -93,6 +95,7 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
         ActionType::PatchFile => {
             patch_exec::patch_file(&exec.action, &exec.workspace, PatchMode::Apply)?
         }
+        ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
         other => {
             return Err(ExecutionError::UnsupportedAction(
