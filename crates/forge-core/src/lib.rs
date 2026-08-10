@@ -2,12 +2,13 @@
 //!
 //! Agents produce intent. ForgeCore executes only intent that has passed
 //! policy evaluation and workspace confinement. The kernel also provides
-//! deterministic repository exploration and skill-routing primitives that can
-//! prepare bounded evidence and execution plans for model requests.
+//! deterministic repository exploration, skill routing, and dispatch planning
+//! primitives that can prepare bounded evidence and execution plans for model requests.
 
 pub mod action;
 pub mod agent;
 pub mod context;
+pub mod dispatch;
 pub mod error;
 pub mod evidence;
 pub mod git;
@@ -28,6 +29,7 @@ pub use agent::{
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
+pub use dispatch::{plan_dispatch, DispatchPlan, SkillAssignment, UnassignedSkill};
 pub use error::{ExecutionError, ExecutionErrorKind};
 pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
