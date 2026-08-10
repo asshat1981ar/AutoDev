@@ -68,6 +68,14 @@ impl Default for ContextPolicy {
 /// result reproducible across runs and machines.
 pub fn select_context(files: &[ContextFile], query: &str, policy: &ContextPolicy) -> ContextPack {
     let query_tokens = tokenize(query);
+    if query_tokens.is_empty() {
+        return ContextPack {
+            query: query.to_string(),
+            items: Vec::new(),
+            total_bytes: 0,
+        };
+    }
+
     let mut ranked: Vec<ContextItem> = files
         .iter()
         .map(|file| score_file(file, &query_tokens))
