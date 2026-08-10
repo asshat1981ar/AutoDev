@@ -6,9 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    route, AgentRole, DispatchPlan, Model, ModelCapabilities, ModelHealth, RoutingPolicy,
-};
+use crate::{route, AgentRole, DispatchPlan, Model, ModelCapabilities, ModelHealth, RoutingPolicy};
 
 /// A normalized model observed from a provider.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
