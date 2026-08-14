@@ -2,7 +2,7 @@
 
 AutoDev is a local-first, model-agnostic multi-agent software engineering platform inspired by the ForgeOS architecture evolved from OllamaDev.
 
-The project treats AI-assisted development as an engineered system rather than a single coding prompt. Agents plan and collaborate through typed actions; a policy layer authorizes capabilities; a trusted execution core performs changes; verification produces evidence; and the orchestrator decides whether work advances or is replanned.
+The project treats AI-assisted development as an engineered system rather than a single coding prompt. Agents plan and collaborate through typed actions; a policy layer authorizes capabilities; a trusted execution core performs changes; repository exploration supplies bounded evidence; verification produces evidence; and the orchestrator decides whether work advances or is replanned.
 
 ## Architecture
 
@@ -14,6 +14,8 @@ The project treats AI-assisted development as an engineered system rather than a
                 Agent Orchestrator
                        |
           PLAN -> ACT -> VERIFY -> REPLAN
+                       |
+              Repository Context Fabric
                        |
                 Typed Agent Protocol
                        |
@@ -38,6 +40,7 @@ The project treats AI-assisted development as an engineered system rather than a
 - Rust-based trusted execution for filesystem, process, patch and Git operations.
 - Reproducible artifacts and execution provenance.
 - Independent verification through tests, builds, static analysis and security checks.
+- Repository-scale context selection with deterministic local retrieval.
 - Optional distributed workers as the platform matures.
 
 ## Planned stack
@@ -46,6 +49,7 @@ The project treats AI-assisted development as an engineered system rather than a
 | --- | --- | --- |
 | Control plane | Kotlin + Jetpack Compose | Android UI, lifecycle, local state |
 | Orchestration | Kotlin | Agent lifecycle and SDLC state machine |
+| Context fabric | Rust | Repository retrieval, ranking and context budgets |
 | Execution kernel | Rust | Sandbox, filesystem, Git, patches, processes, policy |
 | Model fabric | Ollama | Local and network model execution |
 | Capability layer | MCP | External tools and services |
@@ -59,22 +63,23 @@ The project treats AI-assisted development as an engineered system rather than a
 3. Ollama model discovery and routing.
 4. Typed agent-action protocol.
 5. Rust ForgeCore execution boundary.
-6. PLAN -> ACT -> VERIFY -> REPAIR orchestration.
-7. Approval and policy engine.
-8. Verification and artifact provenance.
-9. Project memory and knowledge graph.
-10. Optional Go worker fabric.
-11. Cross-platform clients where justified.
+6. Repository context fabric and bounded retrieval.
+7. PLAN -> ACT -> VERIFY -> REPAIR orchestration.
+8. Approval and policy engine.
+9. Verification and artifact provenance.
+10. Project memory and knowledge graph.
+11. Optional Go worker fabric.
+12. Cross-platform clients where justified.
 
 ## Design principle
 
-Agents propose intent. Policies authorize intent. ForgeCore executes authorized operations. Verifiers produce evidence. The orchestrator advances or replans.
+Agents propose intent. Context retrieval supplies relevant repository evidence. Policies authorize intent. ForgeCore executes authorized operations. Verifiers produce evidence. The orchestrator advances or replans.
 
 This separation is the foundation for safe autonomous software development.
 
 ## Status
 
-Early architecture and foundation phase. APIs and module boundaries are expected to evolve while the execution protocol is established.
+Early architecture and foundation phase. The trusted execution, agent registry, model fabric, orchestration, verification, provenance, and first deterministic repository-context primitives are now established. APIs and module boundaries are expected to evolve while the execution protocol is integrated.
 
 ## Cline Development Fabric
 
