@@ -87,12 +87,11 @@ fn dry_run_does_not_touch_filesystem() {
 }
 
 #[test]
-fn workspace_requires_existing_root() {
+fn workspace_rejects_nonexistent_root() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join(Path::new("nonexistent"));
-    // Workspace creation should not panic even if the root does not exist.
-    let ws = Workspace::new(&root, 1024).unwrap();
-    assert_eq!(ws.root(), root);
+    let error = Workspace::new(&root, 1024).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
 }
 
 #[test]

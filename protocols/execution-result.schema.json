@@ -5,7 +5,7 @@
   "description": "Evidence returned by the execution layer after an authorized agent action.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["action_id", "status", "started_at", "completed_at"],
+  "required": ["action_id", "status", "started_at", "completed_at", "stdout", "stderr", "artifacts"],
   "properties": {
     "action_id": { "type": "string", "minLength": 1 },
     "status": { "type": "string", "enum": ["accepted", "denied", "running", "succeeded", "failed", "cancelled"] },
@@ -19,7 +19,7 @@
       "items": { "type": "string" }
     },
     "verification": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": true
     },
     "error": { "type": ["string", "null"] }
