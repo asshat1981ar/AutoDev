@@ -1,0 +1,12 @@
+version: 1
+name: production
+extends: default
+rules:
+  - id: production-mutation
+    operation: production.write
+    requires: [explicit_user_approval, rollback_plan, validation_evidence]
+    decision: approval-required
+  - id: production-deployment
+    operation: deployment
+    requires: [release_checks, release_owner]
+    decision: approval-required

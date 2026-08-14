@@ -1,0 +1,27 @@
+{
+  "profiles": {
+    "core": ["github", "context7"],
+    "browser": ["playwright"],
+    "memory": ["memory"],
+    "backend": ["supabase", "docker"],
+    "observability": ["sentry"],
+    "cloud": ["aws", "cloudflare", "terraform"],
+    "product": ["notion", "linear"],
+    "full": ["github", "context7", "playwright", "memory", "supabase", "docker", "sentry", "aws", "cloudflare", "terraform", "notion", "linear"]
+  },
+  "servers": {
+    "github": {"type": "streamableHttp", "url": "https://api.githubcopilot.com/mcp/"},
+    "context7": {"type": "streamableHttp", "url": "https://mcp.context7.com/mcp"},
+    "playwright": {"type": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest"]},
+    "memory": {"type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]},
+    "supabase": {"type": "streamableHttp", "url": "https://mcp.supabase.com/mcp?read_only=true"},
+    "docker": {"type": "stdio", "command": "docker", "args": ["mcp", "gateway", "run"]},
+    "sentry": {"type": "streamableHttp", "url": "https://mcp.sentry.dev/mcp"},
+    "aws": {"type": "stdio", "command": "uvx", "args": ["awslabs.core-mcp-server@latest"]},
+    "cloudflare": {"type": "streamableHttp", "url": "https://mcp.cloudflare.com/mcp"},
+    "terraform": {"type": "stdio", "command": "docker", "args": ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]},
+    "notion": {"type": "streamableHttp", "url": "https://mcp.notion.com/mcp"},
+    "linear": {"type": "streamableHttp", "url": "https://mcp.linear.app/mcp"}
+  },
+  "note": "Filesystem, git, fetch, and sequential-thinking are intentionally omitted; Cline native capabilities cover them."
+}

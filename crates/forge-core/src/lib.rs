@@ -11,11 +11,14 @@ pub mod context;
 pub mod dispatch;
 pub mod error;
 pub mod evidence;
+pub mod execute;
 pub mod git;
 pub mod model;
 pub mod model_assignment;
 pub mod orchestrator;
 pub mod patch;
+pub mod patch_exec;
+pub mod plugin;
 pub mod policy;
 pub mod read;
 pub mod runtime;
@@ -37,6 +40,7 @@ pub use evidence::{
     ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
     ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
 };
+pub use execute::execute_process;
 pub use git::{execute_git, BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
 pub use model::{
     route, Message, MockProvider, Model, ModelCapabilities, ModelError, ModelHealth, ModelOptions,
@@ -54,6 +58,12 @@ pub use orchestrator::{
 pub use patch::{
     ApplyMode, LineKind, Patch, PatchFailure, PatchFailureReason, PatchHunk, PatchLine,
     PatchParseError, PatchResult,
+};
+pub use patch_exec::{patch_file, PatchMode};
+pub use plugin::{
+    execute_plugin, plugin_result_to_execution_result, Plugin, PluginArtifact, PluginError,
+    PluginFinding, PluginLimits, PluginLocation, PluginPolicy, PluginRequest, PluginResponse,
+    PluginUsage,
 };
 pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
 pub use read::read_file;
@@ -100,6 +110,10 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
         ActionType::WriteFile => {
             write::write_file(&exec.action, &exec.workspace, WriteMode::Atomic)?
         }
+        ActionType::PatchFile => {
+            patch_exec::patch_file(&exec.action, &exec.workspace, PatchMode::Apply)?
+        }
+        ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
         other => {
             return Err(ExecutionError::UnsupportedAction(

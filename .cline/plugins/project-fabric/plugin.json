@@ -1,0 +1,8 @@
+{
+  "name": "project-fabric",
+  "version": "1.0.0",
+  "description": "Local project snapshot and quality planning tools",
+  "tools": ["project_snapshot", "quality_gate_plan"],
+  "runtime": "python",
+  "entry": "tools.py"
+}

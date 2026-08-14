@@ -130,16 +130,20 @@ pub enum PatchFailureReason {
 }
 
 /// Errors that occur while parsing a patch document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PatchParseError {
     /// The target file header (`+++`) is missing or malformed.
+    #[error("missing or malformed target file header")]
     MissingTarget,
     /// A hunk header did not match the `@@ -a,b +c,d @@` form.
+    #[error("malformed hunk header: {0}")]
     MalformedHunkHeader(String),
     /// A hunk referenced a zero or impossible range.
+    #[error("invalid hunk range")]
     InvalidRange,
     /// The document contained a line that is valid in neither a header nor a
     /// hunk body.
+    #[error("unexpected line: {0}")]
     UnexpectedLine(String),
 }
 

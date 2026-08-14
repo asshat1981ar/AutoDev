@@ -81,6 +81,15 @@ This separation is the foundation for safe autonomous software development.
 
 Early architecture and foundation phase. The trusted execution, agent registry, model fabric, orchestration, verification, provenance, and first deterministic repository-context primitives are now established. APIs and module boundaries are expected to evolve while the execution protocol is integrated.
 
+## Cline Development Fabric
+
+The repository includes a Cline-native development fabric under `.cline/`. Install it into
+another repository with `python install.py --project /path/to/repo`, or inspect changes first
+with `python install.py --project /path/to/repo --dry-run`. Existing project files are skipped
+by default; `--force` creates backups before replacement. The package provides routing rules,
+progressive Skills, specialist agents, safety/context hooks, local plugin tools, and scoped
+external MCP profiles. See [.cline/README.md](.cline/README.md).
+
 ## License
 
 AutoDev is released under the MIT License. See [LICENSE](LICENSE).
