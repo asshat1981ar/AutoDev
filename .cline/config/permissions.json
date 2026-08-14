@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "defaults": {
+    "workspace.read": "allow",
+    "workspace.write": "allow",
+    "shell.execute": "approval-required",
+    "network.external": "approval-required",
+    "secret.read": "deny",
+    "production.write": "approval-required",
+    "destructive.operation": "approval-required"
+  },
+  "scope": {
+    "filesystem": "workspace",
+    "network": "restricted"
+  }
+}

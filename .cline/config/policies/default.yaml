@@ -1,0 +1,12 @@
+version: 1
+name: default
+rules:
+  - id: required-verification
+    event: task.completed
+    requires: [format, typecheck-or-build, focused-tests]
+  - id: protected-destructive-commands
+    operation: destructive
+    decision: approval-required
+  - id: secret-access
+    operation: secret.read
+    decision: deny

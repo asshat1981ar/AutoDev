@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "capabilities": [
+    {"id": "core.filesystem", "kind": "core", "description": "Read and write files inside the workspace", "permissions": ["workspace.read", "workspace.write"]},
+    {"id": "core.shell", "kind": "core", "description": "Run approved local shell commands", "permissions": ["shell.execute"]},
+    {"id": "core.search", "kind": "core", "description": "Search and inspect the repository", "permissions": ["workspace.read"]},
+    {"id": "skill.repo-recon", "kind": "skill", "description": "Map repository entry points, conventions, and validation", "permissions": ["workspace.read"]},
+    {"id": "skill.security-review", "kind": "skill", "description": "Review security-sensitive code and configuration", "permissions": ["workspace.read"]},
+    {"id": "plugin.project-fabric", "kind": "plugin", "description": "Create local snapshots and quality gate plans", "permissions": ["workspace.read"]},
+    {"id": "mcp.external", "kind": "mcp", "description": "Connect to explicitly configured external systems", "permissions": ["network.external"]}
+  ]
+}
