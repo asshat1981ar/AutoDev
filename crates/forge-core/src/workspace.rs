@@ -33,12 +33,15 @@ pub struct Workspace {
 impl Workspace {
     /// Create a workspace rooted at `root` with the given size limit.
     ///
-    /// The root is canonicalized eagerly so all later comparisons are against a
-    /// stable, symlink-resolved base.
+    /// The root must be an existing directory and is canonicalized eagerly so
+    /// all later comparisons are against a stable, symlink-resolved base.
     pub fn new(root: impl AsRef<Path>, max_bytes: u64) -> std::io::Result<Self> {
-        let mut root = root.as_ref().to_path_buf();
-        if let Ok(canonical) = std::fs::canonicalize(&root) {
-            root = canonical;
+        let root = std::fs::canonicalize(root)?;
+        if !std::fs::metadata(&root)?.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "workspace root must be a directory",
+            ));
         }
         Ok(Workspace {
             allowed_roots: vec![root.clone()],
@@ -61,10 +64,11 @@ impl Workspace {
     /// canonicalized.
     pub fn add_allowed_root(&mut self, root: impl AsRef<Path>) -> bool {
         match std::fs::canonicalize(root) {
-            Ok(canonical) => {
+            Ok(canonical) if canonical.is_dir() => {
                 self.allowed_roots.push(canonical);
                 true
             }
+            Ok(_) => false,
             Err(_) => false,
         }
     }
@@ -119,11 +123,44 @@ impl Workspace {
                     PathResolution::Denied(canonical)
                 }
             }
-            Err(_) => {
-                // The path does not yet exist or cannot be resolved; the
-                // lexical containment check already passed, so allow it.
-                PathResolution::Allowed(normalized)
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // The path does not yet exist. To prevent symlink escapes in
+                // parent directories, we must canonicalize the deepest existing ancestor.
+                let mut ancestor = Some(normalized.as_path());
+                while let Some(candidate) = ancestor {
+                    match std::fs::symlink_metadata(candidate) {
+                        Ok(_) => {
+                            return match std::fs::canonicalize(candidate) {
+                                Ok(canonical_ancestor)
+                                    if self
+                                        .allowed_roots
+                                        .iter()
+                                        .any(|root| is_contained(&canonical_ancestor, root)) =>
+                                {
+                                    // The existing ancestor is safe. The
+                                    // nonexistent tail remains beneath it.
+                                    PathResolution::Allowed(normalized)
+                                }
+                                Ok(canonical_ancestor) => {
+                                    PathResolution::Denied(canonical_ancestor)
+                                }
+                                Err(_) => PathResolution::Denied(normalized),
+                            };
+                        }
+                        Err(ancestor_error)
+                            if ancestor_error.kind() == std::io::ErrorKind::NotFound =>
+                        {
+                            ancestor = candidate.parent();
+                        }
+                        Err(_) => return PathResolution::Denied(normalized),
+                    }
+                }
+                // Fail closed if no existing ancestor can be inspected.
+                PathResolution::Denied(normalized)
             }
+            // Permission errors, symlink loops, and other I/O failures are not
+            // evidence of a safe nonexistent tail. Fail closed.
+            Err(_) => PathResolution::Denied(normalized),
         }
     }
 }
@@ -216,5 +253,37 @@ mod tests {
                 PathResolution::Denied(_)
             ));
         }
+    }
+
+    #[test]
+    fn nonexistent_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = Workspace::new(dir.path().join("missing"), 1024).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn file_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("file.txt");
+        std::fs::write(&file, b"not a directory").unwrap();
+        let error = Workspace::new(file, 1024).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dangling_intermediate_symlink_is_denied() {
+        let dir = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("missing-target"),
+            dir.path().join("dangling"),
+        )
+        .unwrap();
+        let workspace = Workspace::new(dir.path(), 1024).unwrap();
+        assert!(matches!(
+            workspace.resolve_path(Path::new("dangling/new.txt")),
+            PathResolution::Denied(_)
+        ));
     }
 }

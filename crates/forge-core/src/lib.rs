@@ -16,6 +16,7 @@ pub mod model;
 pub mod orchestrator;
 pub mod patch;
 pub mod patch_exec;
+pub mod plugin;
 pub mod policy;
 pub mod read;
 pub mod runtime;
@@ -51,6 +52,11 @@ pub use patch::{
     PatchParseError, PatchResult,
 };
 pub use patch_exec::{patch_file, PatchMode};
+pub use plugin::{
+    execute_plugin, plugin_result_to_execution_result, Plugin, PluginArtifact, PluginError,
+    PluginFinding, PluginLimits, PluginLocation, PluginPolicy, PluginRequest, PluginResponse,
+    PluginUsage,
+};
 pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
 pub use read::read_file;
 pub use runtime::{
