@@ -195,7 +195,7 @@ pub fn write_file(
 /// Write `bytes` to `path` atomically: write to a sibling temp file, then
 /// rename over `path`. On any failure the temp file is removed and the original
 /// is left untouched (rollback by construction).
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), ExecutionError> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), ExecutionError> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()

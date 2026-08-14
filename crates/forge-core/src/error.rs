@@ -48,6 +48,10 @@ pub enum ExecutionError {
     FileNotFound(PathBuf),
     #[error("path '{0}' is a directory, expected a file")]
     IsDirectory(PathBuf),
+    #[error("patch is malformed: {0}")]
+    InvalidPatch(String),
+    #[error("patch could not be applied: {0}")]
+    PatchConflict(String),
     #[error("file '{0}' exceeds the maximum allowed size of {1} bytes")]
     OversizedFile(PathBuf, u64),
 
@@ -64,6 +68,15 @@ pub enum ExecutionError {
     GitRequiresApproval(&'static str),
     #[error("git operation '{0}' is forbidden without explicit policy authorization")]
     GitOperationForbidden(String),
+
+    #[error("process execution requires an enabled process sandbox (tier-2, fail-closed)")]
+    ProcessSandboxRequired,
+    #[error("command execution timed out after {0} seconds")]
+    ProcessTimeout(u64),
+    #[error("command output exceeded the {0} byte limit")]
+    ProcessOutputTooLarge(u64),
+    #[error("command contains shell metacharacters and was refused: {0}")]
+    UnsafeCommand(String),
 
     #[error("I/O error accessing '{0}': {1}")]
     Io(PathBuf, std::io::Error),
@@ -94,11 +107,18 @@ impl ExecutionError {
             | ExecutionError::IsDirectory(_)
             | ExecutionError::OversizedFile(_, _)
             | ExecutionError::InvalidUtf8(_) => ExecutionErrorKind::Read,
+            ExecutionError::InvalidPatch(_) | ExecutionError::PatchConflict(_) => {
+                ExecutionErrorKind::Patch
+            }
             ExecutionError::NotARepository(_)
             | ExecutionError::GitFailed(_, _)
             | ExecutionError::GitCapabilityDenied(_)
             | ExecutionError::GitRequiresApproval(_)
             | ExecutionError::GitOperationForbidden(_) => ExecutionErrorKind::Git,
+            ExecutionError::ProcessSandboxRequired
+            | ExecutionError::ProcessTimeout(_)
+            | ExecutionError::ProcessOutputTooLarge(_)
+            | ExecutionError::UnsafeCommand(_) => ExecutionErrorKind::Process,
             ExecutionError::Io(_, _) => ExecutionErrorKind::Io,
         }
     }
@@ -113,6 +133,8 @@ pub enum ExecutionErrorKind {
     InvalidPayload,
     Read,
     Git,
+    Patch,
     Unsupported,
+    Process,
     Io,
 }
