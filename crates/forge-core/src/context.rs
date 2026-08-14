@@ -119,35 +119,43 @@ fn score_file(file: &ContextFile, query_tokens: &BTreeSet<String>) -> ContextIte
 
     let mut score = 0u32;
     let mut reasons = Vec::new();
+    let mut matched_query = false;
 
     for token in query_tokens {
         if filename.contains(token) {
             score += 10;
+            matched_query = true;
             reasons.push(format!("filename:{token}"));
         } else if path_lower.contains(token) {
             score += 6;
+            matched_query = true;
             reasons.push(format!("path:{token}"));
         }
 
         let occurrences = content_lower.matches(token).count().min(8) as u32;
         if occurrences > 0 {
             score += occurrences * 2;
+            matched_query = true;
             reasons.push(format!("content:{token}x{occurrences}"));
         }
     }
 
-    // Give the model useful structural anchors when the query is broad.
-    if is_source_file(&file.path) {
-        score += 1;
-        reasons.push("source".to_string());
-    }
-    if is_project_manifest(&file.path) {
-        score += 3;
-        reasons.push("manifest".to_string());
-    }
-    if is_test_file(&file.path) {
-        score += 2;
-        reasons.push("test".to_string());
+    // Structural signals improve ranking only after a lexical match. Without
+    // this gate, every source/test file would receive a non-zero score for an
+    // unrelated query and could consume the entire context budget.
+    if matched_query {
+        if is_source_file(&file.path) {
+            score += 1;
+            reasons.push("source".to_string());
+        }
+        if is_project_manifest(&file.path) {
+            score += 3;
+            reasons.push("manifest".to_string());
+        }
+        if is_test_file(&file.path) {
+            score += 2;
+            reasons.push("test".to_string());
+        }
     }
 
     ContextItem {
@@ -268,5 +276,17 @@ mod tests {
         let files = vec![file("src/a.rs", "the and with")];
         let pack = select_context(&files, "the and with", &ContextPolicy::default());
         assert!(pack.items.is_empty());
+    }
+
+    #[test]
+    fn excludes_structural_files_without_query_matches() {
+        let files = vec![
+            file("src/unrelated.rs", "pub fn unrelated() {}"),
+            file("tests/unrelated.rs", "unrelated regression"),
+            file("Cargo.toml", "[package]\nname = \"unrelated\""),
+        ];
+        let pack = select_context(&files, "database migration", &ContextPolicy::default());
+        assert!(pack.items.is_empty());
+        assert_eq!(pack.total_bytes, 0);
     }
 }
