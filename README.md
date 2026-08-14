@@ -90,6 +90,17 @@ by default; `--force` creates backups before replacement. The package provides r
 progressive Skills, specialist agents, safety/context hooks, local plugin tools, and scoped
 external MCP profiles. See [.cline/README.md](.cline/README.md).
 
+## Termux Cline Kanban compatibility
+
+On Android ARM64, Cline Kanban can fail when upstream `node-pty` has no usable Android native binding. AutoDev includes a self-healing compatibility launcher that probes the installed PTY, repairs it only when needed with a pinned Android ARM64 prebuilt, verifies the native binary checksum, and then launches Kanban.
+
+```bash
+node scripts/termux-kanban.mjs --repair-only
+node scripts/termux-kanban.mjs
+```
+
+See [docs/termux-kanban.md](docs/termux-kanban.md) for diagnostics, force-repair, and shell-alias usage.
+
 ## License
 
 AutoDev is released under the MIT License. See [LICENSE](LICENSE).
