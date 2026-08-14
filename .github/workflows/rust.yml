@@ -6,6 +6,7 @@ on:
       - "crates/**"
       - "protocols/**"
       - "tests/**"
+      - "scripts/**"
       - ".cline/**"
       - "install.py"
       - "bootstrap_cline_mcp.py"
@@ -15,6 +16,7 @@ on:
       - "crates/**"
       - "protocols/**"
       - "tests/**"
+      - "scripts/**"
       - ".cline/**"
       - "install.py"
       - "bootstrap_cline_mcp.py"
@@ -47,7 +49,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - name: Compile Python entry points
         run: python -m py_compile install.py bootstrap_cline_mcp.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py
+      - name: Validate Termux Kanban launcher
+        run: |
+          node --check scripts/termux-kanban.mjs
+          node scripts/termux-kanban.mjs --check
       - name: Test Cline development fabric
         run: python -m unittest discover -s tests -v
