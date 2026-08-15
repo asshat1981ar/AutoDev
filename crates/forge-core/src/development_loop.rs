@@ -51,6 +51,8 @@ pub enum DevelopmentLoopError {
     RiskMismatch,
     #[error("envelope capabilities do not include the action's required capability")]
     EnvelopeCapabilityDenied,
+    #[error("envelope approval policy is weaker than the kernel policy")]
+    ApprovalPolicyMismatch,
     #[error("approval reference is required by policy")]
     ApprovalRequired,
 }
@@ -81,7 +83,7 @@ impl DevelopmentLoop {
         verification_context: &VerificationContext,
     ) -> Result<DevelopmentLoopResult, DevelopmentLoopError> {
         envelope.validate()?;
-        self.authorize(envelope)?;
+        let policy_outcome = self.authorize(envelope)?;
 
         if envelope.lifecycle.state == EnvelopeState::Planned {
             envelope.transition(EnvelopeState::Authorized)?;
@@ -126,7 +128,7 @@ impl DevelopmentLoop {
         let record = record_from(
             &record_id,
             &envelope.action,
-            PolicyOutcome::Allow,
+            policy_outcome,
             &execution_result,
             vec![],
         );
@@ -168,7 +170,7 @@ impl DevelopmentLoop {
         })
     }
 
-    fn authorize(&self, envelope: &ExecutionEnvelope) -> Result<(), DevelopmentLoopError> {
+    fn authorize(&self, envelope: &ExecutionEnvelope) -> Result<PolicyOutcome, DevelopmentLoopError> {
         if envelope.policy.risk != envelope.action.risk {
             return Err(DevelopmentLoopError::RiskMismatch);
         }
@@ -188,10 +190,23 @@ impl DevelopmentLoop {
         }
 
         match evaluate_policy(&envelope.action)? {
-            PolicyDecision::Allow => Ok(()),
+            PolicyDecision::Allow => {
+                if envelope.policy.requires_approval {
+                    if envelope.policy.is_authorized() {
+                        Ok(PolicyOutcome::RequireApproval)
+                    } else {
+                        Err(DevelopmentLoopError::ApprovalRequired)
+                    }
+                } else {
+                    Ok(PolicyOutcome::Allow)
+                }
+            }
             PolicyDecision::RequireApproval => {
+                if !envelope.policy.requires_approval {
+                    return Err(DevelopmentLoopError::ApprovalPolicyMismatch);
+                }
                 if envelope.policy.is_authorized() {
-                    Ok(())
+                    Ok(PolicyOutcome::RequireApproval)
                 } else {
                     Err(DevelopmentLoopError::ApprovalRequired)
                 }
@@ -338,6 +353,52 @@ mod tests {
             err,
             DevelopmentLoopError::EnvelopeCapabilityDenied
         ));
+    }
+
+    #[test]
+    fn kernel_approval_requirement_cannot_be_disabled_by_envelope() {
+        let dir = tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
+        let fabric = VerificationFabric::new().with(
+            VerificationKind::UnitTests,
+            mock_verifier(VerificationKind::UnitTests, true),
+        );
+        let mut loop_ = DevelopmentLoop::new(fabric);
+        let mut env = envelope("task-1", 2);
+        env.action.risk = RiskLevel::High;
+        env.policy.risk = RiskLevel::High;
+        env.policy.requires_approval = false;
+
+        let err = loop_
+            .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DevelopmentLoopError::ApprovalPolicyMismatch
+        ));
+    }
+
+    #[test]
+    fn approved_high_risk_action_records_approval_policy() {
+        let dir = tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
+        let fabric = VerificationFabric::new().with(
+            VerificationKind::UnitTests,
+            mock_verifier(VerificationKind::UnitTests, true),
+        );
+        let mut loop_ = DevelopmentLoop::new(fabric);
+        let mut env = envelope("task-1", 2);
+        env.action.risk = RiskLevel::High;
+        env.policy.risk = RiskLevel::High;
+        env.policy.requires_approval = true;
+        env.policy.approval_ref = Some("approval-1".into());
+
+        let result = loop_
+            .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
+            .unwrap();
+
+        let evidence = loop_.evidence.get(&result.evidence_ref).unwrap();
+        assert_eq!(evidence.record.policy, PolicyOutcome::RequireApproval);
     }
 
     #[test]
