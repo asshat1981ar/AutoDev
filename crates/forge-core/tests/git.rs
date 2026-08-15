@@ -134,12 +134,8 @@ fn trusted_git_approval_allows_destructive_operation() {
     action.capabilities = vec![Capability::Git, Capability::GitDestructive];
     action.payload = json!({ "operation": "rollback", "command": "checkout" });
 
-    let result = forge_core::execute(&ExecutableAction::with_approval(
-        action,
-        ws,
-        "approval-1",
-    ))
-    .unwrap();
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(action, ws, "approval-1")).unwrap();
     assert_eq!(result.verification.unwrap()["rolled_back"], "checkout");
     assert_eq!(
         std::fs::read_to_string(dir.path().join("base.txt")).unwrap(),
