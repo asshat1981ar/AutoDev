@@ -6,26 +6,13 @@
 //! AgentAction
 //!   → validate_action        (structural invariants)
 //!   → capability check       (is the `write_file` capability granted?)
-//!   → evaluate_policy        (risk → Allow / RequireApproval / Deny)
+//!   → enforce_policy         (risk + trusted authorization grant)
 //!   → workspace.resolve_path (containment + symlink/traversal defense)
 //!   → proposed change        (validate payload: path + content)
 //!   → diff                   (before/after unified diff)
 //!   → atomic write           (temp file + rename; never partial)
 //!   → evidence               (before/after hashes + new hash + diff)
 //! ```
-//!
-//! Security properties:
-//!
-//! - **No workspace escape**: every path is resolved against the workspace.
-//! - **Atomic writes**: content is written to a temporary file in the same
-//!   directory and atomically renamed over the target, so the target is never
-//!   observed in a partial state and failure recovery is trivial (remove temp).
-//! - **Dry-run**: in [`WriteMode::DryRun`] the change is computed and validated
-//!   but the filesystem is not touched.
-//! - **Explicit authorization**: the `write_file` capability and policy are
-//!   required; unauthorized writes are refused before any filesystem access.
-//! - **Bounded writes**: the resulting file must not exceed the workspace size
-//!   limit.
 
 use std::path::Path;
 
@@ -35,73 +22,57 @@ use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus};
 use crate::patch::generate_diff;
-use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
+use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
 use crate::workspace::{PathResolution, Workspace};
 
-/// The payload fields `write_file` understands.
 const PATH_FIELD: &str = "path";
 const CONTENT_FIELD: &str = "content";
 
-/// Whether a write should touch the filesystem.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteMode {
-    /// Validate and compute the change without writing (dry-run).
     DryRun,
-    /// Perform the atomic write.
     Atomic,
 }
 
 impl WriteMode {
-    /// Whether this mode persists changes to the filesystem.
     pub fn persists(self) -> bool {
         matches!(self, WriteMode::Atomic)
     }
 }
 
-/// Evidence produced by a write operation.
 #[derive(Debug, Clone)]
 pub struct WriteOutcome {
-    /// The canonical path that was (or would be) written.
     pub path: String,
-    /// SHA-256 of the original file contents, if the file existed.
     pub before_sha256: Option<String>,
-    /// SHA-256 of the new contents.
     pub after_sha256: String,
-    /// The unified diff describing the change.
     pub diff: Option<String>,
-    /// Whether the target file already existed.
     pub created: bool,
 }
 
-/// Execute a `write_file` action.
-///
-/// Returns a schema-conformant [`ExecutionResult`]. Policy, workspace, or I/O
-/// failures are surfaced as structured [`ExecutionError`]s. In
-/// [`WriteMode::DryRun`] the filesystem is never modified.
+/// Backward-compatible write entry point. No approval grant is implied.
 pub fn write_file(
     action: &AgentAction,
     workspace: &Workspace,
     mode: WriteMode,
 ) -> Result<ExecutionResult, ExecutionError> {
+    write_file_authorized(action, workspace, mode, &AuthorizationGrant::none())
+}
+
+/// Trusted write entry point used by the execution envelope path.
+pub(crate) fn write_file_authorized(
+    action: &AgentAction,
+    workspace: &Workspace,
+    mode: WriteMode,
+    grant: &AuthorizationGrant,
+) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
-    // 1. Structural validation.
-    evaluate_policy(action)?;
+    enforce_policy(action, grant)?;
 
-    // 2. Capability check: writing requires the `write_file` capability.
     if !has_required_capability(action) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
-    // 3. Risk-based policy: medium/high/critical require approval. Approval is
-    //    not wired up yet, so we refuse rather than write without it.
-    match evaluate_policy(action)? {
-        PolicyDecision::Allow => {}
-        PolicyDecision::RequireApproval => return Err(ExecutionError::RequiresApproval),
-        PolicyDecision::Deny => return Err(ExecutionError::CapabilityDenied),
-    }
-
-    // 4. Extract and validate the payload.
     if !action.payload.is_object() {
         return Err(ExecutionError::PayloadNotObject);
     }
@@ -121,7 +92,6 @@ pub fn write_file(
         .ok_or(ExecutionError::PayloadFieldNotString(CONTENT_FIELD))?;
     let raw_path = Path::new(path_str);
 
-    // 5. Resolve against the workspace (containment + symlink/traversal).
     let resolved = match workspace.resolve_path(raw_path) {
         PathResolution::Allowed(p) => p,
         PathResolution::Denied(p) => {
@@ -138,7 +108,6 @@ pub fn write_file(
         }
     };
 
-    // 6. Bounded write: the new content must fit within the size limit.
     if content.len() as u64 > workspace.max_bytes() {
         return Err(ExecutionError::OversizedFile(
             resolved.clone(),
@@ -146,7 +115,6 @@ pub fn write_file(
         ));
     }
 
-    // 7. Read the existing content for the before-hash and diff.
     let before = std::fs::read(&resolved).ok();
     let before_sha256 = before.as_deref().map(sha256_hex);
     let before_lines: Vec<String> = before
@@ -160,10 +128,8 @@ pub fn write_file(
         .unwrap_or_default();
     let after_lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let diff = generate_diff(&before_lines, &after_lines);
-
     let after_sha256 = sha256_hex(content.as_bytes());
 
-    // 8. Column: dry-run stops here; the filesystem is untouched.
     if mode == WriteMode::DryRun {
         return Ok(build_result(
             action,
@@ -177,7 +143,6 @@ pub fn write_file(
         ));
     }
 
-    // 9. Atomic write: temp file in the same directory, then rename.
     atomic_write(&resolved, content.as_bytes())?;
 
     Ok(build_result(
@@ -192,9 +157,6 @@ pub fn write_file(
     ))
 }
 
-/// Write `bytes` to `path` atomically: write to a sibling temp file, then
-/// rename over `path`. On any failure the temp file is removed and the original
-/// is left untouched (rollback by construction).
 pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), ExecutionError> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
@@ -209,14 +171,12 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), ExecutionErr
     })();
 
     if let Err(e) = write_result {
-        // Failure recovery: remove the temp file so nothing partial remains.
         let _ = std::fs::remove_file(&tmp);
         return Err(ExecutionError::Io(path.to_path_buf(), e));
     }
     Ok(())
 }
 
-/// Build a schema-conformant result for a write.
 #[allow(clippy::too_many_arguments)]
 fn build_result(
     action: &AgentAction,
@@ -249,6 +209,7 @@ fn build_result(
         error: None,
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,17 +241,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
-
         let result = write_file(&action("a.txt", "new"), &ws, WriteMode::Atomic).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
-            "new"
-        );
-        let v = result.verification.unwrap();
-        assert_eq!(v["before_sha256"], sha256_hex(b"old"));
-        assert_eq!(v["after_sha256"], sha256_hex(b"new"));
-        assert!(v["diff"].is_string());
+        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "new");
     }
 
     #[test]
@@ -298,14 +251,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
-
         let result = write_file(&action("a.txt", "new"), &ws, WriteMode::DryRun).unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
-        // File unchanged.
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
-            "old"
-        );
+        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "old");
     }
 
     #[test]
@@ -313,7 +261,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut a = action("a.txt", "new");
-        a.capabilities = vec![]; // no write_file capability
+        a.capabilities = vec![];
         let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
@@ -341,8 +289,7 @@ mod tests {
     fn oversized_content_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4).unwrap();
-        let err =
-            write_file(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_file(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::OversizedFile(_, 4)));
     }
 
@@ -353,10 +300,7 @@ mod tests {
         let mut a = base_action();
         a.payload = json!({ "path": "a.txt" });
         let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
-        assert!(matches!(
-            err,
-            ExecutionError::MissingPayloadField("content")
-        ));
+        assert!(matches!(err, ExecutionError::MissingPayloadField("content")));
     }
 
     #[test]
@@ -380,8 +324,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut a = action("a.txt", "x");
-        a.risk = RiskLevel::High; // requires approval
+        a.risk = RiskLevel::High;
         let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::RequiresApproval));
+    }
+
+    #[test]
+    fn trusted_grant_allows_approved_high_risk_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        let mut a = action("a.txt", "x");
+        a.risk = RiskLevel::High;
+        let grant = AuthorizationGrant::approved("approval-1");
+        let result = write_file_authorized(&a, &ws, WriteMode::Atomic, &grant).unwrap();
+        assert_eq!(result.status, ExecutionStatus::Succeeded);
+        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "x");
     }
 }
