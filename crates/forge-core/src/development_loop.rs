@@ -128,9 +128,10 @@ impl DevelopmentLoop {
         let evidence = self.evidence.insert(record);
         envelope.evidence.produced.push(evidence.record.id.clone());
 
-        let independently_verified = verification
-            .as_ref()
-            .is_some_and(|report| report.overall == VerificationVerdict::Pass);
+        let independently_verified = verification.as_ref().is_some_and(|report| {
+            report.overall == VerificationVerdict::Pass
+                && required_evidence_passed(&envelope.evidence.required, report)
+        });
 
         if independently_verified {
             envelope.transition(EnvelopeState::Verified)?;
@@ -207,6 +208,19 @@ impl DevelopmentLoop {
             PolicyDecision::Deny => Err(DevelopmentLoopError::CapabilityDenied),
         }
     }
+}
+
+/// Every evidence item declared by the envelope must correspond to a concrete,
+/// passing verification result. An all-pass report is insufficient when a
+/// required check was never registered or never ran.
+fn required_evidence_passed(required: &[String], report: &VerificationReport) -> bool {
+    required.iter().all(|required_kind| {
+        let required_kind = required_kind.trim();
+        !required_kind.is_empty()
+            && report.results.iter().any(|result| {
+                result.kind.as_str() == required_kind && result.passed()
+            })
+    })
 }
 
 #[cfg(test)]
@@ -294,6 +308,48 @@ mod tests {
         assert_eq!(env.lifecycle.state, EnvelopeState::Planned);
         assert_eq!(env.lifecycle.attempt, 2);
         assert_eq!(env.evidence.produced.len(), 1);
+    }
+
+    #[test]
+    fn all_pass_report_without_required_kind_replans() {
+        let dir = tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
+        let fabric = VerificationFabric::new().with(
+            VerificationKind::Build,
+            mock_verifier(VerificationKind::Build, true),
+        );
+        let mut loop_ = DevelopmentLoop::new(fabric);
+        let mut env = envelope("task-1", 2);
+
+        let result = loop_
+            .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
+            .unwrap();
+
+        assert_eq!(
+            result.verification.as_ref().unwrap().overall,
+            VerificationVerdict::Pass
+        );
+        assert_eq!(result.outcome, DevelopmentLoopOutcome::Replanned);
+        assert_eq!(env.lifecycle.state, EnvelopeState::Planned);
+    }
+
+    #[test]
+    fn unknown_required_evidence_cannot_be_satisfied_accidentally() {
+        let dir = tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
+        let fabric = VerificationFabric::new().with(
+            VerificationKind::UnitTests,
+            mock_verifier(VerificationKind::UnitTests, true),
+        );
+        let mut loop_ = DevelopmentLoop::new(fabric);
+        let mut env = envelope("task-1", 2);
+        env.evidence.required = vec!["nonexistent_check".into()];
+
+        let result = loop_
+            .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
+            .unwrap();
+
+        assert_eq!(result.outcome, DevelopmentLoopOutcome::Replanned);
     }
 
     #[test]
