@@ -26,6 +26,7 @@ pub mod read;
 pub mod runtime;
 pub mod skill;
 pub mod verification;
+pub mod verified_orchestrator;
 pub mod workspace;
 pub mod write;
 
@@ -87,6 +88,9 @@ pub use verification::{
     command_verifier, default_fabric, mock_verifier, verdict_from_report, Finding,
     VerificationContext, VerificationError, VerificationFabric, VerificationKind,
     VerificationReport, VerificationResult, VerificationStatus, VerificationVerdict, VerifierFn,
+};
+pub use verified_orchestrator::{
+    EnvelopeFactory, VerifiedOrchestrator, VerifiedOrchestratorError, VerifiedOrchestratorState,
 };
 pub use workspace::{PathResolution, Workspace};
 pub use write::{write_file, WriteMode};
