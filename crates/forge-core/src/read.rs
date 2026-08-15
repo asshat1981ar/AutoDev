@@ -89,8 +89,8 @@ fn read_resolved(
 
     let bytes = std::fs::read(path).map_err(|e| ExecutionError::Io(path.to_path_buf(), e))?;
     let sha256 = sha256_hex(&bytes);
-    let content = String::from_utf8(bytes)
-        .map_err(|_| ExecutionError::InvalidUtf8(path.to_path_buf()))?;
+    let content =
+        String::from_utf8(bytes).map_err(|_| ExecutionError::InvalidUtf8(path.to_path_buf()))?;
     let modified_at = metadata.modified().ok().map(chrono::DateTime::from);
     let verification = ReadMetadata {
         path: path.display().to_string(),
@@ -246,12 +246,9 @@ mod tests {
             read_file(&action, &ws).unwrap_err(),
             ExecutionError::RequiresApproval
         ));
-        let result = read_file_authorized(
-            &action,
-            &ws,
-            &AuthorizationGrant::approved("approval-1"),
-        )
-        .unwrap();
+        let result =
+            read_file_authorized(&action, &ws, &AuthorizationGrant::approved("approval-1"))
+                .unwrap();
         assert_eq!(result.stdout, "hello");
     }
 }
