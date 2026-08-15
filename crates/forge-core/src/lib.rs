@@ -9,6 +9,7 @@ pub mod action;
 pub mod agent;
 pub mod context;
 pub mod dispatch;
+pub mod envelope;
 pub mod error;
 pub mod evidence;
 pub mod execute;
@@ -34,6 +35,10 @@ pub use agent::{
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use dispatch::{plan_dispatch, DispatchPlan, SkillAssignment, UnassignedSkill};
+pub use envelope::{
+    ContextRefs, EnvelopeError, EnvelopeState, EvidenceBinding, ExecutionEnvelope, Lifecycle,
+    PolicyBinding,
+};
 pub use error::{ExecutionError, ExecutionErrorKind};
 pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
