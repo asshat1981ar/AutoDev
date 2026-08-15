@@ -75,7 +75,10 @@ pub use plugin::{
     PluginFinding, PluginLimits, PluginLocation, PluginPolicy, PluginRequest, PluginResponse,
     PluginUsage,
 };
-pub use policy::{evaluate_policy, has_required_capability, validate_action, PolicyDecision};
+pub use policy::{
+    enforce_policy, evaluate_policy, has_required_capability, validate_action, AuthorizationGrant,
+    PolicyDecision,
+};
 pub use read::read_file;
 pub use runtime::{
     AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
@@ -97,18 +100,36 @@ pub use write::{write_file, WriteMode};
 
 use chrono::Utc;
 
-/// A validated, authorized action ready for execution, bound to a workspace.
+/// A validated action ready for execution, bound to a workspace and a
+/// kernel-owned authorization grant.
 #[derive(Debug, Clone)]
 pub struct ExecutableAction {
     pub action: AgentAction,
     pub workspace: Workspace,
+    pub authorization: AuthorizationGrant,
 }
 
 impl ExecutableAction {
-    /// Construct an executable action. The workspace root is canonicalized
-    /// eagerly.
+    /// Construct an executable action without an approval grant.
     pub fn new(action: AgentAction, workspace: Workspace) -> Self {
-        ExecutableAction { action, workspace }
+        ExecutableAction {
+            action,
+            workspace,
+            authorization: AuthorizationGrant::none(),
+        }
+    }
+
+    /// Bind a trusted approval reference to this execution request.
+    pub fn with_approval(
+        action: AgentAction,
+        workspace: Workspace,
+        approval_ref: impl Into<String>,
+    ) -> Self {
+        ExecutableAction {
+            action,
+            workspace,
+            authorization: AuthorizationGrant::approved(approval_ref),
+        }
     }
 }
 
@@ -120,9 +141,12 @@ impl ExecutableAction {
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
     let mut result = match exec.action.action_type {
         ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
-        ActionType::WriteFile => {
-            write::write_file(&exec.action, &exec.workspace, WriteMode::Atomic)?
-        }
+        ActionType::WriteFile => write::write_file_authorized(
+            &exec.action,
+            &exec.workspace,
+            WriteMode::Atomic,
+            &exec.authorization,
+        )?,
         ActionType::PatchFile => {
             patch_exec::patch_file(&exec.action, &exec.workspace, PatchMode::Apply)?
         }
@@ -139,8 +163,6 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
 }
 
 /// Dry-run preview: evaluates policy without touching the filesystem.
-///
-/// Returns what *would* happen, without performing any privileged effect.
 pub fn dry_run(action: &AgentAction) -> Result<ExecutionResult, ExecutionError> {
     evaluate_policy(action)?;
     if !has_required_capability(action) {
