@@ -134,22 +134,25 @@ impl ExecutableAction {
 }
 
 /// The top-level execution entry point.
-///
-/// This is the only path that can produce workspace side effects. Every action
-/// is dispatched only after the typed policy/capability boundary has been
-/// established by its executor module.
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
     let mut result = match exec.action.action_type {
-        ActionType::ReadFile => read::read_file(&exec.action, &exec.workspace)?,
+        ActionType::ReadFile => read::read_file_authorized(
+            &exec.action,
+            &exec.workspace,
+            &exec.authorization,
+        )?,
         ActionType::WriteFile => write::write_file_authorized(
             &exec.action,
             &exec.workspace,
             WriteMode::Atomic,
             &exec.authorization,
         )?,
-        ActionType::PatchFile => {
-            patch_exec::patch_file(&exec.action, &exec.workspace, PatchMode::Apply)?
-        }
+        ActionType::PatchFile => patch_exec::patch_file_authorized(
+            &exec.action,
+            &exec.workspace,
+            PatchMode::Apply,
+            &exec.authorization,
+        )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
         other => {
