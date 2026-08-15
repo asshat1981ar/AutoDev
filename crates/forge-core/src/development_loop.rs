@@ -9,9 +9,13 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::envelope::{EnvelopeError, EnvelopeState, ExecutionEnvelope};
-use crate::evidence::{record_from, EvidenceStore, ExecutionResult, ExecutionStatus, PolicyOutcome};
+use crate::evidence::{
+    record_from, EvidenceStore, ExecutionResult, ExecutionStatus, PolicyOutcome,
+};
 use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
-use crate::verification::{VerificationContext, VerificationFabric, VerificationReport, VerificationVerdict};
+use crate::verification::{
+    VerificationContext, VerificationFabric, VerificationReport, VerificationVerdict,
+};
 use crate::{execute, ExecutableAction, ExecutionError, Workspace};
 
 /// The result of one bounded development-loop attempt.
@@ -108,9 +112,8 @@ impl DevelopmentLoop {
         let verification = if execution_result.status == ExecutionStatus::Succeeded {
             envelope.transition(EnvelopeState::Verifying)?;
             let report = self.verification.run(verification_context);
-            execution_result.verification = Some(
-                serde_json::to_value(&report).expect("verification report serializes"),
-            );
+            execution_result.verification =
+                Some(serde_json::to_value(&report).expect("verification report serializes"));
             Some(report)
         } else {
             None
@@ -174,7 +177,12 @@ impl DevelopmentLoop {
         }
 
         if let Some(required) = crate::Capability::for_action(envelope.action.action_type) {
-            if !envelope.policy.capabilities.iter().any(|cap| cap == &required) {
+            if !envelope
+                .policy
+                .capabilities
+                .iter()
+                .any(|cap| cap == &required)
+            {
                 return Err(DevelopmentLoopError::EnvelopeCapabilityDenied);
             }
         }
@@ -200,8 +208,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        mock_verifier, ActionType, AgentAction, Capability, ContextRefs, EvidenceBinding, Lifecycle,
-        PolicyBinding, RiskLevel, VerificationKind,
+        mock_verifier, ActionType, AgentAction, Capability, ContextRefs, EvidenceBinding,
+        Lifecycle, PolicyBinding, RiskLevel, VerificationKind,
     };
 
     fn envelope(task_id: &str, max_attempts: u32) -> ExecutionEnvelope {
@@ -326,7 +334,10 @@ mod tests {
         let err = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap_err();
-        assert!(matches!(err, DevelopmentLoopError::EnvelopeCapabilityDenied));
+        assert!(matches!(
+            err,
+            DevelopmentLoopError::EnvelopeCapabilityDenied
+        ));
     }
 
     #[test]
