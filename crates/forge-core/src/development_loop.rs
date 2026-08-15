@@ -170,7 +170,10 @@ impl DevelopmentLoop {
         })
     }
 
-    fn authorize(&self, envelope: &ExecutionEnvelope) -> Result<PolicyOutcome, DevelopmentLoopError> {
+    fn authorize(
+        &self,
+        envelope: &ExecutionEnvelope,
+    ) -> Result<PolicyOutcome, DevelopmentLoopError> {
         if envelope.policy.risk != envelope.action.risk {
             return Err(DevelopmentLoopError::RiskMismatch);
         }
@@ -372,10 +375,7 @@ mod tests {
         let err = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap_err();
-        assert!(matches!(
-            err,
-            DevelopmentLoopError::ApprovalPolicyMismatch
-        ));
+        assert!(matches!(err, DevelopmentLoopError::ApprovalPolicyMismatch));
     }
 
     #[test]
