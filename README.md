@@ -77,7 +77,7 @@ Canonical verification names are:
 - `static_analysis`
 - `security`
 
-A report where every executed check passed still fails the task if a declared required check never ran. Unknown required evidence names also fail closed.
+A report where every executed check passed still fails the task if a declared required check never ran. Unknown required evidence names also fail closed. This prevents a partial verifier set from accidentally satisfying a stronger task contract.
 
 ## Durable verified orchestration
 
