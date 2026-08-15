@@ -14,7 +14,7 @@ pub mod envelope;
 pub mod error;
 pub mod evidence;
 pub mod execute;
-pub mod git;
+mod git;
 pub mod model;
 pub mod model_assignment;
 pub mod orchestrator;
@@ -51,7 +51,7 @@ pub use evidence::{
     ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
 };
 pub use execute::execute_process;
-pub use git::{execute_git, BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
+pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
 pub use model::{
     route, Message, MockProvider, Model, ModelCapabilities, ModelError, ModelHealth, ModelOptions,
     ModelProvider, ModelRequest, ModelResponse, OllamaProvider, RouteCandidate, RoutingFactor,
@@ -152,7 +152,7 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
             &exec.authorization,
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
-        ActionType::Git => git::execute_git(&exec.action, &exec.workspace)?,
+        ActionType::Git => execute_git_authorized(exec)?,
         other => {
             return Err(ExecutionError::UnsupportedAction(
                 other.as_str().to_string(),
@@ -161,6 +161,30 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
     };
     result.action_id = exec.action.id.clone();
     Ok(result)
+}
+
+/// Safe public Git entry point. Caller-supplied approval fields do not grant
+/// authorization; destructive operations require an `ExecutableAction` carrying
+/// a kernel-owned approval grant.
+pub fn execute_git(
+    action: &AgentAction,
+    workspace: &Workspace,
+) -> Result<ExecutionResult, ExecutionError> {
+    execute(&ExecutableAction::new(action.clone(), workspace.clone()))
+}
+
+fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
+    let mut action = exec.action.clone();
+    if let Some(payload) = action.payload.as_object_mut() {
+        // Never trust an approval bit supplied by an agent/model payload.
+        payload.remove("approved");
+        // The legacy Git adapter currently expects an internal marker. Only the
+        // trusted kernel grant can recreate it after sanitization.
+        if exec.authorization.is_approved() {
+            payload.insert("approved".to_string(), serde_json::Value::Bool(true));
+        }
+    }
+    git::execute_git(&action, &exec.workspace)
 }
 
 /// Dry-run preview: evaluates policy without touching the filesystem.
