@@ -66,9 +66,9 @@ fn git_read_status_via_execute() {
 fn git_read_rejected_without_git_capability() {
     let dir = init_repo();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("status");
-    a.capabilities = vec![]; // no git capability
-    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    let mut action = git_action("status");
+    action.capabilities.clear();
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
 }
 
@@ -76,22 +76,20 @@ fn git_read_rejected_without_git_capability() {
 fn git_mutate_requires_git_write_capability() {
     let dir = init_repo();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("prepare_commit");
-    a.payload = json!({ "operation": "prepare_commit", "message": "x", "commit": true });
-    // Only the read `git` capability is granted, not `git:write`.
-    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    let mut action = git_action("prepare_commit");
+    action.payload = json!({ "operation": "prepare_commit", "message": "x", "commit": true });
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
 }
 
 #[test]
-#[ignore = "rollback now requires both git:destructive capability AND approval; covered by unit tests"]
+#[ignore = "rollback requires both git:destructive capability and trusted approval"]
 fn git_destructive_requires_git_destructive_capability() {
     let dir = init_repo();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("rollback");
-    a.payload = json!({ "operation": "rollback", "command": "reset", "to": "HEAD" });
-    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
-    // Without the destructive capability the operation is denied by capability.
+    let mut action = git_action("rollback");
+    action.payload = json!({ "operation": "rollback", "command": "reset", "to": "HEAD" });
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
 }
 
@@ -99,22 +97,63 @@ fn git_destructive_requires_git_destructive_capability() {
 fn git_destructive_requires_approval_even_with_capability() {
     let dir = init_repo();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("rollback");
-    a.capabilities = vec![Capability::Git, Capability::GitDestructive];
-    a.payload = json!({ "operation": "rollback", "command": "checkout" });
-    // Has the capability, but no approval -> refused.
-    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    let mut action = git_action("rollback");
+    action.capabilities = vec![Capability::Git, Capability::GitDestructive];
+    action.payload = json!({ "operation": "rollback", "command": "checkout" });
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::RequiresApproval));
+}
+
+#[test]
+fn caller_supplied_git_approval_is_not_authority() {
+    let dir = init_repo();
+    std::fs::write(dir.path().join("base.txt"), b"changed").unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut action = git_action("rollback");
+    action.capabilities = vec![Capability::Git, Capability::GitDestructive];
+    action.payload = json!({
+        "operation": "rollback",
+        "command": "checkout",
+        "approved": true
+    });
+
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
+    assert!(matches!(err, ExecutionError::RequiresApproval));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("base.txt")).unwrap(),
+        "changed"
+    );
+}
+
+#[test]
+fn trusted_git_approval_allows_destructive_operation() {
+    let dir = init_repo();
+    std::fs::write(dir.path().join("base.txt"), b"changed").unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut action = git_action("rollback");
+    action.capabilities = vec![Capability::Git, Capability::GitDestructive];
+    action.payload = json!({ "operation": "rollback", "command": "checkout" });
+
+    let result = forge_core::execute(&ExecutableAction::with_approval(
+        action,
+        ws,
+        "approval-1",
+    ))
+    .unwrap();
+    assert_eq!(result.verification.unwrap()["rolled_back"], "checkout");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("base.txt")).unwrap(),
+        "base"
+    );
 }
 
 #[test]
 fn git_destructive_denied_without_capability() {
     let dir = init_repo();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("rollback");
-    // Only the read `git` capability is granted, not `git:destructive`.
-    a.payload = json!({ "operation": "rollback", "command": "checkout", "approved": true });
-    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    let mut action = git_action("rollback");
+    action.payload = json!({ "operation": "rollback", "command": "checkout", "approved": true });
+    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
 }
 
@@ -123,12 +162,12 @@ fn git_checkpoint_with_write_capability() {
     let dir = init_repo();
     std::fs::write(dir.path().join("wip.txt"), b"wip").unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    let mut a = git_action("checkpoint");
-    a.capabilities = vec![Capability::Git, Capability::GitWrite];
-    a.payload = json!({ "operation": "checkpoint", "message": "wip" });
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
-    let v = result.verification.unwrap();
-    assert!(v["reference"].is_string());
+    let mut action = git_action("checkpoint");
+    action.capabilities = vec![Capability::Git, Capability::GitWrite];
+    action.payload = json!({ "operation": "checkpoint", "message": "wip" });
+    let result = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap();
+    let verification = result.verification.unwrap();
+    assert!(verification["reference"].is_string());
 }
 
 #[test]
