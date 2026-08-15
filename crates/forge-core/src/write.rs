@@ -243,7 +243,10 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
         let result = write_file(&action("a.txt", "new"), &ws, WriteMode::Atomic).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "new"
+        );
     }
 
     #[test]
@@ -253,7 +256,10 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
         let result = write_file(&action("a.txt", "new"), &ws, WriteMode::DryRun).unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "old");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "old"
+        );
     }
 
     #[test]
@@ -289,7 +295,8 @@ mod tests {
     fn oversized_content_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4).unwrap();
-        let err = write_file(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic).unwrap_err();
+        let err =
+            write_file(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::OversizedFile(_, 4)));
     }
 
@@ -300,7 +307,10 @@ mod tests {
         let mut a = base_action();
         a.payload = json!({ "path": "a.txt" });
         let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
-        assert!(matches!(err, ExecutionError::MissingPayloadField("content")));
+        assert!(matches!(
+            err,
+            ExecutionError::MissingPayloadField("content")
+        ));
     }
 
     #[test]
@@ -338,6 +348,9 @@ mod tests {
         let grant = AuthorizationGrant::approved("approval-1");
         let result = write_file_authorized(&a, &ws, WriteMode::Atomic, &grant).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "x");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "x"
+        );
     }
 }
