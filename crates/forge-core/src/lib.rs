@@ -8,6 +8,7 @@
 pub mod action;
 pub mod agent;
 pub mod context;
+pub mod development_loop;
 pub mod dispatch;
 pub mod envelope;
 pub mod error;
@@ -34,6 +35,9 @@ pub use agent::{
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
+pub use development_loop::{
+    DevelopmentLoop, DevelopmentLoopError, DevelopmentLoopOutcome, DevelopmentLoopResult,
+};
 pub use dispatch::{plan_dispatch, DispatchPlan, SkillAssignment, UnassignedSkill};
 pub use envelope::{
     ContextRefs, EnvelopeError, EnvelopeState, EvidenceBinding, ExecutionEnvelope, Lifecycle,
