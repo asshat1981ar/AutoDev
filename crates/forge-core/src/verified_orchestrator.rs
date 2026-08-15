@@ -12,7 +12,9 @@ use crate::development_loop::{
     DevelopmentLoop, DevelopmentLoopError, DevelopmentLoopOutcome, DevelopmentLoopResult,
 };
 use crate::envelope::ExecutionEnvelope;
-use crate::orchestrator::{Assigner, Checkpointer, Decomposer, Phase, TaskGraph, TaskNode, TaskStatus};
+use crate::orchestrator::{
+    Assigner, Checkpointer, Decomposer, Phase, TaskGraph, TaskNode, TaskStatus,
+};
 use crate::verification::VerificationContext;
 use crate::Workspace;
 
@@ -187,7 +189,12 @@ impl VerifiedOrchestrator {
     }
 
     /// Resume a task that was blocked waiting for approval.
-    pub fn resume_approved(&mut self, graph: &mut TaskGraph, task_id: &str, approval_ref: &str) -> bool {
+    pub fn resume_approved(
+        &mut self,
+        graph: &mut TaskGraph,
+        task_id: &str,
+        approval_ref: &str,
+    ) -> bool {
         if approval_ref.trim().is_empty() {
             return false;
         }
@@ -202,7 +209,13 @@ impl VerifiedOrchestrator {
         }
 
         envelope.policy.approval_ref = Some(approval_ref.to_string());
-        self.transition_task(graph, task_id, TaskStatus::Ready, "AUTHORIZE", "approval supplied");
+        self.transition_task(
+            graph,
+            task_id,
+            TaskStatus::Ready,
+            "AUTHORIZE",
+            "approval supplied",
+        );
         true
     }
 
