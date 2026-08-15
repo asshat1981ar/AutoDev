@@ -92,8 +92,8 @@ pub(crate) fn patch_file_authorized(
         .map(|line| line.to_string())
         .collect();
 
-    let patch =
-        Patch::parse(patch_text).map_err(|error| ExecutionError::InvalidPatch(error.to_string()))?;
+    let patch = Patch::parse(patch_text)
+        .map_err(|error| ExecutionError::InvalidPatch(error.to_string()))?;
     let apply = patch.apply(&before_lines, crate::patch::ApplyMode::Apply);
     if !apply.failures.is_empty() {
         return Err(ExecutionError::PatchConflict(patch_failures_to_string(
