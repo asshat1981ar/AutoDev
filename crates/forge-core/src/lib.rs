@@ -198,9 +198,9 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
         "checkpoint" | "prepare_commit" => {
             git::run_mutate(&capabilities, || git::execute_git(&action, &exec.workspace))
         }
-        "rollback" => git::run_destructive(&capabilities, || {
-            git::execute_git(&action, &exec.workspace)
-        }),
+        "rollback" => {
+            git::run_destructive(&capabilities, || git::execute_git(&action, &exec.workspace))
+        }
         _ => git::execute_git(&action, &exec.workspace),
     }
 }
