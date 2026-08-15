@@ -184,7 +184,25 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
             payload.insert("approved".to_string(), serde_json::Value::Bool(true));
         }
     }
-    git::execute_git(&action, &exec.workspace)
+
+    let operation = action
+        .payload
+        .get("operation")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    let capabilities = action.capabilities.clone();
+    match operation {
+        "repository_info" | "status" | "diff" | "branch" | "log" => {
+            git::run_read(&capabilities, || git::execute_git(&action, &exec.workspace))
+        }
+        "checkpoint" | "prepare_commit" => {
+            git::run_mutate(&capabilities, || git::execute_git(&action, &exec.workspace))
+        }
+        "rollback" => git::run_destructive(&capabilities, || {
+            git::execute_git(&action, &exec.workspace)
+        }),
+        _ => git::execute_git(&action, &exec.workspace),
+    }
 }
 
 /// Dry-run preview: evaluates policy without touching the filesystem.
