@@ -217,9 +217,10 @@ fn required_evidence_passed(required: &[String], report: &VerificationReport) ->
     required.iter().all(|required_kind| {
         let required_kind = required_kind.trim();
         !required_kind.is_empty()
-            && report.results.iter().any(|result| {
-                result.kind.as_str() == required_kind && result.passed()
-            })
+            && report
+                .results
+                .iter()
+                .any(|result| result.kind.as_str() == required_kind && result.passed())
     })
 }
 
