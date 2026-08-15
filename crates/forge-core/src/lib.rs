@@ -136,11 +136,9 @@ impl ExecutableAction {
 /// The top-level execution entry point.
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
     let mut result = match exec.action.action_type {
-        ActionType::ReadFile => read::read_file_authorized(
-            &exec.action,
-            &exec.workspace,
-            &exec.authorization,
-        )?,
+        ActionType::ReadFile => {
+            read::read_file_authorized(&exec.action, &exec.workspace, &exec.authorization)?
+        }
         ActionType::WriteFile => write::write_file_authorized(
             &exec.action,
             &exec.workspace,
