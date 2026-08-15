@@ -18,19 +18,14 @@ use crate::verification::{
 };
 use crate::{execute, ExecutableAction, ExecutionError, Workspace};
 
-/// The result of one bounded development-loop attempt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DevelopmentLoopOutcome {
-    /// Independent verification passed and the envelope is terminally verified.
     Verified,
-    /// Verification or execution failed, but another bounded attempt is allowed.
     Replanned,
-    /// Verification or execution failed and the retry budget is exhausted.
     Exhausted,
 }
 
-/// Durable result returned by a development-loop attempt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DevelopmentLoopResult {
     pub outcome: DevelopmentLoopOutcome,
@@ -38,7 +33,6 @@ pub struct DevelopmentLoopResult {
     pub verification: Option<VerificationReport>,
 }
 
-/// Errors that prevent an execution attempt from entering the trusted runtime.
 #[derive(Debug, thiserror::Error)]
 pub enum DevelopmentLoopError {
     #[error(transparent)]
@@ -57,7 +51,6 @@ pub enum DevelopmentLoopError {
     ApprovalRequired,
 }
 
-/// Trusted, evidence-driven ACT -> VERIFY -> REPLAN primitive.
 pub struct DevelopmentLoop {
     pub verification: VerificationFabric,
     pub evidence: EvidenceStore,
@@ -71,11 +64,6 @@ impl DevelopmentLoop {
         }
     }
 
-    /// Execute one envelope attempt and independently verify the resulting
-    /// workspace state.
-    ///
-    /// The model/agent's own success claim is never used as the completion
-    /// signal. Only `VerificationFabric` can move the envelope to `Verified`.
     pub fn run_attempt(
         &mut self,
         envelope: &mut ExecutionEnvelope,
@@ -90,10 +78,15 @@ impl DevelopmentLoop {
         }
         envelope.transition(EnvelopeState::Executing)?;
 
-        let executed = execute(&ExecutableAction::new(
-            envelope.action.clone(),
-            workspace.clone(),
-        ));
+        let executable = match envelope.policy.approval_ref.as_deref() {
+            Some(reference) if !reference.trim().is_empty() => ExecutableAction::with_approval(
+                envelope.action.clone(),
+                workspace.clone(),
+                reference,
+            ),
+            _ => ExecutableAction::new(envelope.action.clone(), workspace.clone()),
+        };
+        let executed = execute(&executable);
 
         let mut execution_result = match executed {
             Ok(result) => result,
@@ -148,9 +141,6 @@ impl DevelopmentLoop {
             });
         }
 
-        // Execution failure, failed verification, and skipped verification all
-        // reject the attempt. Skipped verification is intentionally not success:
-        // absence of evidence cannot satisfy acceptance criteria.
         envelope.transition(EnvelopeState::Rejected)?;
         envelope.transition(EnvelopeState::Replanning)?;
 
@@ -278,11 +268,9 @@ mod tests {
         );
         let mut loop_ = DevelopmentLoop::new(fabric);
         let mut env = envelope("task-1", 2);
-
         let result = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap();
-
         assert_eq!(result.outcome, DevelopmentLoopOutcome::Verified);
         assert_eq!(env.lifecycle.state, EnvelopeState::Verified);
         assert_eq!(env.evidence.produced.len(), 1);
@@ -299,11 +287,9 @@ mod tests {
         );
         let mut loop_ = DevelopmentLoop::new(fabric);
         let mut env = envelope("task-1", 2);
-
         let result = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap();
-
         assert_eq!(result.outcome, DevelopmentLoopOutcome::Replanned);
         assert_eq!(env.lifecycle.state, EnvelopeState::Planned);
         assert_eq!(env.lifecycle.attempt, 2);
@@ -320,11 +306,9 @@ mod tests {
         );
         let mut loop_ = DevelopmentLoop::new(fabric);
         let mut env = envelope("task-1", 1);
-
         let result = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap();
-
         assert_eq!(result.outcome, DevelopmentLoopOutcome::Exhausted);
         assert_eq!(env.lifecycle.state, EnvelopeState::Replanning);
         assert_eq!(env.evidence.produced.len(), 1);
@@ -341,7 +325,6 @@ mod tests {
         let mut loop_ = DevelopmentLoop::new(fabric);
         let mut env = envelope("task-1", 2);
         env.policy.risk = RiskLevel::High;
-
         let err = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap_err();
@@ -371,7 +354,6 @@ mod tests {
         env.action.risk = RiskLevel::High;
         env.policy.risk = RiskLevel::High;
         env.policy.requires_approval = false;
-
         let err = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap_err();
@@ -392,13 +374,12 @@ mod tests {
         env.policy.risk = RiskLevel::High;
         env.policy.requires_approval = true;
         env.policy.approval_ref = Some("approval-1".into());
-
         let result = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap();
-
         let evidence = loop_.evidence.get(&result.evidence_ref).unwrap();
         assert_eq!(evidence.record.policy, PolicyOutcome::RequireApproval);
+        assert_eq!(result.outcome, DevelopmentLoopOutcome::Verified);
     }
 
     #[test]
@@ -407,11 +388,9 @@ mod tests {
         let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
         let mut loop_ = DevelopmentLoop::new(VerificationFabric::new());
         let mut env = envelope("task-1", 2);
-
         let result = loop_
             .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
             .unwrap();
-
         assert_eq!(result.outcome, DevelopmentLoopOutcome::Replanned);
         assert_eq!(
             result.verification.unwrap().overall,
