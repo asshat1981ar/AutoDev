@@ -400,7 +400,8 @@ pub fn build_report(
         .filter(|outcome| outcome.status == EvalStatus::InfrastructureFailure)
         .count() as u32;
     let total_attempts = scored.iter().map(|outcome| outcome.attempts).sum();
-    let median_attempts_milli = median_milli(scored.iter().map(|outcome| outcome.attempts).collect());
+    let median_attempts_milli =
+        median_milli(scored.iter().map(|outcome| outcome.attempts).collect());
     let elapsed_ms = normalized.iter().map(|outcome| outcome.elapsed_ms).sum();
     let tool_calls = sum_optional_u32(scored.iter().map(|outcome| outcome.tool_calls));
     let intervention_count =
