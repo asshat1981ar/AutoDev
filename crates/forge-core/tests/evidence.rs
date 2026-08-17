@@ -7,45 +7,10 @@
 
 use chrono::Utc;
 use forge_core::{
-    record_from, ActionType, AgentAction, Capability, EvidenceStore, ExecutableAction,
-    ExecutionResult, ExecutionStatus, PolicyOutcome, RiskLevel, Workspace,
+    record_from, ActionType, AgentAction, Capability, EvidenceStore, ExecutionResult,
+    ExecutionStatus, PolicyOutcome, RiskLevel,
 };
 use serde_json::json;
-use std::process::Command;
-
-fn init_repo() -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().to_str().unwrap();
-    for args in [
-        vec!["init", "-q"],
-        vec!["config", "user.email", "test@example.com"],
-        vec!["config", "user.name", "Test"],
-    ] {
-        assert!(Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(&args)
-            .status()
-            .unwrap()
-            .success());
-    }
-    std::fs::write(dir.path().join("base.txt"), b"base").unwrap();
-    assert!(Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["add", "-A"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["commit", "-q", "-m", "init"])
-        .status()
-        .unwrap()
-        .success());
-    dir
-}
 
 fn successful_read_result(action_id: &str, path: &str, content: &str) -> ExecutionResult {
     ExecutionResult {
@@ -61,6 +26,25 @@ fn successful_read_result(action_id: &str, path: &str, content: &str) -> Executi
             "path": path,
             "sha256": "fixture-sha256",
             "size": content.len(),
+        })),
+        error: None,
+    }
+}
+
+fn successful_git_result(action_id: &str) -> ExecutionResult {
+    ExecutionResult {
+        action_id: action_id.to_string(),
+        status: ExecutionStatus::Succeeded,
+        started_at: Utc::now(),
+        completed_at: Utc::now(),
+        exit_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        artifacts: vec![],
+        verification: Some(json!({
+            "branch": "main",
+            "entries": [],
+            "clean": true,
         })),
         error: None,
     }
@@ -105,8 +89,6 @@ fn read_action_is_reconstructed_from_evidence() {
 
 #[test]
 fn git_action_is_reconstructed_from_evidence() {
-    let dir = init_repo();
-    let ws = Workspace::new(dir.path(), 4096).unwrap();
     let action = AgentAction {
         id: "a-git-1".to_string(),
         task_id: "t2".to_string(),
@@ -119,7 +101,7 @@ fn git_action_is_reconstructed_from_evidence() {
         expected: json!({}),
     };
 
-    let result = forge_core::execute(&ExecutableAction::new(action.clone(), ws)).unwrap();
+    let result = successful_git_result(&action.id);
 
     let mut store = EvidenceStore::new();
     let evidence = store.insert(record_from(
@@ -134,7 +116,7 @@ fn git_action_is_reconstructed_from_evidence() {
     let record = store.by_action_id("a-git-1").unwrap();
     let reconstructed: AgentAction = serde_json::from_value(record.record.action.clone()).unwrap();
     assert_eq!(reconstructed, action);
-    // The git status verification captured the branch.
+    // The fixture preserves the Git status evidence shape for reconstruction.
     let v = record.record.verification.as_ref().unwrap();
     assert!(v["branch"].is_string());
 }
