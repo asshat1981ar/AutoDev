@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use autodev_server::{
-    router, run_objective_loop, AppState, FileObjectiveStore, ModelActionProposer, ObjectiveRunner,
-    RunnerExecution,
+    default_state_dir, router, run_objective_loop, validate_control_plane_paths, AppState,
+    FileObjectiveStore, ModelActionProposer, ObjectiveRunner, RunnerExecution,
 };
 use forge_core::{
     default_fabric, default_profiles, AgentRole, OllamaProvider, VerificationFabric, Workspace,
@@ -18,8 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(8080);
     let secret = std::env::var("GITHUB_WEBHOOK_SECRET").ok();
-    let state_dir =
-        std::env::var("AUTODEV_STATE_DIR").unwrap_or_else(|_| ".autodev/state".to_string());
     let model_base_url = std::env::var("AUTODEV_MODEL_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:11434".to_string());
     let workspace_root = std::env::var("AUTODEV_WORKSPACE").unwrap_or_else(|_| ".".to_string());
@@ -28,6 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_MAX_FILE_BYTES);
 
+    let workspace = Workspace::new(workspace_root, max_file_bytes)?;
+    let requested_state_dir = std::env::var("AUTODEV_STATE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| default_state_dir(&workspace));
+    let state_dir = validate_control_plane_paths(&workspace, requested_state_dir)?;
     let store = Arc::new(FileObjectiveStore::open(state_dir)?);
     let state = AppState::with_store(secret, store.clone());
     let developer = default_profiles()
@@ -40,7 +43,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         developer,
         provider,
     ));
-    let workspace = Workspace::new(workspace_root, max_file_bytes)?;
     let verification = Arc::new(|| -> VerificationFabric { default_fabric() });
     let runner = ObjectiveRunner::new(store, proposer, state.event_sender()).with_execution(
         RunnerExecution::new(workspace, AgentRole::Developer, verification),
