@@ -1,6 +1,6 @@
 use forge_core::{
-    default_profiles, propose_action, ActionType, AgentRole, MockProvider, PolicyDecision, RiskLevel,
-    Task,
+    default_profiles, propose_action, ActionType, AgentRole, MockProvider, PolicyDecision,
+    RiskLevel, Task,
 };
 
 fn task() -> Task {
