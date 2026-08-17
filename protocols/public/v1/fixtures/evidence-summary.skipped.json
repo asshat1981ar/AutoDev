@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "evidence_id": "ev-0003",
+  "objective_id": "obj-0001",
+  "run_id": null,
+  "task_id": null,
+  "kind": "device",
+  "status": "skipped",
+  "observed_at": "2026-08-17T12:11:00Z",
+  "detail": "device verification unavailable in current environment"
+}
