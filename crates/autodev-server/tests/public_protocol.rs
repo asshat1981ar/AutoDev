@@ -3,7 +3,10 @@ use std::fs;
 #[path = "../src/public_protocol.rs"]
 mod public_protocol;
 
-use public_protocol::PublicObjectiveEvent;
+use public_protocol::{
+    PublicObjectiveCreate, PublicObjectiveEvent, PublicObjectiveSummary, PublicProtocolError,
+    PUBLIC_SCHEMA_VERSION,
+};
 
 fn fixture(name: &str) -> String {
     let path = format!(
@@ -18,7 +21,7 @@ fn queued_objective_event_matches_canonical_fixture() {
     let encoded = fixture("objective-event.queued.json");
     let event: PublicObjectiveEvent = serde_json::from_str(&encoded).expect("typed objective event");
 
-    assert_eq!(event.schema_version, "1");
+    assert_eq!(event.schema_version, PUBLIC_SCHEMA_VERSION);
     assert_eq!(event.event_type, "objective_queued");
     assert_eq!(event.objective_id, "obj-0001");
     assert_eq!(event.run_id, None);
@@ -27,4 +30,42 @@ fn queued_objective_event_matches_canonical_fixture() {
     let round_trip = serde_json::to_value(event).expect("serialize objective event");
     assert_eq!(round_trip["type"], "objective_queued");
     assert_eq!(round_trip["schema_version"], "1");
+}
+
+#[test]
+fn objective_summary_fixture_is_authority_safe() {
+    let encoded = fixture("objective-summary.queued.json");
+    let summary: PublicObjectiveSummary =
+        serde_json::from_str(&encoded).expect("typed objective summary");
+
+    assert_eq!(summary.schema_version, PUBLIC_SCHEMA_VERSION);
+    assert_eq!(summary.id, "obj-0001");
+    assert_eq!(summary.status, "queued");
+
+    let value = serde_json::to_value(summary).expect("serialize objective summary");
+    assert!(value.get("graph").is_none());
+    assert!(value.get("capabilities").is_none());
+    assert!(value.get("approval_ref").is_none());
+}
+
+#[test]
+fn objective_create_fixture_is_untrusted_intent_only() {
+    let encoded = fixture("objective-create.json");
+    let create: PublicObjectiveCreate =
+        serde_json::from_str(&encoded).expect("typed objective create");
+
+    assert_eq!(create.repository, "owner/repo");
+    assert_eq!(create.description, "Implement health endpoint");
+    assert_eq!(create.branch.as_deref(), Some("autodev/objective-obj0001"));
+}
+
+#[test]
+fn protocol_error_fixture_round_trips() {
+    let encoded = fixture("protocol-error.json");
+    let error: PublicProtocolError = serde_json::from_str(&encoded).expect("typed protocol error");
+
+    assert_eq!(error.schema_version, PUBLIC_SCHEMA_VERSION);
+    assert_eq!(error.code, "invalid_request");
+    assert!(!error.retryable);
+    assert_eq!(error.correlation_id, None);
 }
