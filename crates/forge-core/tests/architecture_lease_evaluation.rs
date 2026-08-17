@@ -6,8 +6,7 @@ use forge_core::{
 };
 
 fn at(hour: u32, minute: u32) -> chrono::DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 8, 17, hour, minute, 0)
-        .unwrap()
+    Utc.with_ymd_and_hms(2026, 8, 17, hour, minute, 0).unwrap()
 }
 
 fn evidence() -> EvidenceRecord {
@@ -185,7 +184,9 @@ fn changed_policy_fingerprint_requires_review_before_renewal() {
     let evaluation = evaluate_lease(&evidence, &policy, &proposal, at(8, 30)).unwrap();
 
     assert_eq!(evaluation.status, LeaseEvaluationStatus::ReviewRequired);
-    assert!(evaluation.reasons.contains(&LeaseEvaluationReason::PolicyChanged));
+    assert!(evaluation
+        .reasons
+        .contains(&LeaseEvaluationReason::PolicyChanged));
 }
 
 #[test]
