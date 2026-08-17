@@ -57,7 +57,10 @@ fn materialized_checkout_is_detached_at_exact_requested_sha_and_clean() {
 
     let checkout = materialize_checkout(source.path(), &first).unwrap();
     assert_eq!(git(checkout.path(), &["rev-parse", "HEAD"]), first);
-    assert_eq!(git(checkout.path(), &["symbolic-ref", "-q", "HEAD"]), "");
+    assert_eq!(
+        git(checkout.path(), &["rev-parse", "--abbrev-ref", "HEAD"]),
+        "HEAD"
+    );
     assert!(changed_paths(checkout.path()).unwrap().is_empty());
 
     assert_eq!(
