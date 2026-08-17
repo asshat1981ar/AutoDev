@@ -96,3 +96,30 @@ jobs:
         run: |
           node --check scripts/termux-kanban.mjs
           node scripts/termux-kanban.mjs --check
+
+  evaluation:
+    name: Self-evaluation corpus smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Validate evaluation corpus
+        working-directory: crates
+        run: cargo run -p autodev-eval -- validate --fixtures autodev-eval/fixtures
+      - name: Run historical reference smoke
+        env:
+          AUTODEV_EVAL_SOURCE_REPO: ${{ github.workspace }}
+        working-directory: crates
+        run: cargo test -p autodev-eval --test corpus_smoke -- --ignored --nocapture
