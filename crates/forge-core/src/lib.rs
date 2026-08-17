@@ -37,7 +37,7 @@ pub use agent::{
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
 };
 pub use codex_subscription::{
-    CodexAccount, CodexLoginStart, CodexRpcTransport, CodexSubscriptionClient,
+    CodexAccount, CodexLoginStart, CodexRpcTransport, CodexServerInfo, CodexSubscriptionClient,
     CodexSubscriptionError,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
