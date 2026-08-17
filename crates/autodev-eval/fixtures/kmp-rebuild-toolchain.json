@@ -18,8 +18,8 @@
       "steps": [
         {
           "id": "kmp-build-test-lint",
-          "program": "./gradlew",
-          "args": ["clean", "assemble", "test", "ktlintCheck", "--no-daemon"],
+          "program": "env",
+          "args": ["./gradlew", "clean", "assemble", "test", "ktlintCheck", "--no-daemon"],
           "working_directory": "kotlin",
           "timeout_seconds": 1200,
           "required": true
