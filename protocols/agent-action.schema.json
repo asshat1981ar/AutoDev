@@ -22,6 +22,7 @@
       "additionalProperties": true
     },
     "capabilities": {
+      "description": "Untrusted capability requests/declarations from the action producer. These values never grant execution authority; the trusted kernel derives effective grants separately.",
       "type": "array",
       "items": { "type": "string" },
       "uniqueItems": true
