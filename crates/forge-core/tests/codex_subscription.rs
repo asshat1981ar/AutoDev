@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 
 use forge_core::{
-    CodexLoginStart, CodexRpcTransport, CodexSubscriptionClient, CodexSubscriptionError,
+    CodexLoginStart, CodexRateLimits, CodexRpcTransport, CodexSubscriptionClient,
+    CodexSubscriptionError,
 };
 use serde_json::{json, Value};
 
@@ -175,4 +176,78 @@ fn account_maps_only_safe_subscription_metadata() {
     assert!(!serialized_text.contains("accessToken"));
     assert!(!serialized_text.contains("refreshToken"));
     assert!(!serialized_text.contains("must-not-escape"));
+}
+
+#[test]
+fn rate_limits_map_only_safe_usage_metadata() {
+    let transport = FakeTransport::with_responses([json!({
+        "rateLimits": {
+            "limitId": "codex",
+            "limitName": "Codex",
+            "primary": {
+                "usedPercent": 42,
+                "windowDurationMins": 300,
+                "resetsAt": 1_800_000_000
+            },
+            "secondary": null,
+            "credits": {
+                "hasCredits": true,
+                "unlimited": false,
+                "balance": "12.50"
+            },
+            "planType": "plus",
+            "rateLimitReachedType": null,
+            "accessToken": "must-not-escape"
+        },
+        "rateLimitsByLimitId": {
+            "codex": {
+                "limitId": "codex",
+                "limitName": "Codex",
+                "primary": {
+                    "usedPercent": 42,
+                    "windowDurationMins": 300,
+                    "resetsAt": 1_800_000_000
+                },
+                "secondary": null,
+                "credits": null,
+                "planType": "plus",
+                "rateLimitReachedType": null
+            }
+        },
+        "rateLimitResetCredits": {
+            "availableCount": 2,
+            "refreshToken": "must-not-escape"
+        }
+    })]);
+    let mut client = CodexSubscriptionClient::new_initialized_for_test(transport);
+
+    let limits: CodexRateLimits = client.rate_limits().expect("rate limits map");
+
+    assert_eq!(limits.default.limit_id.as_deref(), Some("codex"));
+    assert_eq!(limits.default.plan_type.as_deref(), Some("plus"));
+    assert_eq!(limits.default.primary.as_ref().map(|window| window.used_percent), Some(42));
+    assert_eq!(limits.reset_credits_available, Some(2));
+    assert!(limits.by_limit_id.contains_key("codex"));
+
+    let serialized = serde_json::to_string(&limits).expect("rate limits serialize");
+    assert!(!serialized.contains("accessToken"));
+    assert!(!serialized.contains("refreshToken"));
+    assert!(!serialized.contains("must-not-escape"));
+    assert_eq!(
+        client.transport().calls,
+        vec![("account/rateLimits/read".into(), json!({}))]
+    );
+}
+
+#[test]
+fn logout_uses_managed_account_logout() {
+    let transport = FakeTransport::with_responses([json!({})]);
+    let mut client = CodexSubscriptionClient::new_initialized_for_test(transport);
+
+    client.logout().expect("logout succeeds");
+
+    assert_eq!(
+        client.transport().calls,
+        vec![("account/logout".into(), json!({}))]
+    );
 }
