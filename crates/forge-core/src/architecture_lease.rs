@@ -298,13 +298,7 @@ pub fn evaluate_lease(
         return Err(LeasePolicyError::InvalidRefreshProposal("objective_id"));
     }
 
-    let rule_evaluation = evaluate_rule(
-        &policy.rules,
-        evidence,
-        policy,
-        proposal,
-        evaluated_at,
-    )?;
+    let rule_evaluation = evaluate_rule(&policy.rules, evidence, policy, proposal, evaluated_at)?;
     if rule_evaluation.valid_until.is_none() {
         return Err(LeasePolicyError::MissingLeaseValidityBound);
     }
