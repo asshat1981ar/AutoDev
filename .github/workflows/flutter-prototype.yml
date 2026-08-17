@@ -10,9 +10,37 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  flutter:
+  test:
+    name: Flutter test - ${{ matrix.test-file }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        test-file:
+          - test/app_shell_test.dart
+          - test/protocol/models_test.dart
+          - test/protocol/transport_test.dart
+          - test/state/studio_controller_test.dart
+          - test/ui/studio_workspace_test.dart
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        working-directory: flutter/autodev_studio
+        run: flutter pub get
+      - name: Run test file
+        working-directory: flutter/autodev_studio
+        run: flutter test "${{ matrix.test-file }}" --reporter expanded --timeout 30s
+
+  analyze:
+    name: Flutter analyze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -25,16 +53,6 @@ jobs:
       - name: Resolve dependencies
         working-directory: flutter/autodev_studio
         run: flutter pub get
-      - name: Test files independently
-        working-directory: flutter/autodev_studio
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r test_file; do
-            echo "::group::$test_file"
-            timeout 90s flutter test "$test_file" --reporter expanded --timeout 30s
-            echo "::endgroup::"
-          done < <(find test -name '*_test.dart' -type f | sort)
       - name: Analyze
         working-directory: flutter/autodev_studio
         run: flutter analyze
