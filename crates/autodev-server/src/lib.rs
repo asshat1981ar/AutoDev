@@ -185,7 +185,12 @@ async fn health() -> Json<Value> {
 
 async fn list_objectives(State(state): State<AppState>) -> Json<Vec<PublicObjectiveSummary>> {
     let objectives = state.objectives.read().await;
-    Json(objectives.values().map(PublicObjectiveSummary::from).collect())
+    Json(
+        objectives
+            .values()
+            .map(PublicObjectiveSummary::from)
+            .collect(),
+    )
 }
 
 async fn create_objective(
