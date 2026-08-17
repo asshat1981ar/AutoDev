@@ -93,11 +93,7 @@ struct WritingDriver {
 }
 
 impl AttemptDriver for WritingDriver {
-    fn run(
-        &mut self,
-        _task: &EvalTask,
-        workspace: &Path,
-    ) -> Result<AttemptMetadata, RunnerError> {
+    fn run(&mut self, _task: &EvalTask, workspace: &Path) -> Result<AttemptMetadata, RunnerError> {
         let destination = workspace.join(&self.path);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
@@ -115,11 +111,7 @@ impl AttemptDriver for WritingDriver {
 struct FailingDriver;
 
 impl AttemptDriver for FailingDriver {
-    fn run(
-        &mut self,
-        _task: &EvalTask,
-        _workspace: &Path,
-    ) -> Result<AttemptMetadata, RunnerError> {
+    fn run(&mut self, _task: &EvalTask, _workspace: &Path) -> Result<AttemptMetadata, RunnerError> {
         Err(RunnerError::Io(std::io::Error::other("driver failed")))
     }
 }
