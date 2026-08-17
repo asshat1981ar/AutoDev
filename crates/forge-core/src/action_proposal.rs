@@ -56,14 +56,23 @@ pub fn propose_action(
         expected: Value::Null,
     };
 
-    let decision = match Capability::for_action(action.action_type) {
-        Some(required) if !profile.may(&required, action.risk) => PolicyDecision::Deny,
-        _ => match action.risk {
-            RiskLevel::Low => PolicyDecision::Allow,
-            RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
-                PolicyDecision::RequireApproval
-            }
-        },
+    let tool_allowed = profile
+        .policy
+        .tools
+        .iter()
+        .any(|tool| tool == action.action_type.as_str());
+    let decision = if !tool_allowed {
+        PolicyDecision::Deny
+    } else {
+        match Capability::for_action(action.action_type) {
+            Some(required) if !profile.may(&required, action.risk) => PolicyDecision::Deny,
+            _ => match action.risk {
+                RiskLevel::Low => PolicyDecision::Allow,
+                RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
+                    PolicyDecision::RequireApproval
+                }
+            },
+        }
     };
 
     Ok(ActionProposal {
@@ -80,11 +89,13 @@ fn constrained_prompt(profile: &AgentProfile) -> String {
         .map(|capability| serde_json::to_string(capability).unwrap_or_default())
         .collect::<Vec<_>>()
         .join(", ");
+    let tools = profile.policy.tools.join(", ");
     format!(
         "Return one JSON object only with fields action, reason, risk, payload. \
          Do not include approval_ref, approved, trusted capabilities, authorization grants, or evidence claims. \
-         Role: {}. Allowed capabilities: [{}]. Risk ceiling: {:?}.",
+         Role: {}. Allowed tools: [{}]. Allowed capabilities: [{}]. Risk ceiling: {:?}.",
         profile.role.as_str(),
+        tools,
         capabilities,
         profile.policy.risk_ceiling,
     )
