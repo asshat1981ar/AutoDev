@@ -87,8 +87,8 @@ fn default_30_seed_model_selects_rust_kmp() {
 fn sensitivity_analysis_keeps_go_experimental_not_rejected() {
     let results = simulate_hybrid_topologies(&HybridSimulationConfig::default().with_seeds(30));
 
-    let default_winner = strongest_candidate(&results, &SimulationWeights::default())
-        .expect("default candidate");
+    let default_winner =
+        strongest_candidate(&results, &SimulationWeights::default()).expect("default candidate");
     assert_eq!(default_winner.topology, HybridTopology::RustKmp);
 
     let success_heavy = SimulationWeights {
@@ -99,10 +99,7 @@ fn sensitivity_analysis_keeps_go_experimental_not_rejected() {
     };
     let success_winner =
         strongest_candidate(&results, &success_heavy).expect("success-heavy candidate");
-    assert_eq!(
-        success_winner.topology,
-        HybridTopology::RustBoundedGoWorker
-    );
+    assert_eq!(success_winner.topology, HybridTopology::RustBoundedGoWorker);
 
     let efficiency_heavy = SimulationWeights {
         success_weight: 100,
