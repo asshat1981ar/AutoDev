@@ -17,7 +17,7 @@ fn gap(kind: GapKind, id: &str, summary: &str) -> GapObservation {
 }
 
 #[test]
-fn procedure_gaps_become_skill_candidates() {
+fn procedure_gaps_become_disabled_skill_candidates() {
     let candidates = discover_candidates(&[gap(
         GapKind::ReusableProcedure,
         "gap-review-loop",
@@ -27,10 +27,13 @@ fn procedure_gaps_become_skill_candidates() {
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].kind, CandidateKind::Skill);
+    assert!(candidates[0].artifacts.iter().any(|artifact| {
+        artifact.path == ".cline/candidates/skills/gap-review-loop/SKILL.md"
+    }));
     assert!(candidates[0]
         .artifacts
         .iter()
-        .any(|artifact| artifact.path == ".cline/skills/gap-review-loop/SKILL.md"));
+        .all(|artifact| !artifact.path.starts_with(".cline/skills/")));
 }
 
 #[test]
