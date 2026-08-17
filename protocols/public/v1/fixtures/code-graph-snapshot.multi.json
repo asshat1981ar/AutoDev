@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "snapshot_id": "graph-multi",
+  "repository": "owner/repo",
+  "revision": "789abc",
+  "nodes": [
+    {"id":"a","label":"A","kind":"class","file":"A.kt","enclosing":null,"span":{"start":0,"end":10}},
+    {"id":"b","label":"b","kind":"function","file":"A.kt","enclosing":"A","span":{"start":11,"end":20}}
+  ],
+  "edges": [
+    {"id":"a-b","from":"a","to":"b","kind":"contains"}
+  ]
+}
