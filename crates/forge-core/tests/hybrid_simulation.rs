@@ -37,14 +37,7 @@ fn paired_seed_simulation_is_reproducible() {
 fn pareto_frontier_excludes_strictly_dominated_topologies() {
     let safe_fast = summary(HybridTopology::RustKmp, 8000, 1000, 100, 0, 2);
     let dominated = summary(HybridTopology::RustGoGateway, 7900, 1200, 120, 0, 4);
-    let higher_success = summary(
-        HybridTopology::RustBoundedGoWorker,
-        8300,
-        1400,
-        130,
-        0,
-        4,
-    );
+    let higher_success = summary(HybridTopology::RustBoundedGoWorker, 8300, 1400, 130, 0, 4);
 
     let frontier = pareto_frontier(&[safe_fast.clone(), dominated, higher_success.clone()]);
 
