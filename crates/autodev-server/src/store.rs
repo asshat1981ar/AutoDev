@@ -105,10 +105,7 @@ impl ObjectiveStore for FileObjectiveStore {
             .collect::<Vec<_>>();
         paths.sort();
 
-        paths
-            .iter()
-            .map(|path| Self::read_snapshot(path))
-            .collect()
+        paths.iter().map(|path| Self::read_snapshot(path)).collect()
     }
 
     fn get(&self, id: &str) -> Result<Option<ObjectiveSnapshot>, StoreError> {
