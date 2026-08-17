@@ -53,8 +53,9 @@ pub use envelope::{
 };
 pub use error::{ExecutionError, ExecutionErrorKind};
 pub use evaluation::{
-    EvalTask, EvalTaskKey, EvaluationError, ProtectedSurface, TaskSource, TaskSourceKind,
-    VerificationRecipe, VerifierStep,
+    build_report, compare_reports, derive_outcome, ComparisonDecision, EvalAttempt, EvalComparison,
+    EvalOutcome, EvalReport, EvalStatus, EvalTask, EvalTaskKey, EvaluationError, ProtectedSurface,
+    SafetyFinding, TaskSource, TaskSourceKind, VerificationRecipe, VerifierEvidence, VerifierStep,
 };
 pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
