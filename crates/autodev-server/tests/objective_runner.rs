@@ -228,11 +228,25 @@ fn verification_rejection_replans_then_exhausts_without_resetting_envelope() {
     );
 
     let second = runner.advance_once("objective-1").unwrap();
-    assert_eq!(second.status, ObjectiveStatus::Failed);
+    assert_eq!(second.status, ObjectiveStatus::Replanned);
+    assert_eq!(
+        store
+            .get("objective-1")
+            .unwrap()
+            .unwrap()
+            .orchestrator
+            .envelopes["t-root"]
+            .lifecycle
+            .attempt,
+        3
+    );
+
+    let third = runner.advance_once("objective-1").unwrap();
+    assert_eq!(third.status, ObjectiveStatus::Failed);
     let persisted = store.get("objective-1").unwrap().unwrap();
     let envelope = &persisted.orchestrator.envelopes["t-root"];
-    assert_eq!(envelope.lifecycle.attempt, 2);
-    assert_eq!(envelope.evidence.produced.len(), 2);
+    assert_eq!(envelope.lifecycle.attempt, 3);
+    assert_eq!(envelope.evidence.produced.len(), 3);
 }
 
 #[test]
@@ -265,7 +279,7 @@ fn file_backed_restart_resumes_persisted_attempt_budget() {
         .with_execution(execution(workspace, false));
     assert_eq!(
         resumed.advance_once("objective-1").unwrap().status,
-        ObjectiveStatus::Failed
+        ObjectiveStatus::Replanned
     );
     assert_eq!(
         reopened
@@ -274,9 +288,16 @@ fn file_backed_restart_resumes_persisted_attempt_budget() {
             .unwrap()
             .orchestrator
             .envelopes["t-root"]
-            .evidence
-            .produced
-            .len(),
-        2
+            .lifecycle
+            .attempt,
+        3
     );
+    assert_eq!(
+        resumed.advance_once("objective-1").unwrap().status,
+        ObjectiveStatus::Failed
+    );
+    let persisted = reopened.get("objective-1").unwrap().unwrap();
+    let envelope = &persisted.orchestrator.envelopes["t-root"];
+    assert_eq!(envelope.lifecycle.attempt, 3);
+    assert_eq!(envelope.evidence.produced.len(), 3);
 }
