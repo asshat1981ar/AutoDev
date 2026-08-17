@@ -34,7 +34,7 @@ jobs:
         run: docker build -f ../Dockerfile -t autodev-server:ci ..
 
   kotlin:
-    name: Kotlin - build, test, ktlint
+    name: Kotlin - build, test, ktlint, APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +42,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -51,12 +54,25 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('kotlin/**/*.gradle.kts', 'kotlin/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
-      - name: Build & test JVM targets
+      - name: Build KMP targets, tests, and debug APK
         working-directory: kotlin
-        run: ./gradlew clean assemble test --no-daemon
+        run: |
+          ./gradlew clean test \
+            :mpp-core:assemble \
+            :mpp-server:assemble \
+            :mpp-ui:assemble \
+            :mpp-codegraph:assemble \
+            :android-command-center:assembleDebug \
+            --no-daemon
       - name: ktlint
         working-directory: kotlin
         run: ./gradlew ktlintCheck --no-daemon
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: autodev-command-center-debug
+          path: kotlin/android-command-center/build/outputs/apk/debug/android-command-center-debug.apk
+          if-no-files-found: error
 
   python:
     name: Python - compile & test
