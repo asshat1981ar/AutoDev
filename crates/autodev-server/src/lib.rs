@@ -1,4 +1,5 @@
 mod events;
+mod mcp;
 mod objective;
 mod paths;
 mod runner;
@@ -8,8 +9,9 @@ use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     body::Bytes,
-    extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    extract::{DefaultBodyLimit, Path, Request, State},
+    http::{header, HeaderMap, StatusCode},
+    middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -38,6 +40,7 @@ pub use store::{
 };
 
 type HmacSha256 = Hmac<Sha256>;
+const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectiveRequest {
@@ -51,6 +54,7 @@ pub struct AppState<S: ObjectiveStore = InMemoryObjectiveStore> {
     store: Arc<S>,
     events: broadcast::Sender<ObjectiveEvent>,
     github_webhook_secret: Option<String>,
+    mcp_bearer_tag: Option<Arc<Vec<u8>>>,
 }
 
 impl<S: ObjectiveStore> Clone for AppState<S> {
@@ -59,6 +63,7 @@ impl<S: ObjectiveStore> Clone for AppState<S> {
             store: self.store.clone(),
             events: self.events.clone(),
             github_webhook_secret: self.github_webhook_secret.clone(),
+            mcp_bearer_tag: self.mcp_bearer_tag.clone(),
         }
     }
 }
@@ -79,7 +84,22 @@ impl<S: ObjectiveStore> AppState<S> {
             store,
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
+            mcp_bearer_tag: None,
         }
+    }
+
+    /// Configure the bearer token required for the public MCP route.
+    ///
+    /// Only a deterministic HMAC tag is retained. An empty token leaves MCP
+    /// authentication unconfigured and the `/mcp` route fails closed.
+    pub fn with_mcp_bearer_token(mut self, token: impl Into<String>) -> Self {
+        let token = token.into();
+        self.mcp_bearer_tag = if token.trim().is_empty() {
+            None
+        } else {
+            Some(Arc::new(mcp_bearer_tag(&token)))
+        };
+        self
     }
 
     pub fn store(&self) -> Arc<S> {
@@ -130,7 +150,7 @@ impl<S: ObjectiveStore> AppState<S> {
 }
 
 pub fn router<S: ObjectiveStore>(state: AppState<S>) -> Router {
-    Router::new()
+    let api = Router::new()
         .route("/health", get(health))
         .route(
             "/api/v1/objectives",
@@ -140,7 +160,63 @@ pub fn router<S: ObjectiveStore>(state: AppState<S>) -> Router {
         .route("/api/v1/events/stream", get(event_stream::<S>))
         .route("/events", get(event_stream::<S>))
         .route("/webhooks/github", post(github_webhook::<S>))
-        .with_state(state)
+        .with_state(state.clone());
+
+    let mcp = Router::new()
+        .nest_service("/mcp", mcp::service(state.clone()))
+        .layer(DefaultBodyLimit::max(mcp::MCP_MAX_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(
+            state,
+            require_mcp_bearer::<S>,
+        ));
+
+    api.merge(mcp)
+}
+
+async fn require_mcp_bearer<S: ObjectiveStore>(
+    State(state): State<AppState<S>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(expected_tag) = state.mcp_bearer_tag.as_deref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "AUTODEV_MCP_BEARER_TOKEN is not configured"})),
+        )
+            .into_response();
+    };
+
+    let presented = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty());
+
+    if !presented.is_some_and(|token| verify_mcp_bearer(expected_tag, token)) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "invalid MCP bearer token"})),
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
+
+fn mcp_bearer_tag(token: &str) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY)
+        .expect("constant MCP bearer comparison key is valid");
+    mac.update(token.as_bytes());
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn verify_mcp_bearer(expected_tag: &[u8], presented: &str) -> bool {
+    let Ok(mut mac) = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY) else {
+        return false;
+    };
+    mac.update(presented.as_bytes());
+    mac.verify_slice(expected_tag).is_ok()
 }
 
 async fn health() -> Json<Value> {
@@ -283,10 +359,10 @@ async fn github_webhook<S: ObjectiveStore>(
     }
 }
 
-fn store_error(error: StoreError) -> Response {
+fn store_error(_error: StoreError) -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "objective_store_error", "detail": error.to_string()})),
+        Json(json!({"error": "objective_store_error"})),
     )
         .into_response()
 }
@@ -329,11 +405,18 @@ mod tests {
 
     #[test]
     fn github_signature_verification_is_fail_closed() {
-        let body = br#"{"action":"opened"}"#;
+        let body = br#"{\"action\":\"opened\"}"#;
         let signature = signed(b"secret", body);
         assert!(verify_github_signature(b"secret", Some(&signature), body));
         assert!(!verify_github_signature(b"wrong", Some(&signature), body));
         assert!(!verify_github_signature(b"secret", None, body));
+    }
+
+    #[test]
+    fn mcp_bearer_verification_is_constant_time_over_tags() {
+        let expected = mcp_bearer_tag("secret-token");
+        assert!(verify_mcp_bearer(&expected, "secret-token"));
+        assert!(!verify_mcp_bearer(&expected, "wrong-token"));
     }
 
     #[tokio::test]
@@ -347,7 +430,7 @@ mod tests {
                     .uri("/api/v1/objectives")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"repository":"owner/repo","description":"Implement health endpoint"}"#,
+                        r#"{\"repository\":\"owner/repo\",\"description\":\"Implement health endpoint\"}"#,
                     ))
                     .expect("request"),
             )
