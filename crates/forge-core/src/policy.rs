@@ -55,7 +55,9 @@ impl ExecutionAuthority {
 
     /// Whether this authority grants a concrete capability.
     pub fn allows(&self, capability: &Capability) -> bool {
-        self.capabilities.iter().any(|granted| granted == capability)
+        self.capabilities
+            .iter()
+            .any(|granted| granted == capability)
     }
 }
 
