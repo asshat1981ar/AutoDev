@@ -156,3 +156,42 @@ impl From<serde_json::Error> for RunnerError {
         Self::Serialization(error)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use forge_core::{ActionType, AgentAction, Capability, RiskLevel};
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn execution_envelope_deserializes_persisted_action_without_minting_approval() {
+        let action = AgentAction {
+            id: "action-1".to_string(),
+            task_id: "task-1".to_string(),
+            agent_id: "developer".to_string(),
+            action_type: ActionType::WriteFile,
+            reason: "change one file".to_string(),
+            risk: RiskLevel::High,
+            capabilities: vec![Capability::WriteFile],
+            payload: json!({
+                "path": "src/lib.rs",
+                "content": "x",
+                "approved": true
+            }),
+            expected: json!({}),
+        };
+        let mut task = TaskNode::new("task-1", "change", "change one file");
+        task.planned_action = Some(serde_json::to_value(&action).expect("serialize action"));
+
+        let envelope = execution_envelope_from_task(&task, "run-1").expect("execution envelope");
+
+        assert_eq!(envelope.action, action);
+        assert_eq!(envelope.task_id, "task-1");
+        assert_eq!(envelope.policy.risk, RiskLevel::High);
+        assert_eq!(envelope.policy.capabilities, vec![Capability::WriteFile]);
+        assert!(envelope.policy.requires_approval);
+        assert_eq!(envelope.policy.approval_ref, None);
+        assert_eq!(envelope.action.payload["approved"], true);
+    }
+}
