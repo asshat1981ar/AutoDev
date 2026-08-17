@@ -2,9 +2,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::policy::effective_risk_for_action;
 use crate::{
-    effective_risk_for_action, ActionType, AgentAction, AgentProfile, Capability, ModelError,
-    ModelProvider, ModelRequest, PolicyDecision, RiskLevel, Task,
+    ActionType, AgentAction, AgentProfile, Capability, ModelError, ModelProvider, ModelRequest,
+    PolicyDecision, RiskLevel, Task,
 };
 
 #[derive(Debug, Clone, PartialEq)]
