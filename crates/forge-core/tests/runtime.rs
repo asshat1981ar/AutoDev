@@ -1,9 +1,12 @@
 //! Integration tests for the agent runtime: a full step with a mock model and
-//! a real (workspace-bound) executor, plus evidence recording.
+//! injected executor, plus evidence recording.
+//!
+//! The runtime consumes an `Executor`; it does not mint ForgeCore execution
+//! authority. Trusted execution behavior is covered by the kernel/orchestrator tests.
 
 use forge_core::{
     ActionType, AgentAction, AgentProfile, AgentRole, AgentRuntime, AgentRuntimeState, AgentState,
-    Capability, ExecutableAction, ExecutionResult, MockProvider, RiskLevel, Task, Workspace,
+    Capability, ExecutionResult, MockProvider, RiskLevel, Task,
 };
 use serde_json::json;
 
@@ -31,21 +34,27 @@ fn developer_profile() -> AgentProfile {
     }
 }
 
-/// An executor bound to a real workspace, so `read_file` really runs.
-fn workspace_executor(ws: Workspace) -> forge_core::Executor {
+fn successful_executor() -> forge_core::Executor {
     Box::new(
-        move |action: &AgentAction| -> Result<ExecutionResult, forge_core::ExecutionError> {
-            forge_core::execute(&ExecutableAction::new(action.clone(), ws.clone()))
+        |action: &AgentAction| -> Result<ExecutionResult, forge_core::ExecutionError> {
+            Ok(ExecutionResult {
+                action_id: action.id.clone(),
+                status: forge_core::ExecutionStatus::Succeeded,
+                started_at: chrono::Utc::now(),
+                completed_at: chrono::Utc::now(),
+                exit_code: None,
+                stdout: "hello runtime".to_string(),
+                stderr: String::new(),
+                artifacts: vec!["a.txt".to_string()],
+                verification: Some(json!({ "fixture": "runtime-executor" })),
+                error: None,
+            })
         },
     )
 }
 
 #[test]
-fn full_step_reads_a_file_and_records_evidence() {
-    let dir = tempfile::tempdir().unwrap();
-    let ws = Workspace::new(dir.path(), 4096).unwrap();
-    std::fs::write(dir.path().join("a.txt"), b"hello runtime").unwrap();
-
+fn full_step_records_executor_result_and_evidence() {
     // Mock model returns a read_file action.
     let provider = MockProvider::new(
         json!({
@@ -61,7 +70,7 @@ fn full_step_reads_a_file_and_records_evidence() {
         "dev-rt",
         developer_profile(),
         Box::new(provider),
-        workspace_executor(ws),
+        successful_executor(),
     );
     rt.assign_task(Task {
         id: "t1".to_string(),
