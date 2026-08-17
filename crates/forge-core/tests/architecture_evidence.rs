@@ -184,10 +184,7 @@ fn verified_decision_rejects_unknown_evidence_reference() {
 
     assert_eq!(
         render_architecture_report(&input).unwrap_err(),
-        ArchitectureEvidenceError::UnknownEvidenceReference(
-            "dec-unknown".into(),
-            "missing".into(),
-        ),
+        ArchitectureEvidenceError::UnknownEvidenceReference("dec-unknown".into(), "missing".into(),),
     );
 }
 
@@ -261,11 +258,7 @@ fn normalized_connector_findings_render_without_live_connectors() {
         title: "ConnectorForge W1".into(),
         desired_outcome: "Evidence-backed architecture without SaaS coupling".into(),
         evidence: records,
-        decisions: vec![decision(
-            "dec-1",
-            DecisionMaturity::Verified,
-            evidence_refs,
-        )],
+        decisions: vec![decision("dec-1", DecisionMaturity::Verified, evidence_refs)],
         options: vec![ArchitectureOption {
             name: "normalized-local-domain".into(),
             description: "Repository-native W1 types".into(),
