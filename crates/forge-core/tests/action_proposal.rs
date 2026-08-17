@@ -43,7 +43,7 @@ fn proposal_preserves_approval_requirement_without_approving() {
         serde_json::json!({
             "action": "write_file",
             "reason": "change code",
-            "risk": "high",
+            "risk": "medium",
             "payload": {"path": "src/lib.rs", "content": "x"}
         })
         .to_string(),
@@ -55,4 +55,23 @@ fn proposal_preserves_approval_requirement_without_approving() {
     assert_eq!(proposal.decision, PolicyDecision::RequireApproval);
     assert!(proposal.action.payload.get("approval_ref").is_none());
     assert!(proposal.action.payload.get("approved").is_none());
+}
+
+#[test]
+fn proposal_denies_actions_above_profile_risk_ceiling() {
+    let provider = MockProvider::new(
+        serde_json::json!({
+            "action": "write_file",
+            "reason": "unsafe elevation",
+            "risk": "high",
+            "payload": {"path": "src/lib.rs", "content": "x"}
+        })
+        .to_string(),
+    );
+    let profile = developer_profile();
+
+    let proposal = propose_action("dev-1", &profile, &provider, &task()).expect("proposal");
+
+    assert_eq!(proposal.decision, PolicyDecision::Deny);
+    assert!(proposal.action.capabilities.is_empty());
 }
