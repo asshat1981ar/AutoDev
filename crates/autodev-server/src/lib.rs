@@ -192,21 +192,22 @@ impl AppState {
             .filter(|branch| !branch.trim().is_empty())
             .unwrap_or_else(|| format!("autodev/objective-{}", &id[..8]));
         let graph = TaskGraph::single(&format!("Objective {id}"), request.description.trim());
-        let view = ObjectiveView {
-            id: id.clone(),
-            repository: request.repository.trim().to_string(),
-            description: request.description.trim().to_string(),
-            branch,
-            status: ObjectiveStatus::Queued,
-            current_task_id: None,
-            current_phase: None,
-            latest_evidence_ref: None,
-            blocked_reason: None,
-        };
-        let record = ObjectiveRecord {
-            view: view.clone(),
+        let mut record = ObjectiveRecord {
+            view: ObjectiveView {
+                id: id.clone(),
+                repository: request.repository.trim().to_string(),
+                description: request.description.trim().to_string(),
+                branch,
+                status: ObjectiveStatus::Queued,
+                current_task_id: None,
+                current_phase: None,
+                latest_evidence_ref: None,
+                blocked_reason: None,
+            },
             graph,
         };
+        record.view.current_task_id = Some(record.graph.root.clone());
+        let view = record.view.clone();
 
         self.objectives.write().await.insert(id.clone(), record);
         let _ = self.events.send(
