@@ -98,7 +98,6 @@ fn adversarial_symlink_escape_read() {
 #[test]
 #[cfg(unix)]
 fn adversarial_symlink_escape_patch_write() {
-    // Tests write confinement via patch_file since write_file may be internal
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("ws");
     std::fs::create_dir_all(&root).unwrap();
@@ -107,6 +106,9 @@ fn adversarial_symlink_escape_patch_write() {
     std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
 
     let ws = Workspace::new(&root, 4096).unwrap();
+    let resolution = ws.resolve_path(std::path::Path::new("link.txt"));
+    assert!(matches!(resolution, PathResolution::Denied(_)));
+
     let patch = "--- a/link.txt\n+++ b/link.txt\n@@ -1 +1 @@\n-original\n+overwritten\n";
     let action = base_action(
         ActionType::PatchFile,
@@ -114,16 +116,15 @@ fn adversarial_symlink_escape_patch_write() {
         vec![Capability::PatchFile],
     );
     let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
-    assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 
-    // Verify the outside file was NOT modified
+    // Verify the outside file was NOT modified.
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "original\n");
 }
 
 #[test]
 #[cfg(unix)]
 fn adversarial_toctou_symlink_escape_patch() {
-    // Attempt to write to a NEW file inside a symlinked directory.
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("ws");
     std::fs::create_dir_all(&root).unwrap();
@@ -132,10 +133,9 @@ fn adversarial_toctou_symlink_escape_patch() {
     std::os::unix::fs::symlink(&outside, root.join("symlink_dir")).unwrap();
 
     let ws = Workspace::new(&root, 4096).unwrap();
+    let resolution = ws.resolve_path(std::path::Path::new("symlink_dir/new_file.txt"));
+    assert!(matches!(resolution, PathResolution::Denied(_)));
 
-    // patch_file will fail to read the non-existent file, but it MUST fail
-    // at the path resolution step (SymlinkEscape/PathOutsideWorkspace)
-    // BEFORE attempting to read or write.
     let patch = "--- a\n+++ b\n@@ -1 +1 @@\n-x\n+y\n";
     let action = base_action(
         ActionType::PatchFile,
@@ -143,15 +143,9 @@ fn adversarial_toctou_symlink_escape_patch() {
         vec![Capability::PatchFile],
     );
     let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 
-    // It should NOT be FileNotFound, because path resolution must catch the symlink first.
-    assert!(!matches!(err, ExecutionError::FileNotFound(_)));
-    assert!(matches!(
-        err,
-        ExecutionError::PathOutsideWorkspace(_) | ExecutionError::SymlinkEscape(_)
-    ));
-
-    // Verify the file was NOT created outside
+    // Verify the file was NOT created outside.
     assert!(!outside.join("new_file.txt").exists());
 }
 
@@ -200,14 +194,14 @@ fn adversarial_capability_stripping() {
 fn adversarial_patch_traversal() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let resolution = ws.resolve_path(std::path::Path::new("../escape.txt"));
+    assert!(matches!(resolution, PathResolution::Invalid(_)));
+
     let action = base_action(
         ActionType::PatchFile,
         json!({ "path": "../escape.txt", "patch": "--- a\n+++ b\n@@ -1 +1 @@\n-x\n" }),
         vec![Capability::PatchFile],
     );
     let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
-    assert!(matches!(
-        err,
-        ExecutionError::PathTraversal(_) | ExecutionError::PathOutsideWorkspace(_)
-    ));
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
