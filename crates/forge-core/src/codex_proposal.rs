@@ -256,7 +256,7 @@ fn agent_action_output_schema() -> Value {
             "type",
             "reason",
             "risk",
-            "capabilities",
+            "requested_capabilities",
             "payload",
             "expected"
         ],
@@ -282,7 +282,7 @@ fn agent_action_output_schema() -> Value {
                 "type": "string",
                 "enum": ["low", "medium", "high", "critical"]
             },
-            "capabilities": {
+            "requested_capabilities": {
                 "type": "array",
                 "items": {"type": "string"}
             },

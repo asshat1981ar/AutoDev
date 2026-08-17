@@ -21,7 +21,8 @@
       "type": "object",
       "additionalProperties": true
     },
-    "capabilities": {
+    "requested_capabilities": {
+      "description": "Capability intent requested by the agent. This field is not an authorization grant; trusted capabilities are provisioned independently by ForgeCore policy state.",
       "type": "array",
       "items": { "type": "string" },
       "uniqueItems": true
