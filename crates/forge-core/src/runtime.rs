@@ -273,8 +273,8 @@ impl AgentRuntime {
         }
 
         self.transition(AgentRuntimeState::Waiting);
-        let result =
-            (self.executor)(&action).map_err(|error| RuntimeError::ExecutionFailed(error.to_string()))?;
+        let result = (self.executor)(&action)
+            .map_err(|error| RuntimeError::ExecutionFailed(error.to_string()))?;
         self.consume_result(&action, &result);
         self.transition(AgentRuntimeState::Verifying);
 
