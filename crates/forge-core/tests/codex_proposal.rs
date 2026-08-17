@@ -56,7 +56,7 @@ fn proposal_action(task_id: &str, agent_id: &str) -> Value {
         "type": "write_file",
         "reason": "update the bounded target",
         "risk": "medium",
-        "capabilities": ["write_file"],
+        "requested_capabilities": ["write_file"],
         "payload": {
             "path": "src/lib.rs",
             "content": "proposal only"
