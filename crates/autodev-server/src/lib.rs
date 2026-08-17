@@ -103,7 +103,10 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
-        .route("/api/v1/objectives", get(list_objectives).post(create_objective))
+        .route(
+            "/api/v1/objectives",
+            get(list_objectives).post(create_objective),
+        )
         .route("/api/v1/events/stream", get(event_stream))
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
@@ -132,10 +135,11 @@ async fn create_objective(
 async fn event_stream(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let stream = BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
-        Ok(data) => Some(Ok(Event::default().data(data))),
-        Err(_) => None,
-    });
+    let stream =
+        BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
+            Ok(data) => Some(Ok(Event::default().data(data))),
+            Err(_) => None,
+        });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -156,14 +160,20 @@ async fn github_webhook(
         .get("x-hub-signature-256")
         .and_then(|value| value.to_str().ok());
     if !verify_github_signature(secret.as_bytes(), signature, &body) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "invalid signature"})))
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "invalid signature"})),
+        )
             .into_response();
     }
 
     let payload: Value = match serde_json::from_slice(&body) {
         Ok(payload) => payload,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid JSON"})))
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "invalid JSON"})),
+            )
                 .into_response()
         }
     };
@@ -208,7 +218,8 @@ async fn github_webhook(
 }
 
 fn verify_github_signature(secret: &[u8], signature_header: Option<&str>, body: &[u8]) -> bool {
-    let Some(signature_hex) = signature_header.and_then(|value| value.strip_prefix("sha256=")) else {
+    let Some(signature_hex) = signature_header.and_then(|value| value.strip_prefix("sha256="))
+    else {
         return false;
     };
     let Ok(signature) = hex::decode(signature_hex) else {
