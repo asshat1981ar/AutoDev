@@ -25,10 +25,7 @@ fn git(repo: &Path, args: &[&str]) -> String {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout)
-        .unwrap()
-        .trim()
-        .to_string()
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
 fn synthetic_repo() -> (tempfile::TempDir, String, String) {

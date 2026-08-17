@@ -14,9 +14,7 @@ fn crate_root() -> PathBuf {
 fn corpus_contains_exactly_five_unique_frozen_tasks() {
     let corpus = load_corpus(fixture_dir()).unwrap();
     assert_eq!(corpus.len(), 5);
-    assert!(corpus
-        .iter()
-        .all(|fixture| fixture.task.validate().is_ok()));
+    assert!(corpus.iter().all(|fixture| fixture.task.validate().is_ok()));
 
     let ids: Vec<&str> = corpus
         .iter()
