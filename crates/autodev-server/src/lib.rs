@@ -1,7 +1,7 @@
 mod objective;
 mod store;
 
-pub use objective::{ObjectiveStatus, ObjectiveView};
+pub use objective::{ObjectiveEvent, ObjectiveStatus, ObjectiveView};
 pub use store::{FileObjectiveStore, ObjectiveSnapshot, ObjectiveStore, StoreError};
 
 use std::{
