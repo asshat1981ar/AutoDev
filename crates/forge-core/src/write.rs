@@ -3,15 +3,15 @@
 //! The execution path is deliberate and layered:
 //!
 //! ```text
-//! AgentAction
-//!   → validate_action        (structural invariants)
-//!   → capability check       (is the `write_file` capability granted?)
-//!   → enforce_policy         (risk + trusted authorization grant)
-//!   → workspace.resolve_path (containment + symlink/traversal defense)
-//!   → proposed change        (validate payload: path + content)
-//!   → diff                   (before/after unified diff)
-//!   → atomic write           (temp file + rename; never partial)
-//!   → evidence               (before/after hashes + new hash + diff)
+//! AgentAction (untrusted intent)
+//!   → validate_action
+//!   → ExecutionAuthority    (kernel-owned capability grant)
+//!   → enforce_policy        (risk + trusted approval grant)
+//!   → workspace.resolve_path
+//!   → proposed change
+//!   → diff
+//!   → atomic write
+//!   → evidence
 //! ```
 
 use std::path::Path;
@@ -22,7 +22,9 @@ use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus};
 use crate::patch::generate_diff;
-use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
+use crate::policy::{
+    enforce_policy, has_required_execution_authority, AuthorizationGrant, ExecutionAuthority,
+};
 use crate::workspace::{PathResolution, Workspace};
 
 const PATH_FIELD: &str = "path";
@@ -49,27 +51,38 @@ pub struct WriteOutcome {
     pub created: bool,
 }
 
-/// Backward-compatible write entry point. No approval grant is implied.
+/// Safe public write entry point.
+///
+/// Model-supplied `requested_capabilities` are diagnostic intent, never a grant.
+/// Without an independently minted kernel authority this entry point therefore
+/// fails closed.
 pub fn write_file(
     action: &AgentAction,
     workspace: &Workspace,
     mode: WriteMode,
 ) -> Result<ExecutionResult, ExecutionError> {
-    write_file_authorized(action, workspace, mode, &AuthorizationGrant::none())
+    write_file_authorized(
+        action,
+        workspace,
+        mode,
+        &ExecutionAuthority::deny_all(),
+        &AuthorizationGrant::none(),
+    )
 }
 
-/// Trusted write entry point used by the execution envelope path.
+/// Trusted write entry point used by ForgeCore execution paths.
 pub(crate) fn write_file_authorized(
     action: &AgentAction,
     workspace: &Workspace,
     mode: WriteMode,
+    authority: &ExecutionAuthority,
     grant: &AuthorizationGrant,
 ) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
     enforce_policy(action, grant)?;
 
-    if !has_required_capability(action) {
+    if !has_required_execution_authority(action, authority) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
@@ -236,12 +249,37 @@ mod tests {
         a
     }
 
+    fn write_with_authority(
+        action: &AgentAction,
+        workspace: &Workspace,
+        mode: WriteMode,
+    ) -> Result<ExecutionResult, ExecutionError> {
+        let authority =
+            ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
+        write_file_authorized(
+            action,
+            workspace,
+            mode,
+            &authority,
+            &AuthorizationGrant::none(),
+        )
+    }
+
     #[test]
-    fn atomic_write_creates_and_replaces() {
+    fn public_write_fails_closed_without_kernel_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        let err = write_file(&action("a.txt", "new"), &ws, WriteMode::Atomic).unwrap_err();
+        assert!(matches!(err, ExecutionError::CapabilityDenied));
+        assert!(!dir.path().join("a.txt").exists());
+    }
+
+    #[test]
+    fn atomic_write_creates_and_replaces_with_kernel_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
-        let result = write_file(&action("a.txt", "new"), &ws, WriteMode::Atomic).unwrap();
+        let result = write_with_authority(&action("a.txt", "new"), &ws, WriteMode::Atomic).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -254,7 +292,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"old").unwrap();
-        let result = write_file(&action("a.txt", "new"), &ws, WriteMode::DryRun).unwrap();
+        let result = write_with_authority(&action("a.txt", "new"), &ws, WriteMode::DryRun).unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -263,11 +301,10 @@ mod tests {
     }
 
     #[test]
-    fn denied_capability_is_rejected() {
+    fn denied_authority_is_rejected_even_when_requested() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let mut a = action("a.txt", "new");
-        a.capabilities = vec![];
+        let a = action("a.txt", "new");
         let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
@@ -276,7 +313,8 @@ mod tests {
     fn traversal_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = write_file(&action("../escape.txt", "x"), &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_with_authority(&action("../escape.txt", "x"), &ws, WriteMode::Atomic)
+            .unwrap_err();
         assert!(matches!(err, ExecutionError::PathTraversal(_)));
     }
 
@@ -287,7 +325,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let ws = Workspace::new(&root, 4096).unwrap();
         let outside = dir.path().join("secret.txt").display().to_string();
-        let err = write_file(&action(&outside, "x"), &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_with_authority(&action(&outside, "x"), &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::PathOutsideWorkspace(_)));
     }
 
@@ -295,8 +333,12 @@ mod tests {
     fn oversized_content_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4).unwrap();
-        let err =
-            write_file(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_with_authority(
+            &action("a.txt", "toolongcontent"),
+            &ws,
+            WriteMode::Atomic,
+        )
+        .unwrap_err();
         assert!(matches!(err, ExecutionError::OversizedFile(_, 4)));
     }
 
@@ -306,7 +348,7 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut a = base_action();
         a.payload = json!({ "path": "a.txt" });
-        let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_with_authority(&a, &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(
             err,
             ExecutionError::MissingPayloadField("content")
@@ -324,29 +366,39 @@ mod tests {
             std::fs::write(&outside, b"secret").unwrap();
             std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
             let ws = Workspace::new(&root, 4096).unwrap();
-            let err = write_file(&action("link.txt", "x"), &ws, WriteMode::Atomic).unwrap_err();
+            let err = write_with_authority(&action("link.txt", "x"), &ws, WriteMode::Atomic)
+                .unwrap_err();
             assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
         }
     }
 
     #[test]
-    fn approved_by_risk_policy_required() {
+    fn high_risk_write_requires_approval_even_with_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut a = action("a.txt", "x");
         a.risk = RiskLevel::High;
-        let err = write_file(&a, &ws, WriteMode::Atomic).unwrap_err();
+        let err = write_with_authority(&a, &ws, WriteMode::Atomic).unwrap_err();
         assert!(matches!(err, ExecutionError::RequiresApproval));
     }
 
     #[test]
-    fn trusted_grant_allows_approved_high_risk_write() {
+    fn trusted_grant_and_authority_allow_approved_high_risk_write() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut a = action("a.txt", "x");
         a.risk = RiskLevel::High;
         let grant = AuthorizationGrant::approved("approval-1");
-        let result = write_file_authorized(&a, &ws, WriteMode::Atomic, &grant).unwrap();
+        let authority =
+            ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
+        let result = write_file_authorized(
+            &a,
+            &ws,
+            WriteMode::Atomic,
+            &authority,
+            &grant,
+        )
+        .unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
