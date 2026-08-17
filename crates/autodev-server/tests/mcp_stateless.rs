@@ -10,6 +10,7 @@ fn modern_request(id: &str, method: &str, params: Value) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri("/mcp")
+        .header(header::HOST, "localhost")
         .header(header::ACCEPT, "application/json, text/event-stream")
         .header(header::CONTENT_TYPE, "application/json")
         .header("MCP-Protocol-Version", "2026-07-28")
