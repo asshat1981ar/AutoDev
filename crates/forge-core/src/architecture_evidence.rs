@@ -111,7 +111,9 @@ impl EvidenceRecord {
         required_ref(&self.source_reference, "source_reference")?;
         required_ref(&self.invalidation_condition, "invalidation_condition")?;
         if self.confidence > 100 {
-            return Err(ArchitectureEvidenceError::InvalidConfidence(self.confidence));
+            return Err(ArchitectureEvidenceError::InvalidConfidence(
+                self.confidence,
+            ));
         }
         if self.content_fingerprint.len() != 64
             || !self
@@ -519,14 +521,6 @@ pub fn render_architecture_report(
     }
 
     Ok(report)
-}
-
-fn required(value: String, field: &'static str) -> Result<String, ArchitectureEvidenceError> {
-    if value.trim().is_empty() {
-        Err(ArchitectureEvidenceError::EmptyField(field))
-    } else {
-        Ok(value)
-    }
 }
 
 fn required_ref(value: &str, field: &'static str) -> Result<(), ArchitectureEvidenceError> {
