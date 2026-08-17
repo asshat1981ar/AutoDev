@@ -1,5 +1,13 @@
 use std::fs;
 
+pub struct ObjectiveRecord {
+    pub id: String,
+    pub repository: String,
+    pub description: String,
+    pub branch: String,
+    pub status: String,
+}
+
 #[path = "../src/public_protocol.rs"]
 mod public_protocol;
 
@@ -31,6 +39,31 @@ fn queued_objective_event_matches_canonical_fixture() {
     let round_trip = serde_json::to_value(event).expect("serialize objective event");
     assert_eq!(round_trip["type"], "objective_queued");
     assert_eq!(round_trip["schema_version"], "1");
+}
+
+#[test]
+fn queued_constructor_projects_objective_without_authority() {
+    let record = ObjectiveRecord {
+        id: "obj-generated".to_string(),
+        repository: "owner/repo".to_string(),
+        description: "Implement endpoint".to_string(),
+        branch: "autodev/objective-generated".to_string(),
+        status: "queued".to_string(),
+    };
+
+    let event = PublicObjectiveEvent::queued(&record);
+    assert_eq!(event.schema_version, PUBLIC_SCHEMA_VERSION);
+    assert_eq!(event.event_type, "objective_queued");
+    assert_eq!(event.objective_id, record.id);
+    assert_eq!(event.run_id, None);
+    assert_eq!(event.task_id, None);
+    assert!(!event.event_id.trim().is_empty());
+    assert!(event.timestamp.ends_with('Z'));
+    assert_eq!(event.data["repository"], record.repository);
+    assert_eq!(event.data["branch"], record.branch);
+    assert_eq!(event.data["status"], record.status);
+    assert!(event.data.get("description").is_none());
+    assert!(event.data.get("approval_ref").is_none());
 }
 
 #[test]
