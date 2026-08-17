@@ -94,6 +94,45 @@ Approval resume reuses the same envelope and does not consume an execution attem
 
 `VerifiedOrchestratorState` is serializable so envelope lifecycle and retry state can be recovered after process restart.
 
+## Rust objective control plane
+
+`autodev-server` is the Rust HTTP/SSE adapter over the verified ForgeCore path. A submitted objective is persisted locally, advanced by one serialized worker, converted from model output into typed intent, rebound to trusted agent-profile capabilities, and then passed to the existing `VerifiedOrchestrator`. The HTTP server does not execute repository effects directly.
+
+Start the server from the Rust workspace:
+
+```bash
+cd crates
+AUTODEV_WORKSPACE=/path/to/repository \
+AUTODEV_STATE_DIR=.autodev/state \
+AUTODEV_MODEL_BASE_URL=http://localhost:11434 \
+cargo run -p autodev-server
+```
+
+Configuration:
+
+- `AUTODEV_PORT` — HTTP port, default `8080`.
+- `AUTODEV_WORKSPACE` — trusted repository workspace root, default `.`.
+- `AUTODEV_STATE_DIR` — durable objective snapshot directory, default `.autodev/state`.
+- `AUTODEV_MODEL_BASE_URL` — default model-provider base URL, default `http://localhost:11434`.
+- `AUTODEV_MAX_FILE_BYTES` — ForgeCore workspace file-size limit, default 16 MiB.
+- `GITHUB_WEBHOOK_SECRET` — optional HMAC secret for the GitHub webhook endpoint.
+
+Objective API:
+
+- `POST /api/v1/objectives` — submit repository metadata, description, and optional branch as untrusted intent.
+- `GET /api/v1/objectives` — list public objective projections.
+- `GET /api/v1/objectives/:id` — fetch one public objective projection.
+- `GET /api/v1/events/stream` and `GET /events` — consume typed lifecycle events over SSE.
+- `POST /webhooks/github` — accept signed GitHub issue-opened events when a webhook secret is configured.
+
+Public objective lifecycle values are `queued`, `planning`, `running`, `blocked`, `verifying`, `replanned`, `completed`, and `failed`. Internal `TaskGraph`, execution envelopes, and authorization material are not returned by the objective API.
+
+The `repository` field in an objective is metadata; it does not select the execution workspace. Only the trusted server configuration in `AUTODEV_WORKSPACE` establishes the ForgeCore workspace boundary.
+
+There is deliberately **no client approval endpoint** in this slice. A payload such as `{"approved": true}` cannot unblock an objective. Approval can only be attached through the trusted internal `VerifiedOrchestrator::resume_approved` path, after which the same durable execution envelope resumes.
+
+The current HTTP service binds to all interfaces and does not yet provide general client authentication. Treat it as a local/development control plane and do not expose it to an untrusted network until the authentication boundary is implemented.
+
 ## Repository context fabric
 
 ForgeCore includes deterministic bounded repository retrieval. Context selection is local-first, reproducible, and budgeted by maximum files and bytes. Context is treated as evidence for planning rather than permission to mutate the repository.
