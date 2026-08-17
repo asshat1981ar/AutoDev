@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use forge_core::{ActionProposal, Planner, TaskNode, TaskStatus};
+use forge_core::{ActionProposal, Decomposer, Planner, TaskNode, TaskStatus};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -38,6 +38,8 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
 
         if snapshot.graph.root().status == TaskStatus::Queued {
             self.advance_queued_to_planning(&mut snapshot)?;
+        } else if snapshot.graph.root().status == TaskStatus::Planning {
+            self.advance_planning_to_ready(&mut snapshot)?;
         }
 
         Ok(snapshot.view)
@@ -57,6 +59,28 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
         let _ = self.events.send(ObjectiveEvent::from_view(
             &snapshot.view,
             "objective planning",
+        ));
+        Ok(())
+    }
+
+    fn advance_planning_to_ready(
+        &self,
+        snapshot: &mut ObjectiveSnapshot,
+    ) -> Result<(), RunnerError> {
+        let root_id = snapshot.graph.root.clone();
+        let decomposer = Decomposer {
+            decompose: Box::new(|_| vec![]),
+        };
+        decomposer.decompose(&mut snapshot.graph, &root_id);
+        snapshot.view.status = ObjectiveStatus::Planning;
+        snapshot.view.current_task_id = Some(root_id);
+        snapshot.view.current_phase = Some("decompose".to_string());
+        snapshot.view.blocked_reason = None;
+
+        self.store.put(snapshot)?;
+        let _ = self.events.send(ObjectiveEvent::from_view(
+            &snapshot.view,
+            "objective decomposed",
         ));
         Ok(())
     }
