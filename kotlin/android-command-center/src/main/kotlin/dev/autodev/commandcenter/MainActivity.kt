@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +51,11 @@ data class CommandCenterState(
     val events: List<String> = emptyList(),
 )
 
-class CommandCenterViewModel : ViewModel() {
+class CommandCenterViewModel(
+    private val codexController: CodexPanelController =
+        CodexPanelController(CodexApi(OkHttpCommandCenterTransport())),
+    private val codexDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : ViewModel() {
     private val client =
         OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -58,6 +63,9 @@ class CommandCenterViewModel : ViewModel() {
 
     private val mutableState = MutableStateFlow(CommandCenterState())
     val state: StateFlow<CommandCenterState> = mutableState.asStateFlow()
+
+    private val mutableCodexState = MutableStateFlow(CodexPanelState())
+    val codexState: StateFlow<CodexPanelState> = mutableCodexState.asStateFlow()
 
     private var streamJob: Job? = null
     private var activeCall: Call? = null
@@ -108,6 +116,35 @@ class CommandCenterViewModel : ViewModel() {
     fun disconnect() {
         cancelStream()
         mutableState.update { it.copy(connected = false, status = "Disconnected") }
+    }
+
+    fun refreshCodexAccount(endpoint: String) {
+        updateCodexState(endpoint, codexController::refreshAccount)
+    }
+
+    fun startCodexBrowserLogin(endpoint: String) {
+        updateCodexState(endpoint, codexController::startBrowserLogin)
+    }
+
+    fun startCodexDeviceCodeLogin(endpoint: String) {
+        updateCodexState(endpoint, codexController::startDeviceCodeLogin)
+    }
+
+    fun refreshCodexRateLimits(endpoint: String) {
+        updateCodexState(endpoint, codexController::refreshRateLimits)
+    }
+
+    fun logoutCodex(endpoint: String) {
+        updateCodexState(endpoint, codexController::logout)
+    }
+
+    private fun updateCodexState(
+        endpoint: String,
+        operation: (String, CodexPanelState) -> CodexPanelState,
+    ) {
+        viewModelScope.launch(codexDispatcher) {
+            mutableCodexState.value = operation(endpoint, mutableCodexState.value)
+        }
     }
 
     private fun cancelStream() {
