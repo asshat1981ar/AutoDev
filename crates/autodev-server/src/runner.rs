@@ -214,12 +214,10 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             Box::new(move |_| envelope.clone()),
         );
         orchestrator.state = snapshot.orchestrator.clone();
-        if !orchestrator.resume_approved(
-            &mut snapshot.graph,
-            &grant.task_id,
-            &grant.approval_ref,
-        ) {
-            return Err(RunnerError::ApprovalResumeFailed(grant.objective_id.clone()));
+        if !orchestrator.resume_approved(&mut snapshot.graph, &grant.task_id, &grant.approval_ref) {
+            return Err(RunnerError::ApprovalResumeFailed(
+                grant.objective_id.clone(),
+            ));
         }
         snapshot.orchestrator = orchestrator.state;
         snapshot.view.status = ObjectiveStatus::Running;
