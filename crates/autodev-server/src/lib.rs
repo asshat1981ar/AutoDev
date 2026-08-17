@@ -523,6 +523,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queued_objective_emits_flat_typed_lifecycle_event() {
+        let state = AppState::new(None);
+        let mut events = state.events.subscribe();
+        let view = state
+            .enqueue(ObjectiveRequest {
+                repository: "owner/repo".to_string(),
+                description: "Emit typed lifecycle event".to_string(),
+                branch: Some("autodev/events".to_string()),
+            })
+            .await
+            .expect("enqueue objective");
+
+        let payload = events.recv().await.expect("queued lifecycle event");
+        let value: Value = serde_json::from_str(&payload).expect("valid event JSON");
+        assert_eq!(
+            value,
+            json!({
+                "type": "objective_queued",
+                "objective_id": view.id,
+                "task_id": view.current_task_id,
+                "phase": Value::Null,
+                "status": "queued",
+                "evidence_ref": Value::Null,
+                "message": "objective accepted"
+            })
+        );
+        assert!(value.get("approval_ref").is_none());
+        assert!(value.get("data").is_none());
+    }
+
+    #[tokio::test]
     async fn unsigned_github_webhook_is_rejected() {
         let app = router(AppState::new(Some("secret".to_string())));
         let response = app
