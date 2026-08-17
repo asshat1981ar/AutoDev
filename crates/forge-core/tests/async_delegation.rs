@@ -1,6 +1,6 @@
 use forge_core::async_delegation::{
-    validate_batch_for_v0, DelegatedTask, DelegationAssignment, DelegationClass,
-    DelegationRisk, DelegationValidationError,
+    validate_batch_for_v0, DelegatedTask, DelegationAssignment, DelegationClass, DelegationRisk,
+    DelegationValidationError,
 };
 use serde_json::json;
 
@@ -81,7 +81,9 @@ fn duplicate_task_ids_fail_batch_validation() {
 
     assert_eq!(
         validate_batch_for_v0(&[first, second]),
-        Err(DelegationValidationError::DuplicateTaskId("task-1".to_owned()))
+        Err(DelegationValidationError::DuplicateTaskId(
+            "task-1".to_owned()
+        ))
     );
 }
 
