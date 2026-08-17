@@ -155,12 +155,7 @@ mod tests {
         workspace: &Workspace,
     ) -> Result<ExecutionResult, ExecutionError> {
         let authority = ExecutionAuthority::from_trusted_capabilities([Capability::ReadFile]);
-        read_file_authorized(
-            action,
-            workspace,
-            &authority,
-            &AuthorizationGrant::none(),
-        )
+        read_file_authorized(action, workspace, &authority, &AuthorizationGrant::none())
     }
 
     #[test]

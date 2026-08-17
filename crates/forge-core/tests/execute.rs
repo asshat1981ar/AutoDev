@@ -61,8 +61,8 @@ fn public_read_denial_is_deterministic() {
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     std::fs::write(dir.path().join("d.txt"), b"deterministic").unwrap();
 
-    let first = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws.clone()))
-        .unwrap_err();
+    let first =
+        forge_core::execute(&ExecutableAction::new(action("d.txt"), ws.clone())).unwrap_err();
     let second = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws)).unwrap_err();
     assert!(matches!(first, ExecutionError::CapabilityDenied));
     assert!(matches!(second, ExecutionError::CapabilityDenied));
