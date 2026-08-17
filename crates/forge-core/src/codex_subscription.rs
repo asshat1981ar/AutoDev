@@ -1,8 +1,10 @@
 //! Safe client contracts for Codex subscription authentication.
 //!
-//! This module deliberately exposes only allow-listed account and login metadata.
-//! ChatGPT OAuth credentials remain owned by `codex app-server` and are never
-//! represented by public ForgeCore types.
+//! This module deliberately exposes only allow-listed account, login, and usage
+//! metadata. ChatGPT OAuth credentials remain owned by `codex app-server` and
+//! are never represented by public ForgeCore types.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -47,6 +49,38 @@ pub struct CodexAccount {
     pub authenticated: bool,
     pub auth_mode: Option<String>,
     pub plan_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexRateLimitWindow {
+    pub used_percent: i32,
+    pub window_duration_mins: Option<i64>,
+    pub resets_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexCredits {
+    pub has_credits: bool,
+    pub unlimited: bool,
+    pub balance: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexRateLimitSnapshot {
+    pub limit_id: Option<String>,
+    pub limit_name: Option<String>,
+    pub primary: Option<CodexRateLimitWindow>,
+    pub secondary: Option<CodexRateLimitWindow>,
+    pub credits: Option<CodexCredits>,
+    pub plan_type: Option<String>,
+    pub reached_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexRateLimits {
+    pub default: CodexRateLimitSnapshot,
+    pub by_limit_id: BTreeMap<String, CodexRateLimitSnapshot>,
+    pub reset_credits_available: Option<i64>,
 }
 
 pub struct CodexSubscriptionClient<T: CodexRpcTransport> {
@@ -127,6 +161,20 @@ impl<T: CodexRpcTransport> CodexSubscriptionClient<T> {
         Ok(parse_account(&value))
     }
 
+    pub fn rate_limits(&mut self) -> Result<CodexRateLimits, CodexSubscriptionError> {
+        self.ensure_initialized()?;
+        let value = self
+            .transport
+            .request("account/rateLimits/read", json!({}))?;
+        parse_rate_limits(&value)
+    }
+
+    pub fn logout(&mut self) -> Result<(), CodexSubscriptionError> {
+        self.ensure_initialized()?;
+        self.transport.request("account/logout", json!({}))?;
+        Ok(())
+    }
+
     fn ensure_initialized(&self) -> Result<(), CodexSubscriptionError> {
         if self.initialized {
             Ok(())
@@ -143,6 +191,13 @@ fn required_string(value: &Value, key: &str) -> Result<String, CodexSubscription
         .filter(|value| !value.trim().is_empty())
         .map(ToOwned::to_owned)
         .ok_or_else(|| CodexSubscriptionError::Protocol(format!("missing {key}")))
+}
+
+fn optional_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
 }
 
 fn parse_server_info(value: &Value) -> Result<CodexServerInfo, CodexSubscriptionError> {
@@ -194,4 +249,88 @@ fn parse_account(value: &Value) -> CodexAccount {
         auth_mode,
         plan_type,
     }
+}
+
+fn parse_rate_limits(value: &Value) -> Result<CodexRateLimits, CodexSubscriptionError> {
+    let default_value = value
+        .get("rateLimits")
+        .ok_or_else(|| CodexSubscriptionError::Protocol("missing rateLimits".into()))?;
+    let default = parse_rate_limit_snapshot(default_value)?;
+
+    let mut by_limit_id = BTreeMap::new();
+    if let Some(entries) = value.get("rateLimitsByLimitId").and_then(Value::as_object) {
+        for (limit_id, snapshot) in entries {
+            by_limit_id.insert(limit_id.clone(), parse_rate_limit_snapshot(snapshot)?);
+        }
+    }
+
+    let reset_credits_available = value
+        .get("rateLimitResetCredits")
+        .and_then(|summary| summary.get("availableCount"))
+        .and_then(Value::as_i64);
+
+    Ok(CodexRateLimits {
+        default,
+        by_limit_id,
+        reset_credits_available,
+    })
+}
+
+fn parse_rate_limit_snapshot(
+    value: &Value,
+) -> Result<CodexRateLimitSnapshot, CodexSubscriptionError> {
+    if !value.is_object() {
+        return Err(CodexSubscriptionError::Protocol(
+            "rate-limit snapshot must be an object".into(),
+        ));
+    }
+
+    Ok(CodexRateLimitSnapshot {
+        limit_id: optional_string(value, "limitId"),
+        limit_name: optional_string(value, "limitName"),
+        primary: parse_rate_limit_window(value.get("primary"))?,
+        secondary: parse_rate_limit_window(value.get("secondary"))?,
+        credits: parse_credits(value.get("credits"))?,
+        plan_type: optional_string(value, "planType"),
+        reached_type: optional_string(value, "rateLimitReachedType"),
+    })
+}
+
+fn parse_rate_limit_window(
+    value: Option<&Value>,
+) -> Result<Option<CodexRateLimitWindow>, CodexSubscriptionError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let used_percent = value
+        .get("usedPercent")
+        .and_then(Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
+        .ok_or_else(|| CodexSubscriptionError::Protocol("invalid usedPercent".into()))?;
+
+    Ok(Some(CodexRateLimitWindow {
+        used_percent,
+        window_duration_mins: value.get("windowDurationMins").and_then(Value::as_i64),
+        resets_at: value.get("resetsAt").and_then(Value::as_i64),
+    }))
+}
+
+fn parse_credits(value: Option<&Value>) -> Result<Option<CodexCredits>, CodexSubscriptionError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let has_credits = value
+        .get("hasCredits")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| CodexSubscriptionError::Protocol("invalid hasCredits".into()))?;
+    let unlimited = value
+        .get("unlimited")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| CodexSubscriptionError::Protocol("invalid unlimited".into()))?;
+
+    Ok(Some(CodexCredits {
+        has_credits,
+        unlimited,
+        balance: optional_string(value, "balance"),
+    }))
 }
