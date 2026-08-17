@@ -1,81 +1,128 @@
 # AutoDev
 
-AutoDev is a local-first, model-agnostic multi-agent software engineering platform inspired by the ForgeOS architecture evolved from OllamaDev.
+AutoDev is a local-first, model-agnostic multi-agent software-development runtime. Agents propose typed intent; ForgeCore authorizes and executes that intent inside explicit capability, workspace, approval, evidence, and verification boundaries.
 
-The project treats AI-assisted development as an engineered system rather than a single coding prompt. Agents plan and collaborate through typed actions; a policy layer authorizes capabilities; a trusted execution core performs changes; repository exploration supplies bounded evidence; verification produces evidence; and the orchestrator decides whether work advances or is replanned.
-
-## Architecture
+## Core development loop
 
 ```text
-                    AutoDev
-                       |
-                Kotlin Control Plane
-                       |
-                Agent Orchestrator
-                       |
-          PLAN -> ACT -> VERIFY -> REPLAN
-                       |
-              Repository Context Fabric
-                       |
-                Typed Agent Protocol
-                       |
-                Rust ForgeCore
-             /        |        \
-        sandbox     Git       process
-        filesystem  patches   execution
-                       |
-          +------------+------------+
-          |            |            |
-       Ollama         MCP        GitHub
-          |
-   local / LAN / cloud models
+Goal
+  ↓
+TaskGraph
+  ↓
+Context / dispatch
+  ↓
+ExecutionEnvelope
+  ↓
+Policy + trusted authorization
+  ↓
+ForgeCore execution
+  ↓
+EvidenceStore
+  ↓
+VerificationFabric
+  ↓
+Verified ─────────→ complete
+Rejected ─────────→ bounded replan
+Approval required → blocked until approved
 ```
 
-## Initial goals
+The runtime deliberately separates **generation** from **verification**. An action reporting that it succeeded is not enough to complete a task. Required verification evidence must actually run and pass.
 
-- Local-first development with Ollama-compatible models.
-- Multi-agent SDLC orchestration.
-- Typed, validated agent actions instead of uncontrolled command text.
-- Human approval for risky operations.
-- Rust-based trusted execution for filesystem, process, patch and Git operations.
-- Reproducible artifacts and execution provenance.
-- Independent verification through tests, builds, static analysis and security checks.
-- Repository-scale context selection with deterministic local retrieval.
-- Optional distributed workers as the platform matures.
+## Execution envelope
 
-## Planned stack
+`ExecutionEnvelope` is the durable hand-off contract between planning, execution, and verification. It binds:
 
-| Layer | Technology | Responsibility |
-| --- | --- | --- |
-| Control plane | Kotlin + Jetpack Compose | Android UI, lifecycle, local state |
-| Orchestration | Kotlin | Agent lifecycle and SDLC state machine |
-| Context fabric | Rust | Repository retrieval, ranking and context budgets |
-| Execution kernel | Rust | Sandbox, filesystem, Git, patches, processes, policy |
-| Model fabric | Ollama | Local and network model execution |
-| Capability layer | MCP | External tools and services |
-| Persistence | SQLite/Room initially | Tasks, agents, checkpoints and metadata |
-| Distributed fabric | Go, planned | Remote workers and agent federation |
+- task, run, operation, and action identity;
+- bounded context references;
+- risk and capability declarations;
+- approval requirements and trusted approval references;
+- required and produced evidence references;
+- lifecycle state and bounded attempt count.
 
-## Development roadmap
+Lifecycle transitions are explicit and validated:
 
-1. Workspace foundation.
-2. Agent registry and capability model.
-3. Ollama model discovery and routing.
-4. Typed agent-action protocol.
-5. Rust ForgeCore execution boundary.
-6. Repository context fabric and bounded retrieval.
-7. PLAN -> ACT -> VERIFY -> REPAIR orchestration.
-8. Approval and policy engine.
-9. Verification and artifact provenance.
-10. Project memory and knowledge graph.
-11. Optional Go worker fabric.
-12. Cross-platform clients where justified.
+```text
+planned → authorized → executing → verifying → verified
+                           ↓            ↓
+                        rejected ←──────┘
+                           ↓
+                       replanning
+                           ↓
+                         planned
+```
+
+## Trusted authorization
+
+Agent/model payloads and declared capabilities are untrusted intent. Human approval is represented separately by a kernel-owned `AuthorizationGrant` and is supplied only at the trusted execution boundary.
+
+This means a payload field such as:
+
+```json
+{"approved": true}
+```
+
+is **not authority**. ForgeCore strips caller-supplied Git approval state and only recreates the internal authorization marker from a trusted grant. The same grant model is used for high-risk file reads, writes, and patches.
+
+Public effect adapters remain fail-closed when no grant is supplied.
+
+## Required verification evidence
+
+`ExecutionEnvelope.evidence.required` names the checks that must be present and passing before a task can enter `verified`.
+
+Canonical verification names are:
+
+- `unit_tests`
+- `build`
+- `lint`
+- `static_analysis`
+- `security`
+
+A report where every executed check passed still fails the task if a declared required check never ran. Unknown required evidence names also fail closed. This prevents a partial verifier set from accidentally satisfying a stronger task contract.
+
+## Durable verified orchestration
+
+`VerifiedOrchestrator` composes the existing `TaskGraph` scheduler with the evidence-driven `DevelopmentLoop` without replacing the legacy orchestrator.
+
+It persists one execution envelope per task across attempts:
+
+- `Verified` → `TaskStatus::Completed`
+- `Replanned` → `TaskStatus::Ready`
+- `Exhausted` → `TaskStatus::Failed`
+- missing approval → `TaskStatus::Blocked`
+
+Approval resume reuses the same envelope and does not consume an execution attempt.
+
+`VerifiedOrchestratorState` is serializable so envelope lifecycle and retry state can be recovered after process restart.
+
+## Repository context fabric
+
+ForgeCore includes deterministic bounded repository retrieval. Context selection is local-first, reproducible, and budgeted by maximum files and bytes. Context is treated as evidence for planning rather than permission to mutate the repository.
+
+## Cline / Termux
+
+AutoDev includes a Cline development fabric and a Termux-compatible Kanban launcher. CI validates the Python entry points, Termux launcher, and Cline development-fabric tests alongside the Rust kernel.
+
+For Android/Termux environments, prefer portable subprocess and Streamable HTTP MCP paths instead of assuming desktop-only PTY, Bun, or Docker support.
+
+## Verification gates
+
+The Rust workflow currently requires:
+
+```text
+cargo fmt --all -- --check
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+It also validates the Cline/Termux fabric. A development slice is not considered green until these gates pass.
 
 ## Design principle
 
-Agents propose intent. Context retrieval supplies relevant repository evidence. Policies authorize intent. ForgeCore executes authorized operations. Verifiers produce evidence. The orchestrator advances or replans.
+> Agents propose intent. Policy authorizes capabilities. Trusted components execute. Independent verifiers produce evidence. Orchestrators advance or replan from that evidence.
 
 This separation is the foundation for safe autonomous software development.
+The intent is not maximum autonomy. AutoDev favors bounded, observable, recoverable development loops whose claims can be independently verified.
 
 ## Kotlin Multiplatform modules
 

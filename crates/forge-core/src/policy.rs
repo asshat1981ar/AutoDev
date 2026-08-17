@@ -19,6 +19,32 @@ pub enum PolicyDecision {
     Deny,
 }
 
+/// Kernel-owned authorization material. Unlike `AgentAction.capabilities`, this
+/// value is never supplied by the model; it is created by the trusted
+/// orchestration boundary after an approval decision has been recorded.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AuthorizationGrant {
+    pub approval_ref: Option<String>,
+}
+
+impl AuthorizationGrant {
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    pub fn approved(reference: impl Into<String>) -> Self {
+        Self {
+            approval_ref: Some(reference.into()),
+        }
+    }
+
+    pub fn is_approved(&self) -> bool {
+        self.approval_ref
+            .as_deref()
+            .is_some_and(|reference| !reference.trim().is_empty())
+    }
+}
+
 /// Validate the structural invariants that must hold before policy evaluation.
 pub fn validate_action(action: &AgentAction) -> Result<(), ExecutionError> {
     if action.id.trim().is_empty() {
@@ -74,4 +100,23 @@ pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, Execution
             PolicyDecision::RequireApproval
         }
     })
+}
+
+/// Resolve a policy decision against a trusted authorization grant.
+///
+/// An agent cannot satisfy approval by changing its payload or capabilities;
+/// only a kernel-created `AuthorizationGrant` can discharge a
+/// `RequireApproval` decision.
+pub fn enforce_policy(
+    action: &AgentAction,
+    grant: &AuthorizationGrant,
+) -> Result<PolicyDecision, ExecutionError> {
+    match evaluate_policy(action)? {
+        PolicyDecision::Allow => Ok(PolicyDecision::Allow),
+        PolicyDecision::RequireApproval if grant.is_approved() => {
+            Ok(PolicyDecision::RequireApproval)
+        }
+        PolicyDecision::RequireApproval => Err(ExecutionError::RequiresApproval),
+        PolicyDecision::Deny => Err(ExecutionError::CapabilityDenied),
+    }
 }

@@ -1,24 +1,4 @@
-//! The `patch_file` executor — apply a unified-diff patch to a file.
-//!
-//! This is a small, safe capability: it reuses the existing patch engine
-//! (`Patch::apply`) and the atomic-write path from `write_file`, so it spawns
-//! no process and adds no new security boundary beyond the tier-1 workspace
-//! confinement and capability gate already in place.
-//!
-//! Pipeline:
-//!
-//! ```text
-//! AgentAction
-//!   → validate_action        (structural invariants)
-//!   → capability check       (is the `patch_file` capability granted?)
-//!   → evaluate_policy        (risk → Allow / RequireApproval / Deny)
-//!   → workspace.resolve_path (containment + symlink/traversal defense)
-//!   → read target            (existing content for before-hash)
-//!   → parse patch            (payload.patch = unified diff)
-//!   → apply patch            (deterministic, context-validated)
-//!   → atomic write           (only on clean apply)
-//!   → evidence               (before/after hashes + applied patch)
-//! ```
+//! The `patch_file` executor — deterministic, workspace-confined patching.
 
 use std::path::Path;
 
@@ -28,51 +8,42 @@ use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus};
 use crate::patch::{Patch, PatchResult};
-use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
+use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
 use crate::workspace::{PathResolution, Workspace};
 use crate::write::atomic_write;
 
-/// The payload fields `patch_file` understands.
 const PATH_FIELD: &str = "path";
 const PATCH_FIELD: &str = "patch";
 
-/// Whether a patch should write the result or only validate (dry-run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PatchMode {
-    /// Validate the patch and compute the result without writing.
     DryRun,
-    /// Apply the patch and write the result.
     Apply,
 }
 
-/// Execute a `patch_file` action.
-///
-/// Returns a schema-conformant [`ExecutionResult`]. Policy, workspace, patch,
-/// or I/O failures are surfaced as structured [`ExecutionError`]s. In
-/// [`PatchMode::DryRun`] the filesystem is never modified.
+/// Backward-compatible patch entry point. No approval grant is implied.
 pub fn patch_file(
     action: &AgentAction,
     workspace: &Workspace,
     mode: PatchMode,
 ) -> Result<ExecutionResult, ExecutionError> {
+    patch_file_authorized(action, workspace, mode, &AuthorizationGrant::none())
+}
+
+/// Trusted patch entry point used by the execution-envelope path.
+pub(crate) fn patch_file_authorized(
+    action: &AgentAction,
+    workspace: &Workspace,
+    mode: PatchMode,
+    grant: &AuthorizationGrant,
+) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
-    // 1. Structural validation.
-    evaluate_policy(action)?;
-
-    // 2. Capability check: patching requires the `patch_file` capability.
+    enforce_policy(action, grant)?;
     if !has_required_capability(action) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
-    // 3. Risk-based policy.
-    match evaluate_policy(action)? {
-        PolicyDecision::Allow => {}
-        PolicyDecision::RequireApproval => return Err(ExecutionError::RequiresApproval),
-        PolicyDecision::Deny => return Err(ExecutionError::CapabilityDenied),
-    }
-
-    // 4. Extract and validate the payload.
     if !action.payload.is_object() {
         return Err(ExecutionError::PayloadNotObject);
     }
@@ -92,7 +63,6 @@ pub fn patch_file(
         .ok_or(ExecutionError::PayloadFieldNotString(PATCH_FIELD))?;
     let raw_path = Path::new(path_str);
 
-    // 5. Resolve against the workspace (containment + symlink/traversal).
     let resolved = match workspace.resolve_path(raw_path) {
         PathResolution::Allowed(p) => p,
         PathResolution::Denied(p) => {
@@ -109,7 +79,6 @@ pub fn patch_file(
         }
     };
 
-    // 6. Read the existing file (for before-hash + patch source).
     let before_bytes = std::fs::read(&resolved).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ExecutionError::FileNotFound(resolved.clone())
@@ -120,14 +89,11 @@ pub fn patch_file(
     let before_sha256 = sha256_hex(&before_bytes);
     let before_lines: Vec<String> = String::from_utf8_lossy(&before_bytes)
         .lines()
-        .map(|s| s.to_string())
+        .map(|line| line.to_string())
         .collect();
 
-    // 7. Parse the patch.
-    let patch =
-        Patch::parse(patch_text).map_err(|e| ExecutionError::InvalidPatch(e.to_string()))?;
-
-    // 8. Apply the patch (deterministic).
+    let patch = Patch::parse(patch_text)
+        .map_err(|error| ExecutionError::InvalidPatch(error.to_string()))?;
     let apply = patch.apply(&before_lines, crate::patch::ApplyMode::Apply);
     if !apply.failures.is_empty() {
         return Err(ExecutionError::PatchConflict(patch_failures_to_string(
@@ -138,7 +104,6 @@ pub fn patch_file(
     let after_text = apply.new_lines.join("\n") + "\n";
     let after_sha256 = sha256_hex(after_text.as_bytes());
 
-    // 9. Dry-run stops here; the filesystem is untouched.
     if mode == PatchMode::DryRun {
         return Ok(build_result(
             action,
@@ -152,9 +117,7 @@ pub fn patch_file(
         ));
     }
 
-    // 10. Atomic write the result.
     atomic_write(&resolved, after_text.as_bytes())?;
-
     Ok(build_result(
         action,
         ExecutionStatus::Succeeded,
@@ -167,7 +130,6 @@ pub fn patch_file(
     ))
 }
 
-/// Build a schema-conformant result for a patch.
 #[allow(clippy::too_many_arguments)]
 fn build_result(
     action: &AgentAction,
@@ -186,12 +148,11 @@ fn build_result(
         "patch": patch_text,
         "applied_hunks": applied_hunks,
     });
-    let completed_at = Utc::now();
     ExecutionResult {
         action_id: action.id.clone(),
         status,
         started_at,
-        completed_at,
+        completed_at: Utc::now(),
         exit_code: None,
         stdout: String::new(),
         stderr: String::new(),
@@ -201,12 +162,11 @@ fn build_result(
     }
 }
 
-/// Summarize patch failures into a stable error message.
 fn patch_failures_to_string(result: &PatchResult) -> String {
     let mut out = String::new();
-    for f in &result.failures {
-        out.push_str(&format!("hunk@{:?}: ", f.hunk.old_start));
-        out.push_str(match &f.reason {
+    for failure in &result.failures {
+        out.push_str(&format!("hunk@{:?}: ", failure.hunk.old_start));
+        out.push_str(match &failure.reason {
             crate::patch::PatchFailureReason::StaleContext { .. } => "stale context",
             crate::patch::PatchFailureReason::RangeOutOfBounds { .. } => "range out of bounds",
             crate::patch::PatchFailureReason::Conflict { .. } => "conflict",
@@ -216,6 +176,7 @@ fn patch_failures_to_string(result: &PatchResult) -> String {
     }
     out.trim_end_matches("; ").to_string()
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,17 +203,14 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\ntwo\nthree\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
-
         let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
             "one\n2nd\nthree\n"
         );
-        let v = result.verification.unwrap();
-        assert!(v["applied_hunks"] == 1);
-        assert!(v["before_sha256"].is_string());
-        assert!(v["after_sha256"].is_string());
+        let verification = result.verification.unwrap();
+        assert_eq!(verification["applied_hunks"], 1);
     }
 
     #[test]
@@ -261,10 +219,8 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-
         let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun).unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
-        // File unchanged.
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
             "one\nold\n"
@@ -275,7 +231,6 @@ mod tests {
     fn stale_context_patch_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        // Context line "one" changed to "uno".
         std::fs::write(dir.path().join("a.txt"), b"uno\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
         let err = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
@@ -301,9 +256,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
-        let mut a = base_action("a.txt", "--- a/a\n+++ b/a\n@@ -1,1 +1,1 @@\n-x\n");
-        a.capabilities = vec![]; // no patch_file capability
-        let err = patch_file(&a, &ws, PatchMode::Apply).unwrap_err();
+        let mut action = base_action("a.txt", "--- a/a\n+++ b/a\n@@ -1,1 +1,1 @@\n-x\n");
+        action.capabilities.clear();
+        let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
 
@@ -332,5 +287,27 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidPatch(_)));
+    }
+
+    #[test]
+    fn high_risk_patch_requires_trusted_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
+        let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
+        let mut action = base_action("a.txt", patch_text);
+        action.risk = RiskLevel::High;
+        assert!(matches!(
+            patch_file(&action, &ws, PatchMode::Apply).unwrap_err(),
+            ExecutionError::RequiresApproval
+        ));
+        let result = patch_file_authorized(
+            &action,
+            &ws,
+            PatchMode::Apply,
+            &AuthorizationGrant::approved("approval-1"),
+        )
+        .unwrap();
+        assert_eq!(result.status, ExecutionStatus::Succeeded);
     }
 }

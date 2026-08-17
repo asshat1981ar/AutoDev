@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/protocols/execution-envelope.schema.json",
+  "title": "ExecutionEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operation_id",
+    "run_id",
+    "task_id",
+    "action",
+    "context",
+    "policy",
+    "evidence",
+    "lifecycle"
+  ],
+  "properties": {
+    "operation_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "action": { "$ref": "./agent-action.schema.json" },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repo_map_ref": { "type": ["string", "null"] },
+        "context_pack_ref": { "type": ["string", "null"] },
+        "context_delta_ref": { "type": ["string", "null"] },
+        "change_impact_ref": { "type": ["string", "null"] },
+        "feature_contract_ref": { "type": ["string", "null"] }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["risk", "capabilities", "requires_approval", "approval_ref"],
+      "properties": {
+        "risk": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "requires_approval": { "type": "boolean" },
+        "approval_ref": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "produced"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "produced": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "max_attempts", "state"],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 1 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "state": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "authorized",
+            "executing",
+            "verifying",
+            "verified",
+            "rejected",
+            "replanning"
+          ]
+        }
+      }
+    }
+  }
+}

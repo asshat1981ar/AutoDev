@@ -1,58 +1,36 @@
-//! The `read_file` executor — the first real ForgeCore operation.
-//!
-//! The execution path is deliberate and layered:
-//!
-//! ```text
-//! AgentAction
-//!   → validate_action        (structural invariants)
-//!   → capability check       (Is the `read_file` capability granted?)
-//!   → evaluate_policy        (risk → Allow / RequireApproval / Deny)
-//!   → workspace.resolve_path (containment + symlink/traversal defense)
-//!   → metadata + size gate   (reject missing / directory / oversized)
-//!   → bounded read           (never read more than max_bytes)
-//!   → evidence               (schema-conformant ExecutionResult + hash)
-//! ```
-//!
-//! This module performs **read-only** filesystem access. It deliberately does
-//! not create, modify, or delete files, and does not execute any process.
+//! The `read_file` executor — bounded, workspace-confined file access.
 
 use chrono::Utc;
 
 use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus, ReadMetadata};
-use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
+use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
 use crate::workspace::{PathResolution, Workspace};
 
-/// The payload field `read_file` understands.
 const PATH_FIELD: &str = "path";
 
-/// Execute a `read_file` action.
-///
-/// Returns a schema-conformant [`ExecutionResult`]. Policy or workspace
-/// failures are surfaced as structured [`ExecutionError`]s.
+/// Backward-compatible read entry point. No approval grant is implied.
 pub fn read_file(
     action: &AgentAction,
     workspace: &Workspace,
 ) -> Result<ExecutionResult, ExecutionError> {
+    read_file_authorized(action, workspace, &AuthorizationGrant::none())
+}
+
+/// Trusted read entry point used by the execution-envelope path.
+pub(crate) fn read_file_authorized(
+    action: &AgentAction,
+    workspace: &Workspace,
+    grant: &AuthorizationGrant,
+) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
-    // 1. Structural validation.
-    evaluate_policy(action)?;
-
-    // 2. Capability check: reading requires the `read_file` capability.
+    enforce_policy(action, grant)?;
     if !has_required_capability(action) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
-    // 3. Risk-based policy: medium/high/critical require approval.
-    match evaluate_policy(action)? {
-        PolicyDecision::Allow => {}
-        PolicyDecision::RequireApproval => return Err(ExecutionError::RequiresApproval),
-        PolicyDecision::Deny => return Err(ExecutionError::CapabilityDenied),
-    }
-
-    // 4. Extract and validate the payload path.
     if !action.payload.is_object() {
         return Err(ExecutionError::PayloadNotObject);
     }
@@ -65,7 +43,6 @@ pub fn read_file(
         .ok_or(ExecutionError::PayloadFieldNotString(PATH_FIELD))?;
     let raw_path = std::path::Path::new(path_str);
 
-    // 5. Resolve against the workspace (containment + symlink/traversal).
     let resolved = match workspace.resolve_path(raw_path) {
         PathResolution::Allowed(p) => p,
         PathResolution::Denied(p) => {
@@ -85,21 +62,15 @@ pub fn read_file(
     read_resolved(&resolved, workspace.max_bytes(), started_at)
 }
 
-/// Whether a raw path, anchored inside the workspace, escaped via a symlink.
-/// A relative raw path that resolved outside the root must have been redirected
-/// by a symlink (or the root itself changed).
 fn is_symlink_escape(raw: &std::path::Path) -> bool {
     !raw.is_absolute()
 }
 
-/// Read a workspace-resolved file, enforcing the size gate and producing
-/// evidence.
 fn read_resolved(
     path: &std::path::Path,
     max_bytes: u64,
     started_at: chrono::DateTime<Utc>,
 ) -> Result<ExecutionResult, ExecutionError> {
-    // Ensure the target exists and is a regular file (not a directory).
     let metadata = std::fs::metadata(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ExecutionError::FileNotFound(path.to_path_buf())
@@ -111,26 +82,16 @@ fn read_resolved(
         return Err(ExecutionError::IsDirectory(path.to_path_buf()));
     }
 
-    // Size gate: never read more than the workspace limit.
     let size = metadata.len();
     if size > max_bytes {
         return Err(ExecutionError::OversizedFile(path.to_path_buf(), max_bytes));
     }
 
-    // Bounded read: the file is known to be within the size limit.
     let bytes = std::fs::read(path).map_err(|e| ExecutionError::Io(path.to_path_buf(), e))?;
-
     let sha256 = sha256_hex(&bytes);
-
-    // Decode to UTF-8 for `stdout`; non-UTF-8 content surfaces a structured
-    // error (the hash and metadata are still valid).
-    let content = match String::from_utf8(bytes.clone()) {
-        Ok(s) => s,
-        Err(_) => return Err(ExecutionError::InvalidUtf8(path.to_path_buf())),
-    };
-
+    let content =
+        String::from_utf8(bytes).map_err(|_| ExecutionError::InvalidUtf8(path.to_path_buf()))?;
     let modified_at = metadata.modified().ok().map(chrono::DateTime::from);
-
     let verification = ReadMetadata {
         path: path.display().to_string(),
         sha256,
@@ -138,12 +99,11 @@ fn read_resolved(
         modified_at,
     };
 
-    let completed_at = Utc::now();
     Ok(ExecutionResult {
-        action_id: String::new(), // the caller fills in the action id
+        action_id: String::new(),
         status: ExecutionStatus::Succeeded,
         started_at,
-        completed_at,
+        completed_at: Utc::now(),
         exit_code: None,
         stdout: content,
         stderr: String::new(),
@@ -157,7 +117,6 @@ fn read_resolved(
 mod tests {
     use super::*;
     use crate::action::{ActionType, AgentAction, Capability, RiskLevel};
-    use crate::evidence::ExecutionStatus;
     use serde_json::json;
 
     fn base_action() -> AgentAction {
@@ -175,9 +134,9 @@ mod tests {
     }
 
     fn action_with_path(path: &str) -> AgentAction {
-        let mut a = base_action();
-        a.payload = json!({ "path": path });
-        a
+        let mut action = base_action();
+        action.payload = json!({ "path": path });
+        action
     }
 
     #[test]
@@ -185,13 +144,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
-
         let result = read_file(&action_with_path("a.txt"), &ws).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(result.stdout, "hello");
-        let v = result.verification.unwrap();
-        assert_eq!(v["sha256"], sha256_hex(b"hello"));
-        assert_eq!(v["size"], 5);
+        let verification = result.verification.unwrap();
+        assert_eq!(verification["sha256"], sha256_hex(b"hello"));
+        assert_eq!(verification["size"], 5);
     }
 
     #[test]
@@ -262,7 +220,7 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
         let mut action = action_with_path("a.txt");
-        action.capabilities = vec![]; // no read_file capability
+        action.capabilities.clear();
         let err = read_file(&action, &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
@@ -275,5 +233,22 @@ mod tests {
         action.payload = json!({});
         let err = read_file(&action, &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::MissingPayloadField("path")));
+    }
+
+    #[test]
+    fn high_risk_read_requires_trusted_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
+        let mut action = action_with_path("a.txt");
+        action.risk = RiskLevel::High;
+        assert!(matches!(
+            read_file(&action, &ws).unwrap_err(),
+            ExecutionError::RequiresApproval
+        ));
+        let result =
+            read_file_authorized(&action, &ws, &AuthorizationGrant::approved("approval-1"))
+                .unwrap();
+        assert_eq!(result.stdout, "hello");
     }
 }
