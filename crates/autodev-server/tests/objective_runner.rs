@@ -229,7 +229,7 @@ fn medium_risk_git_checkpoint_binds_git_write_capability_before_approval() {
 }
 
 #[test]
-fn destructive_git_operation_is_denied_without_trusted_destructive_capability() {
+fn destructive_git_operation_is_denied_by_trusted_high_risk_floor() {
     let workspace_dir = tempdir().unwrap();
     let workspace = Workspace::new(workspace_dir.path(), 1024 * 1024).unwrap();
     let store = Arc::new(InMemoryObjectiveStore::default());
@@ -250,7 +250,7 @@ fn destructive_git_operation_is_denied_without_trusted_destructive_capability() 
     assert!(denied
         .blocked_reason
         .as_deref()
-        .is_some_and(|reason| reason.contains("GitDestructive")));
+        .is_some_and(|reason| reason.contains("High")));
     assert!(store
         .get("objective-1")
         .unwrap()
