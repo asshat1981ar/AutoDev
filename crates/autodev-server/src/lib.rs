@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    convert::Infallible,
+    ffi::OsStr,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 use axum::{
     body::Bytes,
@@ -11,7 +16,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use forge_core::TaskGraph;
+use forge_core::{
+    CodexAccount, CodexLoginStart, CodexRateLimits, CodexSubscriptionClient,
+    CodexSubscriptionError, StdioCodexTransport, TaskGraph,
+};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -21,6 +29,106 @@ use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
+
+pub trait CodexAccountService: Send + Sync {
+    fn account(&self) -> Result<CodexAccount, CodexSubscriptionError>;
+    fn start_browser_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError>;
+    fn start_device_code_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError>;
+    fn rate_limits(&self) -> Result<CodexRateLimits, CodexSubscriptionError>;
+    fn logout(&self) -> Result<(), CodexSubscriptionError>;
+}
+
+pub struct CodexProcessService {
+    client: StdMutex<CodexSubscriptionClient<StdioCodexTransport>>,
+}
+
+impl CodexProcessService {
+    pub fn spawn(
+        binary: impl AsRef<OsStr>,
+        client_version: &str,
+    ) -> Result<Self, CodexSubscriptionError> {
+        let transport = StdioCodexTransport::spawn(binary)?;
+        let mut client = CodexSubscriptionClient::new(transport);
+        client.initialize(client_version)?;
+        Ok(Self {
+            client: StdMutex::new(client),
+        })
+    }
+
+    fn with_client<R>(
+        &self,
+        operation: impl FnOnce(
+            &mut CodexSubscriptionClient<StdioCodexTransport>,
+        ) -> Result<R, CodexSubscriptionError>,
+    ) -> Result<R, CodexSubscriptionError> {
+        let mut client = self.client.lock().map_err(|_| {
+            CodexSubscriptionError::Protocol("Codex app-server client lock is poisoned".into())
+        })?;
+        operation(&mut client)
+    }
+}
+
+impl CodexAccountService for CodexProcessService {
+    fn account(&self) -> Result<CodexAccount, CodexSubscriptionError> {
+        self.with_client(CodexSubscriptionClient::account)
+    }
+
+    fn start_browser_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError> {
+        self.with_client(CodexSubscriptionClient::start_browser_login)
+    }
+
+    fn start_device_code_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError> {
+        self.with_client(CodexSubscriptionClient::start_device_code_login)
+    }
+
+    fn rate_limits(&self) -> Result<CodexRateLimits, CodexSubscriptionError> {
+        self.with_client(CodexSubscriptionClient::rate_limits)
+    }
+
+    fn logout(&self) -> Result<(), CodexSubscriptionError> {
+        self.with_client(CodexSubscriptionClient::logout)
+    }
+}
+
+struct UnavailableCodexService {
+    reason: String,
+}
+
+impl UnavailableCodexService {
+    fn new(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+        }
+    }
+
+    fn unavailable<T>(&self) -> Result<T, CodexSubscriptionError> {
+        Err(CodexSubscriptionError::ProviderUnavailable(
+            self.reason.clone(),
+        ))
+    }
+}
+
+impl CodexAccountService for UnavailableCodexService {
+    fn account(&self) -> Result<CodexAccount, CodexSubscriptionError> {
+        self.unavailable()
+    }
+
+    fn start_browser_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError> {
+        self.unavailable()
+    }
+
+    fn start_device_code_login(&self) -> Result<CodexLoginStart, CodexSubscriptionError> {
+        self.unavailable()
+    }
+
+    fn rate_limits(&self) -> Result<CodexRateLimits, CodexSubscriptionError> {
+        self.unavailable()
+    }
+
+    fn logout(&self) -> Result<(), CodexSubscriptionError> {
+        self.unavailable()
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectiveRequest {
@@ -45,6 +153,7 @@ pub struct AppState {
     objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
     events: broadcast::Sender<String>,
     github_webhook_secret: Option<String>,
+    codex: Arc<dyn CodexAccountService>,
 }
 
 impl AppState {
@@ -54,7 +163,19 @@ impl AppState {
             objectives: Arc::new(RwLock::new(BTreeMap::new())),
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
+            codex: Arc::new(UnavailableCodexService::new(
+                "Codex provider is not configured",
+            )),
         }
+    }
+
+    pub fn with_codex_service(
+        github_webhook_secret: Option<String>,
+        codex: Arc<dyn CodexAccountService>,
+    ) -> Self {
+        let mut state = Self::new(github_webhook_secret);
+        state.codex = codex;
+        state
     }
 
     async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveRecord, &'static str> {
@@ -108,6 +229,14 @@ pub fn router(state: AppState) -> Router {
             get(list_objectives).post(create_objective),
         )
         .route("/api/v1/events/stream", get(event_stream))
+        .route("/api/v1/codex/account", get(codex_account))
+        .route("/api/v1/codex/login/browser", post(codex_browser_login))
+        .route(
+            "/api/v1/codex/login/device-code",
+            post(codex_device_code_login),
+        )
+        .route("/api/v1/codex/rate-limits", get(codex_rate_limits))
+        .route("/api/v1/codex/logout", post(codex_logout))
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
         .with_state(state)
@@ -130,6 +259,95 @@ async fn create_objective(
         Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
         Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
     }
+}
+
+async fn codex_account(State(state): State<AppState>) -> Response {
+    match run_codex(state.codex, |service| service.account()).await {
+        Ok(account) => Json(account).into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn codex_browser_login(State(state): State<AppState>) -> Response {
+    match run_codex(state.codex, |service| service.start_browser_login()).await {
+        Ok(CodexLoginStart::Browser { login_id, auth_url }) => Json(json!({
+            "type": "browser",
+            "login_id": login_id,
+            "auth_url": auth_url,
+        }))
+        .into_response(),
+        Ok(CodexLoginStart::DeviceCode { .. }) => codex_error_response(
+            CodexSubscriptionError::Protocol("unexpected device-code login response".into()),
+        ),
+        Err(response) => response,
+    }
+}
+
+async fn codex_device_code_login(State(state): State<AppState>) -> Response {
+    match run_codex(state.codex, |service| service.start_device_code_login()).await {
+        Ok(CodexLoginStart::DeviceCode {
+            login_id,
+            verification_url,
+            user_code,
+        }) => Json(json!({
+            "type": "device_code",
+            "login_id": login_id,
+            "verification_url": verification_url,
+            "user_code": user_code,
+        }))
+        .into_response(),
+        Ok(CodexLoginStart::Browser { .. }) => codex_error_response(
+            CodexSubscriptionError::Protocol("unexpected browser login response".into()),
+        ),
+        Err(response) => response,
+    }
+}
+
+async fn codex_rate_limits(State(state): State<AppState>) -> Response {
+    match run_codex(state.codex, |service| service.rate_limits()).await {
+        Ok(rate_limits) => Json(rate_limits).into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn codex_logout(State(state): State<AppState>) -> Response {
+    match run_codex(state.codex, |service| service.logout()).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn run_codex<R, F>(service: Arc<dyn CodexAccountService>, operation: F) -> Result<R, Response>
+where
+    R: Send + 'static,
+    F: FnOnce(&dyn CodexAccountService) -> Result<R, CodexSubscriptionError> + Send + 'static,
+{
+    match tokio::task::spawn_blocking(move || operation(service.as_ref())).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(codex_error_response(error)),
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "codex_provider_task_failed"})),
+        )
+            .into_response()),
+    }
+}
+
+fn codex_error_response(error: CodexSubscriptionError) -> Response {
+    let (status, code) = match error {
+        CodexSubscriptionError::ProviderUnavailable(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "codex_provider_unavailable",
+        ),
+        CodexSubscriptionError::NotInitialized => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "codex_provider_not_initialized",
+        ),
+        CodexSubscriptionError::Protocol(_) => {
+            (StatusCode::BAD_GATEWAY, "codex_provider_protocol_error")
+        }
+    };
+    (status, Json(json!({"error": code}))).into_response()
 }
 
 async fn event_stream(
