@@ -80,7 +80,10 @@ fn git_mutate_requires_kernel_git_write_authority() {
     action.capabilities = vec![Capability::Git, Capability::GitWrite];
     action.payload = json!({ "operation": "prepare_commit", "message": "x", "commit": true });
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied("git:write")));
+    assert!(matches!(
+        err,
+        ExecutionError::GitCapabilityDenied("git:write")
+    ));
 }
 
 #[test]
@@ -161,7 +164,10 @@ fn requested_git_write_does_not_authorize_checkpoint() {
     action.capabilities = vec![Capability::Git, Capability::GitWrite];
     action.payload = json!({ "operation": "checkpoint", "message": "wip" });
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied("git:write")));
+    assert!(matches!(
+        err,
+        ExecutionError::GitCapabilityDenied("git:write")
+    ));
     assert!(dir.path().join("wip.txt").exists());
 }
 
