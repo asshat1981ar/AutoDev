@@ -22,6 +22,13 @@ pub trait CodexRpcTransport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexServerInfo {
+    pub user_agent: String,
+    pub platform_family: String,
+    pub platform_os: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CodexLoginStart {
     Browser {
@@ -69,6 +76,38 @@ impl<T: CodexRpcTransport> CodexSubscriptionClient<T> {
         &self.transport
     }
 
+    pub fn initialize(
+        &mut self,
+        version: &str,
+    ) -> Result<CodexServerInfo, CodexSubscriptionError> {
+        if self.initialized {
+            return Err(CodexSubscriptionError::Protocol(
+                "client is already initialized".into(),
+            ));
+        }
+        let version = version.trim();
+        if version.is_empty() {
+            return Err(CodexSubscriptionError::Protocol(
+                "client version is required".into(),
+            ));
+        }
+
+        let value = self.transport.request(
+            "initialize",
+            json!({
+                "clientInfo": {
+                    "name": "autodev",
+                    "title": "AutoDev",
+                    "version": version,
+                }
+            }),
+        )?;
+        let server = parse_server_info(&value)?;
+        self.transport.notify("initialized", json!({}))?;
+        self.initialized = true;
+        Ok(server)
+    }
+
     pub fn start_browser_login(&mut self) -> Result<CodexLoginStart, CodexSubscriptionError> {
         self.ensure_initialized()?;
         let value = self
@@ -107,6 +146,14 @@ fn required_string(value: &Value, key: &str) -> Result<String, CodexSubscription
         .filter(|value| !value.trim().is_empty())
         .map(ToOwned::to_owned)
         .ok_or_else(|| CodexSubscriptionError::Protocol(format!("missing {key}")))
+}
+
+fn parse_server_info(value: &Value) -> Result<CodexServerInfo, CodexSubscriptionError> {
+    Ok(CodexServerInfo {
+        user_agent: required_string(value, "userAgent")?,
+        platform_family: required_string(value, "platformFamily")?,
+        platform_os: required_string(value, "platformOs")?,
+    })
 }
 
 fn parse_browser_login(value: Value) -> Result<CodexLoginStart, CodexSubscriptionError> {
