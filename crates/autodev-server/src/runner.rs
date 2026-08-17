@@ -5,8 +5,8 @@ use std::{
 };
 
 use forge_core::{
-    ActionProposal, AgentAction, ContextRefs, Decomposer, EvidenceBinding, ExecutionEnvelope,
-    Lifecycle, Planner, PolicyBinding, RiskLevel, TaskNode, TaskStatus,
+    ActionProposal, AgentAction, ContextRefs, Decomposer, EnvelopeError, EvidenceBinding,
+    ExecutionEnvelope, Lifecycle, Planner, PolicyBinding, RiskLevel, TaskNode, TaskStatus,
 };
 use tokio::sync::broadcast;
 
@@ -110,6 +110,7 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             .get_mut(&task.id)
             .ok_or_else(|| RunnerError::TaskNotFound(task.id.clone()))?;
         persisted_task.planned_action = Some(serialized);
+        execution_envelope_from_task(persisted_task, &snapshot.view.id)?.validate()?;
         self.store.put(snapshot)?;
         Ok(())
     }
@@ -147,6 +148,7 @@ fn execution_envelope_from_task(
 pub enum RunnerError {
     Store(StoreError),
     Serialization(serde_json::Error),
+    Envelope(EnvelopeError),
     ObjectiveNotFound(String),
     TaskNotFound(String),
     MissingPlannedAction(String),
@@ -160,6 +162,7 @@ impl Display for RunnerError {
             Self::Serialization(error) => {
                 write!(formatter, "objective runner serialization error: {error}")
             }
+            Self::Envelope(error) => write!(formatter, "objective runner envelope error: {error}"),
             Self::ObjectiveNotFound(id) => write!(formatter, "objective '{id}' not found"),
             Self::TaskNotFound(id) => write!(formatter, "task '{id}' not found"),
             Self::MissingPlannedAction(id) => {
@@ -175,6 +178,7 @@ impl Error for RunnerError {
         match self {
             Self::Store(error) => Some(error),
             Self::Serialization(error) => Some(error),
+            Self::Envelope(error) => Some(error),
             Self::ObjectiveNotFound(_)
             | Self::TaskNotFound(_)
             | Self::MissingPlannedAction(_)
@@ -192,6 +196,12 @@ impl From<StoreError> for RunnerError {
 impl From<serde_json::Error> for RunnerError {
     fn from(error: serde_json::Error) -> Self {
         Self::Serialization(error)
+    }
+}
+
+impl From<EnvelopeError> for RunnerError {
+    fn from(error: EnvelopeError) -> Self {
+        Self::Envelope(error)
     }
 }
 
