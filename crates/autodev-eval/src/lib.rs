@@ -5,8 +5,10 @@
 
 mod error;
 mod fixture;
+mod verifier;
 mod workspace;
 
 pub use error::RunnerError;
 pub use fixture::{load_corpus, load_fixture, EvalFixture, FixtureError, VerifierOverlay};
+pub use verifier::{apply_verifier_overlays, run_verifier, StepExecution};
 pub use workspace::{changed_paths, materialize_checkout, IsolatedCheckout};
