@@ -7,9 +7,7 @@
 
 use serde_json::{json, Value};
 
-use crate::{
-    AgentAction, CodexEventTransport, CodexSubscriptionClient, CodexSubscriptionError,
-};
+use crate::{AgentAction, CodexEventTransport, CodexSubscriptionClient, CodexSubscriptionError};
 
 const PROPOSAL_ONLY_INSTRUCTIONS: &str = "You are AutoDev's proposal-only Codex component. Return exactly one AutoDev AgentAction JSON object matching the supplied output schema. Do not execute commands, mutate files, call tools, request approvals, or claim authorization. ForgeCore alone authorizes and executes proposed actions.";
 
@@ -130,9 +128,7 @@ impl<T: CodexEventTransport> CodexProposalClient<T> {
                 .get("method")
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
-                    CodexSubscriptionError::Protocol(
-                        "Codex notification is missing method".into(),
-                    )
+                    CodexSubscriptionError::Protocol("Codex notification is missing method".into())
                 })?;
             let params = notification.get("params").ok_or_else(|| {
                 CodexSubscriptionError::Protocol("Codex notification is missing params".into())
