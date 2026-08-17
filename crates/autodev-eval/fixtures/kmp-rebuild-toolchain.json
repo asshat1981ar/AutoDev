@@ -1,0 +1,40 @@
+{
+  "task": {
+    "id": "kmp-rebuild-toolchain",
+    "source": {
+      "kind": "commit",
+      "repository": "asshat1981ar/AutoDev",
+      "source_ref": "85f0c2ba2c58e5e4183a210d3ebf6c4509b451dc",
+      "source_url": "https://github.com/asshat1981ar/AutoDev/commit/85f0c2ba2c58e5e4183a210d3ebf6c4509b451dc"
+    },
+    "base_sha": "4227749db45624e539ab159c09bc804a5d815fa8",
+    "specification": "Replace the non-runnable Kotlin Multiplatform scaffold with a checked-in Gradle wrapper, Kotlin 2.x and JDK 17 compatible build, real module implementations, tests, and mandatory ktlint verification.",
+    "acceptance_criteria": [
+      "The checked-in Gradle wrapper is runnable",
+      "All Kotlin Multiplatform modules assemble and test",
+      "ktlintCheck passes"
+    ],
+    "verifier": {
+      "steps": [
+        {
+          "id": "kmp-build-test-lint",
+          "program": "./gradlew",
+          "args": ["clean", "assemble", "test", "ktlintCheck", "--no-daemon"],
+          "working_directory": "kotlin",
+          "timeout_seconds": 1200,
+          "required": true
+        }
+      ],
+      "asset_fingerprints": []
+    },
+    "protected": {
+      "paths": [".autodev-eval/"]
+    },
+    "expected_change_scope": [
+      "kotlin/",
+      ".github/workflows/",
+      "README.md"
+    ]
+  },
+  "verifier_overlay": []
+}
