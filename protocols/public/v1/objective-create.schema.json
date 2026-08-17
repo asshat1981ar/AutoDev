@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/protocols/public/v1/objective-create.schema.json",
+  "title": "AutoDev Objective Create v1",
+  "description": "Untrusted client intent for creating an AutoDev objective.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repository", "description"],
+  "properties": {
+    "repository": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "branch": { "type": ["string", "null"], "minLength": 1 }
+  }
+}
