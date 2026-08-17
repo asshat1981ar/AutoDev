@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use autodev_server::{
     ActionProposer, FileObjectiveStore, InMemoryObjectiveStore, ObjectiveEvent, ObjectiveRunner,
-    ObjectiveSnapshot, ObjectiveStatus, ObjectiveStore, ObjectiveView, RunnerError, RunnerExecution,
+    ObjectiveSnapshot, ObjectiveStatus, ObjectiveStore, ObjectiveView, RunnerError,
+    RunnerExecution,
 };
 use forge_core::{
     mock_verifier, ActionProposal, ActionType, AgentAction, AgentRole, Capability, PolicyDecision,
-    RiskLevel, TaskGraph, VerificationFabric, VerificationKind, VerifiedOrchestratorState, Workspace,
+    RiskLevel, TaskGraph, VerificationFabric, VerificationKind, VerifiedOrchestratorState,
+    Workspace,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -23,7 +25,11 @@ impl ActionProposer for FixedProposer {
     }
 }
 
-fn proposal(action_type: ActionType, risk: RiskLevel, payload: serde_json::Value) -> ActionProposal {
+fn proposal(
+    action_type: ActionType,
+    risk: RiskLevel,
+    payload: serde_json::Value,
+) -> ActionProposal {
     ActionProposal {
         action: AgentAction {
             id: "action-1".into(),
@@ -81,13 +87,19 @@ fn execution(workspace: Workspace, verification_passes: bool) -> RunnerExecution
     )
 }
 
-fn advance_to_proposed<S: ObjectiveStore>(
-    runner: &ObjectiveRunner<S, FixedProposer>,
-    id: &str,
-) {
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
+fn advance_to_proposed<S: ObjectiveStore>(runner: &ObjectiveRunner<S, FixedProposer>, id: &str) {
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
 }
 
 #[test]
@@ -162,7 +174,12 @@ fn medium_risk_write_blocks_without_trusted_approval_and_can_resume_internally()
     let blocked = runner.advance_once("objective-1").unwrap();
     assert_eq!(blocked.status, ObjectiveStatus::Blocked);
     assert!(!workspace_dir.path().join("marker.txt").exists());
-    let envelope = &store.get("objective-1").unwrap().unwrap().orchestrator.envelopes["t-root"];
+    let envelope = &store
+        .get("objective-1")
+        .unwrap()
+        .unwrap()
+        .orchestrator
+        .envelopes["t-root"];
     assert_eq!(envelope.policy.approval_ref, None);
     assert_eq!(envelope.action.capabilities, vec![Capability::WriteFile]);
 
@@ -199,7 +216,12 @@ fn verification_rejection_replans_then_exhausts_without_resetting_envelope() {
     let first = runner.advance_once("objective-1").unwrap();
     assert_eq!(first.status, ObjectiveStatus::Replanned);
     assert_eq!(
-        store.get("objective-1").unwrap().unwrap().orchestrator.envelopes["t-root"]
+        store
+            .get("objective-1")
+            .unwrap()
+            .unwrap()
+            .orchestrator
+            .envelopes["t-root"]
             .lifecycle
             .attempt,
         2
@@ -246,7 +268,12 @@ fn file_backed_restart_resumes_persisted_attempt_budget() {
         ObjectiveStatus::Failed
     );
     assert_eq!(
-        reopened.get("objective-1").unwrap().unwrap().orchestrator.envelopes["t-root"]
+        reopened
+            .get("objective-1")
+            .unwrap()
+            .unwrap()
+            .orchestrator
+            .envelopes["t-root"]
             .evidence
             .produced
             .len(),
