@@ -88,7 +88,10 @@ fn proposal_denies_capability_that_profile_tool_policy_does_not_allow() {
         .to_string(),
     );
     let profile = profile(AgentRole::Architect);
-    assert!(profile.capabilities.iter().any(|capability| capability.as_str() == "write_file"));
+    assert!(profile
+        .capabilities
+        .iter()
+        .any(|capability| capability.as_str() == "write_file"));
     assert!(!profile.policy.tools.iter().any(|tool| tool == "write_file"));
 
     let proposal = propose_action("architect-1", &profile, &provider, &task()).expect("proposal");
