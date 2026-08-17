@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use autodev_server::{
-    ActionProposer, FileObjectiveStore, InMemoryObjectiveStore, ObjectiveEvent, ObjectiveRunner,
-    ObjectiveSnapshot, ObjectiveStatus, ObjectiveStore, ObjectiveView, RunnerError,
-    RunnerExecution,
+    ActionProposer, FileObjectiveStore, InMemoryObjectiveStore, ObjectiveApprovalGrant,
+    ObjectiveEvent, ObjectiveRunner, ObjectiveSnapshot, ObjectiveStatus, ObjectiveStore,
+    ObjectiveView, RunnerError, RunnerExecution,
 };
 use forge_core::{
     mock_verifier, ActionProposal, ActionType, AgentAction, AgentRole, Capability, PolicyDecision,
@@ -67,6 +67,7 @@ fn snapshot(id: &str) -> ObjectiveSnapshot {
         },
         graph: TaskGraph::single("objective", "exercise verified objective path"),
         orchestrator: VerifiedOrchestratorState::default(),
+        evidence: vec![],
     }
 }
 
@@ -152,6 +153,7 @@ fn low_risk_read_executes_through_verified_orchestrator_with_trusted_capabilitie
     assert_eq!(envelope.policy.capabilities, vec![Capability::ReadFile]);
     assert_eq!(envelope.policy.approval_ref, None);
     assert_eq!(envelope.action.payload["approved"], true);
+    assert_eq!(restored.evidence.len(), 1);
 }
 
 #[test]
@@ -183,9 +185,9 @@ fn medium_risk_write_blocks_without_trusted_approval_and_can_resume_internally()
     assert_eq!(envelope.policy.approval_ref, None);
     assert_eq!(envelope.action.capabilities, vec![Capability::WriteFile]);
 
-    let resumed = runner
-        .resume_approved("objective-1", "trusted-approval-1")
+    let grant = ObjectiveApprovalGrant::new("objective-1", "t-root", "trusted-approval-1")
         .unwrap();
+    let resumed = runner.resume_approved(&grant).unwrap();
     assert_eq!(resumed.status, ObjectiveStatus::Running);
     let completed = runner.advance_once("objective-1").unwrap();
     assert_eq!(completed.status, ObjectiveStatus::Completed);
@@ -311,6 +313,7 @@ fn verification_rejection_replans_then_exhausts_without_resetting_envelope() {
     let envelope = &persisted.orchestrator.envelopes["t-root"];
     assert_eq!(envelope.lifecycle.attempt, 3);
     assert_eq!(envelope.evidence.produced.len(), 3);
+    assert_eq!(persisted.evidence.len(), 3);
 }
 
 #[test]
@@ -364,4 +367,5 @@ fn file_backed_restart_resumes_persisted_attempt_budget() {
     let envelope = &persisted.orchestrator.envelopes["t-root"];
     assert_eq!(envelope.lifecycle.attempt, 3);
     assert_eq!(envelope.evidence.produced.len(), 3);
+    assert_eq!(persisted.evidence.len(), 3);
 }
