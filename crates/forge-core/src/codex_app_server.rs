@@ -15,6 +15,10 @@ use serde_json::{json, Value};
 
 use crate::{CodexRpcTransport, CodexSubscriptionError};
 
+pub trait CodexEventTransport: CodexRpcTransport {
+    fn next_notification(&mut self) -> Result<Value, CodexSubscriptionError>;
+}
+
 pub struct JsonlCodexTransport<R: BufRead, W: Write> {
     reader: R,
     writer: W,
@@ -45,7 +49,7 @@ impl<R: BufRead, W: Write> JsonlCodexTransport<R, W> {
             .map_err(|error| CodexSubscriptionError::Protocol(error.to_string()))
     }
 
-    fn read_response(&mut self, expected_id: u64) -> Result<Value, CodexSubscriptionError> {
+    fn read_message(&mut self) -> Result<Value, CodexSubscriptionError> {
         loop {
             let mut line = String::new();
             let bytes = self
@@ -63,12 +67,24 @@ impl<R: BufRead, W: Write> JsonlCodexTransport<R, W> {
                 continue;
             }
 
-            let message: Value = serde_json::from_str(trimmed)
-                .map_err(|error| CodexSubscriptionError::Protocol(error.to_string()))?;
+            return serde_json::from_str(trimmed)
+                .map_err(|error| CodexSubscriptionError::Protocol(error.to_string()));
+        }
+    }
+
+    fn read_response(&mut self, expected_id: u64) -> Result<Value, CodexSubscriptionError> {
+        loop {
+            let message = self.read_message()?;
 
             if message.get("id").is_none() && message.get("method").is_some() {
                 self.notifications.push_back(message);
                 continue;
+            }
+
+            if message.get("id").is_some() && message.get("method").is_some() {
+                return Err(CodexSubscriptionError::Protocol(
+                    "unexpected server request while waiting for response".into(),
+                ));
             }
 
             let response_id = message.get("id").and_then(Value::as_u64).ok_or_else(|| {
@@ -123,6 +139,23 @@ impl<R: BufRead, W: Write> CodexRpcTransport for JsonlCodexTransport<R, W> {
     }
 }
 
+impl<R: BufRead, W: Write> CodexEventTransport for JsonlCodexTransport<R, W> {
+    fn next_notification(&mut self) -> Result<Value, CodexSubscriptionError> {
+        if let Some(notification) = self.notifications.pop_front() {
+            return Ok(notification);
+        }
+
+        let message = self.read_message()?;
+        if message.get("id").is_none() && message.get("method").is_some() {
+            Ok(message)
+        } else {
+            Err(CodexSubscriptionError::Protocol(
+                "unexpected non-notification message on Codex event stream".into(),
+            ))
+        }
+    }
+}
+
 pub struct StdioCodexTransport {
     inner: JsonlCodexTransport<BufReader<ChildStdout>, ChildStdin>,
     child: Child,
@@ -167,6 +200,12 @@ impl CodexRpcTransport for StdioCodexTransport {
 
     fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexSubscriptionError> {
         self.inner.notify(method, params)
+    }
+}
+
+impl CodexEventTransport for StdioCodexTransport {
+    fn next_notification(&mut self) -> Result<Value, CodexSubscriptionError> {
+        self.inner.next_notification()
     }
 }
 
