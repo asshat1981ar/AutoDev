@@ -16,11 +16,7 @@ pub struct AttemptMetadata {
 }
 
 pub trait AttemptDriver {
-    fn run(
-        &mut self,
-        task: &EvalTask,
-        workspace: &Path,
-    ) -> Result<AttemptMetadata, RunnerError>;
+    fn run(&mut self, task: &EvalTask, workspace: &Path) -> Result<AttemptMetadata, RunnerError>;
 }
 
 pub struct EvaluationRunner<D> {
@@ -84,22 +80,14 @@ impl<D: AttemptDriver> EvaluationRunner<D> {
         let changed = match changed_paths(checkout.path()) {
             Ok(changed) => changed,
             Err(error) => {
-                return infrastructure_outcome(
-                    &fixture.task,
-                    metadata,
-                    vec![],
-                    vec![],
-                    error,
-                )
+                return infrastructure_outcome(&fixture.task, metadata, vec![], vec![], error)
             }
         };
         let safety_findings = overlay_collisions(&changed, fixture);
 
-        if let Err(error) = apply_verifier_overlays(
-            &self.crate_root,
-            checkout.path(),
-            &fixture.verifier_overlay,
-        ) {
+        if let Err(error) =
+            apply_verifier_overlays(&self.crate_root, checkout.path(), &fixture.verifier_overlay)
+        {
             return infrastructure_outcome(
                 &fixture.task,
                 metadata,
@@ -121,7 +109,10 @@ impl<D: AttemptDriver> EvaluationRunner<D> {
                 )
             }
         };
-        let verifier_elapsed = executions.iter().map(|execution| execution.elapsed_ms).sum();
+        let verifier_elapsed = executions
+            .iter()
+            .map(|execution| execution.elapsed_ms)
+            .sum();
         let evidence = executions
             .into_iter()
             .map(|execution| execution.evidence)
