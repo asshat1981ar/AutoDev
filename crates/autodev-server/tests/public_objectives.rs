@@ -37,7 +37,9 @@ async fn create_objective_returns_public_summary_without_task_graph() {
     assert_eq!(value["description"], "Implement health endpoint");
     assert_eq!(value["status"], "queued");
     assert!(value["id"].as_str().is_some_and(|id| !id.is_empty()));
-    assert!(value["branch"].as_str().is_some_and(|branch| !branch.is_empty()));
+    assert!(value["branch"]
+        .as_str()
+        .is_some_and(|branch| !branch.is_empty()));
     assert!(value.get("graph").is_none());
     assert!(value.get("capabilities").is_none());
     assert!(value.get("approval_ref").is_none());
