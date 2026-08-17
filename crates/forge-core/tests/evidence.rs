@@ -1,11 +1,14 @@
 //! End-to-end evidence/provenance tests.
 //!
-//! These prove that an action executed through the real pipeline can be
-//! reconstructed from its evidence, and that the evidence fingerprint verifies.
+//! These prove that an action can be reconstructed from its evidence and that
+//! the evidence fingerprint verifies. Trusted execution behavior is exercised
+//! separately by the execution-kernel tests; provenance tests do not mint
+//! execution authority merely to obtain a fixture.
 
+use chrono::Utc;
 use forge_core::{
     record_from, ActionType, AgentAction, Capability, EvidenceStore, ExecutableAction,
-    PolicyOutcome, RiskLevel, Workspace,
+    ExecutionResult, ExecutionStatus, PolicyOutcome, RiskLevel, Workspace,
 };
 use serde_json::json;
 use std::process::Command;
@@ -44,12 +47,27 @@ fn init_repo() -> tempfile::TempDir {
     dir
 }
 
+fn successful_read_result(action_id: &str, path: &str, content: &str) -> ExecutionResult {
+    ExecutionResult {
+        action_id: action_id.to_string(),
+        status: ExecutionStatus::Succeeded,
+        started_at: Utc::now(),
+        completed_at: Utc::now(),
+        exit_code: None,
+        stdout: content.to_string(),
+        stderr: String::new(),
+        artifacts: vec![path.to_string()],
+        verification: Some(json!({
+            "path": path,
+            "sha256": "fixture-sha256",
+            "size": content.len(),
+        })),
+        error: None,
+    }
+}
+
 #[test]
 fn read_action_is_reconstructed_from_evidence() {
-    let dir = tempfile::tempdir().unwrap();
-    let ws = Workspace::new(dir.path(), 4096).unwrap();
-    std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
-
     let action = AgentAction {
         id: "a-read-1".to_string(),
         task_id: "t1".to_string(),
@@ -62,7 +80,7 @@ fn read_action_is_reconstructed_from_evidence() {
         expected: json!({}),
     };
 
-    let result = forge_core::execute(&ExecutableAction::new(action.clone(), ws)).unwrap();
+    let result = successful_read_result(&action.id, "a.txt", "hello");
 
     let mut store = EvidenceStore::new();
     let evidence = store.insert(record_from(
@@ -80,7 +98,7 @@ fn read_action_is_reconstructed_from_evidence() {
     let record = store.by_action_id("a-read-1").unwrap();
     let reconstructed: AgentAction = serde_json::from_value(record.record.action.clone()).unwrap();
     assert_eq!(reconstructed, action);
-    assert_eq!(record.record.status, forge_core::ExecutionStatus::Succeeded);
+    assert_eq!(record.record.status, ExecutionStatus::Succeeded);
     assert_eq!(record.record.task_id, "t1");
     assert_eq!(record.record.agent_id, "g1");
 }
@@ -123,10 +141,6 @@ fn git_action_is_reconstructed_from_evidence() {
 
 #[test]
 fn two_actions_are_traceable_by_chain() {
-    let dir = tempfile::tempdir().unwrap();
-    let ws = Workspace::new(dir.path(), 4096).unwrap();
-    std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
-
     let mut store = EvidenceStore::new();
     for i in 0..2 {
         let action = AgentAction {
@@ -140,8 +154,7 @@ fn two_actions_are_traceable_by_chain() {
             payload: json!({ "path": "a.txt" }),
             expected: json!({}),
         };
-        let result =
-            forge_core::execute(&ExecutableAction::new(action.clone(), ws.clone())).unwrap();
+        let result = successful_read_result(&action.id, "a.txt", "hello");
         store.insert(record_from(
             &format!("rec-{i}"),
             &action,
