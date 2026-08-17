@@ -17,7 +17,7 @@ pub trait ActionProposer: Send + Sync {
 
 pub struct ObjectiveRunner<S: ObjectiveStore, P: ActionProposer> {
     store: Arc<S>,
-    _proposer: Arc<P>,
+    proposer: Arc<P>,
     events: broadcast::Sender<ObjectiveEvent>,
 }
 
@@ -25,7 +25,7 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
     pub fn new(store: Arc<S>, proposer: Arc<P>, events: broadcast::Sender<ObjectiveEvent>) -> Self {
         Self {
             store,
-            _proposer: proposer,
+            proposer,
             events,
         }
     }
@@ -40,6 +40,12 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             self.advance_queued_to_planning(&mut snapshot)?;
         } else if snapshot.graph.root().status == TaskStatus::Planning {
             self.advance_planning_to_ready(&mut snapshot)?;
+        } else if snapshot
+            .graph
+            .next_ready()
+            .is_some_and(|task| task.planned_action.is_none())
+        {
+            self.persist_ready_action_proposal(&mut snapshot)?;
         }
 
         Ok(snapshot.view)
@@ -84,19 +90,47 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
         ));
         Ok(())
     }
+
+    fn persist_ready_action_proposal(
+        &self,
+        snapshot: &mut ObjectiveSnapshot,
+    ) -> Result<(), RunnerError> {
+        let task = snapshot
+            .graph
+            .next_ready()
+            .cloned()
+            .ok_or(RunnerError::NoReadyTask)?;
+        let proposal = self.proposer.propose(&task)?;
+        let serialized = serde_json::to_value(&proposal.action)?;
+        let persisted_task = snapshot
+            .graph
+            .get_mut(&task.id)
+            .ok_or_else(|| RunnerError::TaskNotFound(task.id.clone()))?;
+        persisted_task.planned_action = Some(serialized);
+        self.store.put(snapshot)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 pub enum RunnerError {
     Store(StoreError),
+    Serialization(serde_json::Error),
     ObjectiveNotFound(String),
+    TaskNotFound(String),
+    NoReadyTask,
 }
 
 impl Display for RunnerError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Store(error) => write!(formatter, "objective runner store error: {error}"),
+            Self::Serialization(error) => {
+                write!(formatter, "objective runner serialization error: {error}")
+            }
             Self::ObjectiveNotFound(id) => write!(formatter, "objective '{id}' not found"),
+            Self::TaskNotFound(id) => write!(formatter, "task '{id}' not found"),
+            Self::NoReadyTask => write!(formatter, "objective has no ready task"),
         }
     }
 }
@@ -105,7 +139,8 @@ impl Error for RunnerError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Store(error) => Some(error),
-            Self::ObjectiveNotFound(_) => None,
+            Self::Serialization(error) => Some(error),
+            Self::ObjectiveNotFound(_) | Self::TaskNotFound(_) | Self::NoReadyTask => None,
         }
     }
 }
@@ -113,5 +148,11 @@ impl Error for RunnerError {
 impl From<StoreError> for RunnerError {
     fn from(error: StoreError) -> Self {
         Self::Store(error)
+    }
+}
+
+impl From<serde_json::Error> for RunnerError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Serialization(error)
     }
 }
