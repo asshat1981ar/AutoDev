@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:autodev_studio/protocol/models.dart';
 import 'package:autodev_studio/protocol/ports.dart';
 import 'package:autodev_studio/state/studio_controller.dart';
@@ -43,28 +41,28 @@ final class FakeRepository implements ObjectiveRepository {
 }
 
 final class FakeEventSource implements ObjectiveEventSource {
-  final StreamController<ObjectiveEvent> events = StreamController<ObjectiveEvent>.broadcast();
+  FakeEventSource(this.values);
+
+  final List<ObjectiveEvent> values;
 
   @override
-  Stream<ObjectiveEvent> connect(Uri endpoint) => events.stream;
+  Stream<ObjectiveEvent> connect(Uri endpoint) => Stream<ObjectiveEvent>.fromIterable(values);
 
   @override
-  Future<void> close() async {
-    await events.close();
-  }
+  Future<void> close() async {}
 }
 
 Future<StudioController> controllerWithData() async {
-  final source = FakeEventSource();
+  final source = FakeEventSource(<ObjectiveEvent>[
+    statusEvent('objective_blocked', 'blocked', 'trusted approval required'),
+    statusEvent('objective_failed', 'failed', 'verification failed'),
+  ]);
   final controller = StudioController(
     repository: FakeRepository(),
     eventSource: source,
   );
   await controller.refreshObjectives();
   await controller.connect(Uri.parse('http://127.0.0.1:8080/events'));
-  source.events
-    ..add(statusEvent('objective_blocked', 'blocked', 'trusted approval required'))
-    ..add(statusEvent('objective_failed', 'failed', 'verification failed'));
   await Future<void>.delayed(Duration.zero);
   return controller;
 }
