@@ -46,11 +46,14 @@ fun interface CodexUrlLauncher {
 class CodexBrowserAction(
     private val launcher: CodexUrlLauncher,
 ) {
-    fun open(prompt: CodexLoginPrompt?): Boolean {
-        val browserPrompt = prompt as? CodexLoginPrompt.Browser ?: return false
-        val uri = runCatching { URI(browserPrompt.authUrl) }.getOrNull() ?: return false
+    fun open(prompt: CodexLoginPrompt?): Boolean =
+        openUrl((prompt as? CodexLoginPrompt.Browser)?.authUrl)
+
+    fun openUrl(url: String?): Boolean {
+        val candidate = url ?: return false
+        val uri = runCatching { URI(candidate) }.getOrNull() ?: return false
         if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank()) return false
-        launcher.open(browserPrompt.authUrl)
+        launcher.open(candidate)
         return true
     }
 }
