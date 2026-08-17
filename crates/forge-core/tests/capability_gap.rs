@@ -27,9 +27,10 @@ fn procedure_gaps_become_disabled_skill_candidates() {
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].kind, CandidateKind::Skill);
-    assert!(candidates[0].artifacts.iter().any(|artifact| {
-        artifact.path == ".cline/candidates/skills/gap-review-loop/SKILL.md"
-    }));
+    assert!(candidates[0]
+        .artifacts
+        .iter()
+        .any(|artifact| { artifact.path == ".cline/candidates/skills/gap-review-loop/SKILL.md" }));
     assert!(candidates[0]
         .artifacts
         .iter()
