@@ -466,9 +466,16 @@ fn transition_task(
         return;
     };
     snapshot.graph.record(task_id, from, next, phase, note);
+    let updated_at = snapshot
+        .graph
+        .log
+        .last()
+        .map(|transition| transition.at.to_owned());
     if let Some(task) = snapshot.graph.get_mut(task_id) {
         task.status = next;
-        task.updated_at = chrono::Utc::now();
+        if let Some(updated_at) = updated_at {
+            task.updated_at = updated_at;
+        }
     }
 }
 
