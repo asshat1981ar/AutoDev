@@ -10,6 +10,8 @@ services:
     environment:
       AUTODEV_PORT: "8080"
       GITHUB_WEBHOOK_SECRET: "${GITHUB_WEBHOOK_SECRET:-}"
+      AUTODEV_MCP_BEARER_TOKEN: "${AUTODEV_MCP_BEARER_TOKEN:-}"
+      AUTODEV_MCP_ALLOWED_HOSTS: "${AUTODEV_MCP_ALLOWED_HOSTS:-}"
     read_only: true
     tmpfs:
       - /tmp
