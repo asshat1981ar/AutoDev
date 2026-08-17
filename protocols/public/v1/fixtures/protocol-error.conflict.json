@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "code": "conflict",
+  "message": "objective state changed",
+  "retryable": true,
+  "correlation_id": "obj-0001"
+}
