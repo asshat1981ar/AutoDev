@@ -196,6 +196,70 @@ fn medium_risk_write_blocks_without_trusted_approval_and_can_resume_internally()
 }
 
 #[test]
+fn medium_risk_git_checkpoint_binds_git_write_capability_before_approval() {
+    let workspace_dir = tempdir().unwrap();
+    let workspace = Workspace::new(workspace_dir.path(), 1024 * 1024).unwrap();
+    let store = Arc::new(InMemoryObjectiveStore::default());
+    store.put(&snapshot("objective-1")).unwrap();
+    let proposer = Arc::new(FixedProposer {
+        proposal: proposal(
+            ActionType::Git,
+            RiskLevel::Medium,
+            json!({"operation": "checkpoint", "message": "checkpoint", "approved": true}),
+        ),
+    });
+    let runner = ObjectiveRunner::new(store.clone(), proposer, events())
+        .with_execution(execution(workspace, true));
+
+    advance_to_proposed(&runner, "objective-1");
+    let blocked = runner.advance_once("objective-1").unwrap();
+    assert_eq!(blocked.status, ObjectiveStatus::Blocked);
+    let persisted = store.get("objective-1").unwrap().unwrap();
+    let envelope = &persisted.orchestrator.envelopes["t-root"];
+    assert_eq!(
+        envelope.action.capabilities,
+        vec![Capability::Git, Capability::GitWrite]
+    );
+    assert_eq!(
+        envelope.policy.capabilities,
+        vec![Capability::Git, Capability::GitWrite]
+    );
+    assert_eq!(envelope.policy.approval_ref, None);
+}
+
+#[test]
+fn destructive_git_operation_is_denied_without_trusted_destructive_capability() {
+    let workspace_dir = tempdir().unwrap();
+    let workspace = Workspace::new(workspace_dir.path(), 1024 * 1024).unwrap();
+    let store = Arc::new(InMemoryObjectiveStore::default());
+    store.put(&snapshot("objective-1")).unwrap();
+    let proposer = Arc::new(FixedProposer {
+        proposal: proposal(
+            ActionType::Git,
+            RiskLevel::Medium,
+            json!({"operation": "rollback", "checkpoint": "deadbeef"}),
+        ),
+    });
+    let runner = ObjectiveRunner::new(store.clone(), proposer, events())
+        .with_execution(execution(workspace, true));
+
+    advance_to_proposed(&runner, "objective-1");
+    let denied = runner.advance_once("objective-1").unwrap();
+    assert_eq!(denied.status, ObjectiveStatus::Failed);
+    assert!(denied
+        .blocked_reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("GitDestructive")));
+    assert!(store
+        .get("objective-1")
+        .unwrap()
+        .unwrap()
+        .orchestrator
+        .envelopes
+        .is_empty());
+}
+
+#[test]
 fn verification_rejection_replans_then_exhausts_without_resetting_envelope() {
     let workspace_dir = tempdir().unwrap();
     std::fs::write(workspace_dir.path().join("README.md"), "hello").unwrap();
