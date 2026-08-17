@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use forge_core::{ActionType, AgentAction, Capability, RiskLevel};
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+};
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
-};
-use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -143,9 +143,7 @@ impl ServerHandler for AutoDevMcp {
     }
 }
 
-pub(crate) fn service(
-    state: AppState,
-) -> StreamableHttpService<AutoDevMcp, LocalSessionManager> {
+pub(crate) fn service(state: AppState) -> StreamableHttpService<AutoDevMcp, LocalSessionManager> {
     let hosts = configured_hosts();
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
@@ -171,7 +169,12 @@ fn configured_hosts() -> Vec<String> {
         })
         .filter(|hosts| !hosts.is_empty());
 
-    configured.unwrap_or_else(|| DEFAULT_MCP_HOSTS.iter().map(|host| host.to_string()).collect())
+    configured.unwrap_or_else(|| {
+        DEFAULT_MCP_HOSTS
+            .iter()
+            .map(|host| host.to_string())
+            .collect()
+    })
 }
 
 fn validate_write_proposal(input: &WriteProposalInput) -> Result<(), McpError> {
