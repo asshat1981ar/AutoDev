@@ -1,0 +1,28 @@
+name: Go Edge Prototype
+
+on:
+  pull_request:
+    branches: [feat/public-protocol-v1-reconciled]
+    paths:
+      - 'go/autodev-edge/**'
+      - '.github/workflows/go-edge-prototype.yml'
+      - 'protocols/public/v1/**'
+  workflow_dispatch: {}
+
+jobs:
+  go-edge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: go/autodev-edge/go.sum
+      - name: Toolchain
+        run: go version
+      - name: Test
+        working-directory: go/autodev-edge
+        run: go test ./... -race
+      - name: Vet
+        working-directory: go/autodev-edge
+        run: go vet ./...
