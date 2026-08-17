@@ -1,0 +1,32 @@
+name: Flutter Studio Prototype
+
+on:
+  pull_request:
+    branches: [feat/public-protocol-v1-reconciled]
+    paths:
+      - 'flutter/autodev_studio/**'
+      - '.github/workflows/flutter-prototype.yml'
+      - 'protocols/public/v1/**'
+  workflow_dispatch: {}
+
+jobs:
+  flutter:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - name: Toolchain
+        run: flutter --version
+      - name: Resolve dependencies
+        working-directory: flutter/autodev_studio
+        run: flutter pub get
+      - name: Test
+        working-directory: flutter/autodev_studio
+        run: flutter test
+      - name: Analyze
+        working-directory: flutter/autodev_studio
+        run: flutter analyze
