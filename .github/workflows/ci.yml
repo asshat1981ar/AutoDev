@@ -32,7 +32,7 @@ jobs:
         run: cargo test --workspace
 
   kotlin:
-    name: Kotlin - build, test, ktlint
+    name: Kotlin - build, test, ktlint, APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,9 +52,16 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('kotlin/**/*.gradle.kts', 'kotlin/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
-      - name: Build & test JVM targets
+      - name: Build KMP targets, tests, and debug APK
         working-directory: kotlin
-        run: ./gradlew clean assemble test --no-daemon
+        run: |
+          ./gradlew clean test \
+            :mpp-core:assemble \
+            :mpp-server:assemble \
+            :mpp-ui:assemble \
+            :mpp-codegraph:assemble \
+            :android-command-center:assembleDebug \
+            --no-daemon
       - name: ktlint
         working-directory: kotlin
         run: ./gradlew ktlintCheck --no-daemon
