@@ -154,7 +154,7 @@ fn overlay_digest_must_be_full_sha256() {
         "bad-digest.json",
         &fixture_json(
             "bad-digest",
-            vec!["abc".into()],
+            vec![digest('a')],
             vec![overlay(
                 "fixture-assets/probe.rs",
                 "crates/forge-core/tests/probe.rs",
