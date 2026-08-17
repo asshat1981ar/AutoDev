@@ -7,7 +7,7 @@
         android:allowBackup="false"
         android:label="AutoDev Controller"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AutoDev">
+        android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true">
