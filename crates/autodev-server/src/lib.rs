@@ -22,6 +22,9 @@ use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
 mod mcp;
+pub mod public_protocol;
+
+use public_protocol::PublicObjectiveEvent;
 
 type HmacSha256 = Hmac<Sha256>;
 const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
@@ -47,7 +50,7 @@ pub struct ObjectiveRecord {
 #[derive(Clone)]
 pub struct AppState {
     objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
-    events: broadcast::Sender<String>,
+    events: broadcast::Sender<PublicObjectiveEvent>,
     github_webhook_secret: Option<String>,
     mcp_bearer_tag: Option<Arc<Vec<u8>>>,
 }
@@ -105,18 +108,7 @@ impl AppState {
             .write()
             .await
             .insert(id.clone(), record.clone());
-        let _ = self.events.send(
-            json!({
-                "type": "objective_queued",
-                "data": {
-                    "objective_id": id,
-                    "repository": record.repository,
-                    "branch": record.branch,
-                    "status": record.status,
-                }
-            })
-            .to_string(),
-        );
+        let _ = self.events.send(PublicObjectiveEvent::queued(&record));
         Ok(record)
     }
 }
@@ -211,7 +203,9 @@ async fn event_stream(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let stream =
         BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
-            Ok(data) => Some(Ok(Event::default().data(data))),
+            Ok(event) => serde_json::to_string(&event)
+                .ok()
+                .map(|data| Ok(Event::default().data(data))),
             Err(_) => None,
         });
     Sse::new(stream).keep_alive(KeepAlive::default())
@@ -368,6 +362,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/webhooks/github")
+                    .header("x-hub-signature-256", "sha256=bad")
                     .header("x-github-event", "issues")
                     .body(Body::from("{}"))
                     .expect("request"),
