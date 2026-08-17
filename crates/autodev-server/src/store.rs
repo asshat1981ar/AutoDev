@@ -6,7 +6,7 @@ use std::{
     sync::RwLock,
 };
 
-use forge_core::{TaskGraph, VerifiedOrchestratorState};
+use forge_core::{Evidence, TaskGraph, VerifiedOrchestratorState};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -17,6 +17,8 @@ pub struct ObjectiveSnapshot {
     pub view: ObjectiveView,
     pub graph: TaskGraph,
     pub orchestrator: VerifiedOrchestratorState,
+    #[serde(default)]
+    pub evidence: Vec<Evidence>,
 }
 
 pub trait ObjectiveStore: Send + Sync + 'static {
