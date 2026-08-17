@@ -13,6 +13,8 @@ use serde_json::{json, Value};
 pub enum CodexSubscriptionError {
     #[error("codex subscription protocol error: {0}")]
     Protocol(String),
+    #[error("codex app-server provider unavailable: {0}")]
+    ProviderUnavailable(String),
     #[error("codex app-server client is not initialized")]
     NotInitialized,
 }
