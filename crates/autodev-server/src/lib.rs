@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -19,6 +19,8 @@ use sha2::Sha256;
 use tokio::sync::{broadcast, RwLock};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
+
+mod mcp;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -101,7 +103,7 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let api = Router::new()
         .route("/health", get(health))
         .route(
             "/api/v1/objectives",
@@ -110,7 +112,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/events/stream", get(event_stream))
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
-        .with_state(state)
+        .with_state(state.clone());
+
+    let mcp = Router::new()
+        .nest_service("/mcp", mcp::service(state))
+        .layer(DefaultBodyLimit::max(mcp::MCP_MAX_BODY_BYTES));
+
+    api.merge(mcp)
 }
 
 async fn health() -> Json<Value> {
