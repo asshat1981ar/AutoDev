@@ -74,8 +74,8 @@ class CodexApiException(
 
 class CodexApi(
     private val transport: CommandCenterHttpTransport,
-) {
-    fun account(endpoint: String): CodexAccountInfo {
+) : CodexOperations {
+    override fun account(endpoint: String): CodexAccountInfo {
         val result = execute(endpoint, "GET", "/api/v1/codex/account")
         val json = parseJson(result)
         return CodexAccountInfo(
@@ -85,7 +85,7 @@ class CodexApi(
         )
     }
 
-    fun startBrowserLogin(endpoint: String): CodexLoginPrompt.Browser {
+    override fun startBrowserLogin(endpoint: String): CodexLoginPrompt.Browser {
         val result = execute(endpoint, "POST", "/api/v1/codex/login/browser")
         val json = parseJson(result)
         if (optionalString(json, "type") != "browser") {
@@ -97,7 +97,7 @@ class CodexApi(
         )
     }
 
-    fun startDeviceCodeLogin(endpoint: String): CodexLoginPrompt.DeviceCode {
+    override fun startDeviceCodeLogin(endpoint: String): CodexLoginPrompt.DeviceCode {
         val result = execute(endpoint, "POST", "/api/v1/codex/login/device-code")
         val json = parseJson(result)
         if (optionalString(json, "type") != "device_code") {
@@ -110,7 +110,7 @@ class CodexApi(
         )
     }
 
-    fun rateLimits(endpoint: String): CodexRateLimitInfo {
+    override fun rateLimits(endpoint: String): CodexRateLimitInfo {
         val result = execute(endpoint, "GET", "/api/v1/codex/rate-limits")
         val json = parseJson(result)
         val defaults = requiredObject(json, "default", result.statusCode)
@@ -126,7 +126,7 @@ class CodexApi(
         )
     }
 
-    fun logout(endpoint: String) {
+    override fun logout(endpoint: String) {
         execute(endpoint, "POST", "/api/v1/codex/logout")
     }
 
