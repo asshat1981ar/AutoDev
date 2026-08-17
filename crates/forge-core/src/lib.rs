@@ -8,6 +8,7 @@
 pub mod action;
 pub mod agent;
 pub mod architecture_evidence;
+pub mod architecture_lease;
 pub mod context;
 pub mod development_loop;
 pub mod dispatch;
@@ -40,6 +41,10 @@ pub use architecture_evidence::{
     rank_options, render_architecture_report, ArchitectureAlternative, ArchitectureCriterion,
     ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
+};
+pub use architecture_lease::{
+    EffectivePolicy, LeasePolicyDefinition, LeasePolicyError, LeasePolicyRegistry, LeaseRule,
+    RevalidationMode, RiskTier,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use development_loop::{
