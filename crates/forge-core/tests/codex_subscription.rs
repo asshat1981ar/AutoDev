@@ -21,11 +21,7 @@ impl FakeTransport {
 }
 
 impl CodexRpcTransport for FakeTransport {
-    fn request(
-        &mut self,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, CodexSubscriptionError> {
+    fn request(&mut self, method: &str, params: Value) -> Result<Value, CodexSubscriptionError> {
         self.calls.push((method.to_string(), params));
         self.responses
             .pop_front()
