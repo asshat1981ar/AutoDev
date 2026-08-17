@@ -37,7 +37,10 @@ impl CodexRpcTransport for FakeTransport {
 #[test]
 fn initialization_sends_initialize_then_initialized() {
     let transport = FakeTransport::with_responses([json!({
-        "serverInfo": {"name": "codex-app-server", "version": "1.0.0"}
+        "userAgent": "codex-app-server/1.0.0",
+        "codexHome": "/private/codex-home",
+        "platformFamily": "unix",
+        "platformOs": "linux"
     })]);
     let mut client = CodexSubscriptionClient::new(transport);
 
@@ -77,7 +80,10 @@ fn login_is_rejected_before_initialization_without_transport_io() {
 #[test]
 fn repeated_initialization_is_rejected_locally() {
     let transport = FakeTransport::with_responses([json!({
-        "serverInfo": {"name": "codex-app-server", "version": "1.0.0"}
+        "userAgent": "codex-app-server/1.0.0",
+        "codexHome": "/private/codex-home",
+        "platformFamily": "unix",
+        "platformOs": "linux"
     })]);
     let mut client = CodexSubscriptionClient::new(transport);
     client.initialize("0.1.0").expect("first initialization");
