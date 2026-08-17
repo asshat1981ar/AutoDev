@@ -38,7 +38,10 @@ fn file_store_round_trips_objective_snapshot_across_instances() {
         restarted.get("objective-1").expect("load snapshot"),
         Some(expected.clone())
     );
-    assert_eq!(restarted.load_all().expect("load snapshots"), vec![expected]);
+    assert_eq!(
+        restarted.load_all().expect("load snapshots"),
+        vec![expected]
+    );
 }
 
 #[test]
