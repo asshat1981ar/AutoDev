@@ -1,10 +1,14 @@
-use autodev_server::{router, AppState, ObjectiveStatus};
+use autodev_server::{
+    default_state_dir, router, validate_control_plane_paths, AppState, ObjectiveStatus,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{header::CONTENT_TYPE, Request, StatusCode},
     response::Response,
 };
+use forge_core::Workspace;
 use serde_json::{json, Value};
+use tempfile::tempdir;
 use tower::ServiceExt;
 
 async fn body_json(response: Response) -> Value {
@@ -34,6 +38,38 @@ fn objective_status_serializes_as_closed_snake_case_values() {
     for (status, expected) in cases {
         assert_eq!(serde_json::to_value(status).unwrap(), json!(expected));
     }
+}
+
+#[test]
+fn control_plane_state_must_be_outside_execution_workspace() {
+    let root = tempdir().unwrap();
+    let workspace_path = root.path().join("repo");
+    std::fs::create_dir_all(&workspace_path).unwrap();
+    let workspace = Workspace::new(&workspace_path, 1024 * 1024).unwrap();
+
+    let equal = validate_control_plane_paths(&workspace, &workspace_path);
+    assert!(equal.is_err());
+
+    let nested = workspace_path.join(".autodev/state");
+    let nested = validate_control_plane_paths(&workspace, &nested);
+    assert!(nested.is_err());
+
+    let sibling = root.path().join("trusted-state");
+    let accepted = validate_control_plane_paths(&workspace, &sibling).expect("sibling state dir");
+    assert!(accepted.starts_with(root.path()));
+    assert!(!accepted.starts_with(workspace.root()));
+}
+
+#[test]
+fn default_state_directory_is_not_inside_execution_workspace() {
+    let root = tempdir().unwrap();
+    let workspace_path = root.path().join("repo");
+    std::fs::create_dir_all(&workspace_path).unwrap();
+    let workspace = Workspace::new(&workspace_path, 1024 * 1024).unwrap();
+
+    let default = default_state_dir(&workspace);
+    let accepted = validate_control_plane_paths(&workspace, &default).expect("safe default state");
+    assert!(!accepted.starts_with(workspace.root()));
 }
 
 #[tokio::test]
