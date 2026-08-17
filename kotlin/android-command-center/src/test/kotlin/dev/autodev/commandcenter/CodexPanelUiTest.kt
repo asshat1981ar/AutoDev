@@ -101,4 +101,18 @@ class CodexPanelUiTest {
         )
         assertEquals(listOf("https://chatgpt.com/auth"), launcher.urls)
     }
+
+    @Test
+    fun browser_action_opens_only_https_urls_from_ui_model() {
+        val launcher = RecordingCodexUrlLauncher()
+        val action = CodexBrowserAction(launcher)
+
+        assertTrue(action.openUrl("https://chatgpt.com/auth"))
+        assertFalse(action.openUrl(null))
+        assertFalse(action.openUrl("http://chatgpt.com/auth"))
+        assertFalse(action.openUrl("javascript:alert(1)"))
+        assertFalse(action.openUrl("https:///missing-host"))
+
+        assertEquals(listOf("https://chatgpt.com/auth"), launcher.urls)
+    }
 }
