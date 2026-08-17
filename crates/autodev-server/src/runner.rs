@@ -213,7 +213,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn execution_envelope_deserializes_persisted_action_without_minting_approval() {
+    fn execution_envelope_does_not_promote_requested_capabilities_or_payload_approval() {
         let action = AgentAction {
             id: "action-1".to_string(),
             task_id: "task-1".to_string(),
@@ -237,7 +237,7 @@ mod tests {
         assert_eq!(envelope.action, action);
         assert_eq!(envelope.task_id, "task-1");
         assert_eq!(envelope.policy.risk, RiskLevel::High);
-        assert_eq!(envelope.policy.capabilities, vec![Capability::WriteFile]);
+        assert!(envelope.policy.capabilities.is_empty());
         assert!(envelope.policy.requires_approval);
         assert_eq!(envelope.policy.approval_ref, None);
         assert_eq!(envelope.action.payload["approved"], true);
