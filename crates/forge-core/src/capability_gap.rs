@@ -213,7 +213,10 @@ fn validate_gap(gap: &GapObservation) -> Result<(), CapabilityGapError> {
     required(&gap.objective_id, "objective_id")?;
     required(&gap.summary, "summary")?;
     if gap.evidence_refs.is_empty()
-        || gap.evidence_refs.iter().any(|reference| reference.trim().is_empty())
+        || gap
+            .evidence_refs
+            .iter()
+            .any(|reference| reference.trim().is_empty())
     {
         return Err(CapabilityGapError::MissingEvidence(gap.id.clone()));
     }
