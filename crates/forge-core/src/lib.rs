@@ -7,6 +7,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod async_delegation;
 pub mod context;
 pub mod development_loop;
 pub mod dispatch;
