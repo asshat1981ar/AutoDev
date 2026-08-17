@@ -1,12 +1,9 @@
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-use autodev_eval::{
-    apply_verifier_overlays, run_verifier, RunnerError, VerifierOverlay,
-};
+use autodev_eval::{apply_verifier_overlays, run_verifier, RunnerError, VerifierOverlay};
 use forge_core::{VerificationRecipe, VerifierStep};
 use sha2::{Digest, Sha256};
 
@@ -147,8 +144,14 @@ fn passing_executable_produces_execution_backed_evidence() {
     assert!(!evidence.timed_out);
     assert_eq!(evidence.stdout_sha256.len(), 64);
     assert_eq!(evidence.stderr_sha256.len(), 64);
-    assert!(evidence.stdout_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()));
-    assert!(evidence.stderr_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert!(evidence
+        .stdout_sha256
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit()));
+    assert!(evidence
+        .stderr_sha256
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit()));
 }
 
 #[test]
