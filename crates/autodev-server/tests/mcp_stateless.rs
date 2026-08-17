@@ -80,7 +80,11 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn mcp_fails_closed_when_bearer_secret_is_not_configured() {
     let response = router(AppState::new(None))
-        .oneshot(modern_request("discover-no-secret", "server/discover", json!({})))
+        .oneshot(modern_request(
+            "discover-no-secret",
+            "server/discover",
+            json!({}),
+        ))
         .await
         .expect("router response");
 
