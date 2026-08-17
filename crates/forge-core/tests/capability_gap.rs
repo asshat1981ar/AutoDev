@@ -106,10 +106,7 @@ fn promotion_requires_improvement_and_zero_safety_regressions() {
         safety_regressions: 1,
         evidence_refs: vec!["eval-3".to_string()],
     });
-    assert_eq!(
-        unsafe_candidate,
-        PromotionDecision::RejectSafetyRegression
-    );
+    assert_eq!(unsafe_candidate, PromotionDecision::RejectSafetyRegression);
 }
 
 #[test]
