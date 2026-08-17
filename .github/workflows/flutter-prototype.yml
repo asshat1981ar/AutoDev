@@ -22,7 +22,6 @@ jobs:
           - test/protocol/models_test.dart
           - test/protocol/transport_test.dart
           - test/state/studio_controller_test.dart
-          - test/ui/studio_workspace_test.dart
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -36,6 +35,36 @@ jobs:
       - name: Run test file
         working-directory: flutter/autodev_studio
         run: flutter test "${{ matrix.test-file }}" --reporter expanded --timeout 30s
+
+  workspace-test:
+    name: Flutter workspace - ${{ matrix.case }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: wide
+            plain-name: wide layout renders objectives timeline and evidence panes
+          - case: compact
+            plain-name: compact desktop layout uses two panes
+          - case: narrow-list
+            plain-name: narrow layout starts with one objective pane
+          - case: narrow-selected
+            plain-name: narrow selection transitions to timeline and exposes back navigation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        working-directory: flutter/autodev_studio
+        run: flutter pub get
+      - name: Run workspace test
+        working-directory: flutter/autodev_studio
+        run: flutter test test/ui/studio_workspace_test.dart --plain-name "${{ matrix.plain-name }}" --reporter expanded --timeout 30s
 
   analyze:
     name: Flutter analyze
