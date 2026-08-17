@@ -26,7 +26,14 @@ class CodexApiTest {
                 listOf(
                     HttpResult(
                         200,
-                        """{"authenticated":true,"auth_mode":"chatgpt","plan_type":"plus","access_token":"must-not-escape"}""",
+                        """
+                        {
+                          "authenticated": true,
+                          "auth_mode": "chatgpt",
+                          "plan_type": "plus",
+                          "access_token": "must-not-escape"
+                        }
+                        """.trimIndent(),
                     ),
                 ),
             )
@@ -54,7 +61,14 @@ class CodexApiTest {
                     ),
                     HttpResult(
                         200,
-                        """{"type":"device_code","login_id":"login-2","verification_url":"https://auth.openai.com/codex/device","user_code":"ABCD-1234"}""",
+                        """
+                        {
+                          "type": "device_code",
+                          "login_id": "login-2",
+                          "verification_url": "https://auth.openai.com/codex/device",
+                          "user_code": "ABCD-1234"
+                        }
+                        """.trimIndent(),
                     ),
                 ),
             )
@@ -86,7 +100,29 @@ class CodexApiTest {
                 listOf(
                     HttpResult(
                         200,
-                        """{"default":{"limit_id":"codex","limit_name":"Codex","primary":{"used_percent":42,"window_duration_mins":300,"resets_at":1800000000},"secondary":null,"credits":{"has_credits":true,"unlimited":false,"balance":"7.50"},"plan_type":"plus","reached_type":null},"by_limit_id":{},"reset_credits_available":2}""",
+                        """
+                        {
+                          "default": {
+                            "limit_id": "codex",
+                            "limit_name": "Codex",
+                            "primary": {
+                              "used_percent": 42,
+                              "window_duration_mins": 300,
+                              "resets_at": 1800000000
+                            },
+                            "secondary": null,
+                            "credits": {
+                              "has_credits": true,
+                              "unlimited": false,
+                              "balance": "7.50"
+                            },
+                            "plan_type": "plus",
+                            "reached_type": null
+                          },
+                          "by_limit_id": {},
+                          "reset_credits_available": 2
+                        }
+                        """.trimIndent(),
                     ),
                 ),
             )
