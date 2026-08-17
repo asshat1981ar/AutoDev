@@ -1,6 +1,8 @@
 //! Adversarial tests for the trust boundary between model intent and kernel authority.
 
-use forge_core::{action::AgentAction, write_file, ExecutionError, Workspace, WriteMode};
+use forge_core::{
+    action::AgentAction, read_file, write_file, ExecutionError, Workspace, WriteMode,
+};
 use serde_json::json;
 
 #[test]
@@ -47,4 +49,28 @@ fn requested_capabilities_do_not_authorize_write_execution() {
 
     assert!(matches!(error, ExecutionError::CapabilityDenied));
     assert!(!dir.path().join("forged.txt").exists());
+}
+
+#[test]
+fn requested_capabilities_do_not_authorize_read_execution() {
+    let dir = tempfile::tempdir().expect("temporary workspace");
+    let workspace = Workspace::new(dir.path(), 4096).expect("workspace");
+    std::fs::write(dir.path().join("secret.txt"), b"secret").expect("fixture");
+    let requested = json!({
+        "id": "requested-read",
+        "task_id": "task-1",
+        "agent_id": "untrusted-agent",
+        "type": "read_file",
+        "reason": "request read authority",
+        "risk": "low",
+        "requested_capabilities": ["read_file"],
+        "payload": { "path": "secret.txt" },
+        "expected": {}
+    });
+    let action: AgentAction = serde_json::from_value(requested).expect("valid intent");
+
+    let error = read_file(&action, &workspace)
+        .expect_err("requested capability must not authorize read execution");
+
+    assert!(matches!(error, ExecutionError::CapabilityDenied));
 }
