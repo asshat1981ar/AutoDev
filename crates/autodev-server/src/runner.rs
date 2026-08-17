@@ -4,7 +4,10 @@ use std::{
     sync::Arc,
 };
 
-use forge_core::{ActionProposal, Decomposer, Planner, TaskNode, TaskStatus};
+use forge_core::{
+    ActionProposal, AgentAction, ContextRefs, Decomposer, EvidenceBinding, ExecutionEnvelope,
+    Lifecycle, Planner, PolicyBinding, RiskLevel, TaskNode, TaskStatus,
+};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -112,12 +115,41 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
     }
 }
 
+fn execution_envelope_from_task(
+    task: &TaskNode,
+    run_id: &str,
+) -> Result<ExecutionEnvelope, RunnerError> {
+    let serialized = task
+        .planned_action
+        .as_ref()
+        .ok_or_else(|| RunnerError::MissingPlannedAction(task.id.clone()))?;
+    let action: AgentAction = serde_json::from_value(serialized.clone())?;
+    let requires_approval = !matches!(action.risk, RiskLevel::Low);
+
+    Ok(ExecutionEnvelope {
+        operation_id: format!("op-{run_id}-{}", task.id),
+        run_id: run_id.to_string(),
+        task_id: task.id.clone(),
+        policy: PolicyBinding {
+            risk: action.risk,
+            capabilities: action.capabilities.clone(),
+            requires_approval,
+            approval_ref: None,
+        },
+        action,
+        context: ContextRefs::default(),
+        evidence: EvidenceBinding::default(),
+        lifecycle: Lifecycle::new(2),
+    })
+}
+
 #[derive(Debug)]
 pub enum RunnerError {
     Store(StoreError),
     Serialization(serde_json::Error),
     ObjectiveNotFound(String),
     TaskNotFound(String),
+    MissingPlannedAction(String),
     NoReadyTask,
 }
 
@@ -130,6 +162,9 @@ impl Display for RunnerError {
             }
             Self::ObjectiveNotFound(id) => write!(formatter, "objective '{id}' not found"),
             Self::TaskNotFound(id) => write!(formatter, "task '{id}' not found"),
+            Self::MissingPlannedAction(id) => {
+                write!(formatter, "task '{id}' is missing a planned action")
+            }
             Self::NoReadyTask => write!(formatter, "objective has no ready task"),
         }
     }
@@ -140,7 +175,10 @@ impl Error for RunnerError {
         match self {
             Self::Store(error) => Some(error),
             Self::Serialization(error) => Some(error),
-            Self::ObjectiveNotFound(_) | Self::TaskNotFound(_) | Self::NoReadyTask => None,
+            Self::ObjectiveNotFound(_)
+            | Self::TaskNotFound(_)
+            | Self::MissingPlannedAction(_)
+            | Self::NoReadyTask => None,
         }
     }
 }
@@ -159,7 +197,7 @@ impl From<serde_json::Error> for RunnerError {
 
 #[cfg(test)]
 mod tests {
-    use forge_core::{ActionType, AgentAction, Capability, RiskLevel};
+    use forge_core::{ActionType, Capability};
     use serde_json::json;
 
     use super::*;
