@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/protocols/public/v1/connectivity-status.schema.json",
+  "title": "AutoDev Connectivity Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_id", "kind", "state", "protocol", "observed_at", "detail"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "source_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["mcp", "provider"] },
+    "state": { "type": "string", "enum": ["disconnected", "connecting", "ready", "degraded"] },
+    "protocol": { "type": "string", "minLength": 1 },
+    "latency_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "detail": { "type": "string" }
+  }
+}
