@@ -136,7 +136,12 @@ class CodexApi(
         path: String,
     ): HttpResult {
         val baseUrl = normalizeEndpoint(endpoint)
-        val result = transport.execute(HttpRequestSpec(method, "$baseUrl$path"))
+        val result =
+            try {
+                transport.execute(HttpRequestSpec(method, "$baseUrl$path"))
+            } catch (_: Exception) {
+                throw CodexApiException(null, "network_error")
+            }
         if (result.statusCode !in 200..299) {
             throw apiError(result)
         }
