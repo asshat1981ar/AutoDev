@@ -8,6 +8,7 @@
 pub mod action;
 pub mod agent;
 pub mod architecture_evidence;
+pub mod capability_gap;
 pub mod context;
 pub mod development_loop;
 pub mod dispatch;
@@ -40,6 +41,11 @@ pub use architecture_evidence::{
     rank_options, render_architecture_report, ArchitectureAlternative, ArchitectureCriterion,
     ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
+};
+pub use capability_gap::{
+    discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
+    CandidateEvaluation, CandidateKind, CapabilityCandidate, CapabilityGapError, GapKind,
+    GapObservation, PromotionDecision,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use development_loop::{
