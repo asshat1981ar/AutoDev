@@ -44,10 +44,19 @@ fn valid_task_validates_and_has_stable_key() {
 
 #[test]
 fn task_id_must_be_a_stable_lowercase_slug() {
-    for invalid in ["Sample-Task", "sample_task", "-sample", "sample-", "sample--task"] {
+    for invalid in [
+        "Sample-Task",
+        "sample_task",
+        "-sample",
+        "sample-",
+        "sample--task",
+    ] {
         let mut value = task();
         value.id = invalid.into();
-        assert!(value.validate().is_err(), "accepted invalid task id: {invalid}");
+        assert!(
+            value.validate().is_err(),
+            "accepted invalid task id: {invalid}"
+        );
     }
 }
 
