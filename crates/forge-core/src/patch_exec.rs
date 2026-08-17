@@ -244,8 +244,8 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\ntwo\nthree\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
-        let result = patch_with_authority(&base_action("a.txt", patch_text), &ws, PatchMode::Apply)
-            .unwrap();
+        let result =
+            patch_with_authority(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -261,12 +261,9 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let result = patch_with_authority(
-            &base_action("a.txt", patch_text),
-            &ws,
-            PatchMode::DryRun,
-        )
-        .unwrap();
+        let result =
+            patch_with_authority(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun)
+                .unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
