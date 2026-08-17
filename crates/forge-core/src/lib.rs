@@ -254,10 +254,11 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
         .and_then(|value| value.as_str())
         .unwrap_or_default();
     match operation {
-        "repository_info" | "status" | "diff" | "branch" | "log" => git::run_read(
-            &action.capabilities,
-            || git::execute_git(&action, &exec.workspace),
-        ),
+        "repository_info" | "status" | "diff" | "branch" | "log" => {
+            git::run_read(&action.capabilities, || {
+                git::execute_git(&action, &exec.workspace)
+            })
+        }
         "checkpoint" | "prepare_commit" => git::run_mutate(&action.capabilities, || {
             git::execute_git(&action, &exec.workspace)
         }),
