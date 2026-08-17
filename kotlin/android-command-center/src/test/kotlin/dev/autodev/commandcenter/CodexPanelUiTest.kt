@@ -31,9 +31,28 @@ class CodexPanelUiTest {
         assertEquals(1_800_000_000L, model.resetsAt)
         assertEquals(2, model.resetCreditsAvailable)
         assertEquals("7.50", model.creditBalance)
+        assertNull(model.browserAuthUrl)
         assertNull(model.deviceVerificationUrl)
         assertNull(model.deviceUserCode)
         assertNull(model.errorCode)
+    }
+
+    @Test
+    fun browser_prompt_maps_only_safe_auth_url() {
+        val model =
+            codexPanelUiModel(
+                CodexPanelState(
+                    loginPrompt =
+                        CodexLoginPrompt.Browser(
+                            "login-1",
+                            "https://chatgpt.com/auth",
+                        ),
+                ),
+            )
+
+        assertEquals("https://chatgpt.com/auth", model.browserAuthUrl)
+        assertNull(model.deviceVerificationUrl)
+        assertNull(model.deviceUserCode)
     }
 
     @Test
@@ -50,6 +69,7 @@ class CodexPanelUiTest {
 
         val model = codexPanelUiModel(state)
 
+        assertNull(model.browserAuthUrl)
         assertEquals("https://auth.openai.com/codex/device", model.deviceVerificationUrl)
         assertEquals("ABCD-1234", model.deviceUserCode)
     }
