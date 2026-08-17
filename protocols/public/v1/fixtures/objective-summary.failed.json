@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "id": "obj-0002",
+  "repository": "owner/repo",
+  "description": "Compile project",
+  "branch": "autodev/objective-obj0002",
+  "status": "failed"
+}
