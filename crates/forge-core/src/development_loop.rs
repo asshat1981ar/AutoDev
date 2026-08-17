@@ -12,7 +12,7 @@ use crate::envelope::{EnvelopeError, EnvelopeState, ExecutionEnvelope};
 use crate::evidence::{
     record_from, EvidenceStore, ExecutionResult, ExecutionStatus, PolicyOutcome,
 };
-use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
+use crate::policy::{evaluate_policy, PolicyDecision};
 use crate::verification::{
     VerificationContext, VerificationFabric, VerificationReport, VerificationVerdict,
 };
@@ -78,13 +78,23 @@ impl DevelopmentLoop {
         }
         envelope.transition(EnvelopeState::Executing)?;
 
+        // Only the trusted policy binding is promoted to effective execution
+        // authority. `AgentAction.capabilities` remains model-requested intent.
+        let effective_capabilities = envelope.policy.capabilities.clone();
         let executable = match envelope.policy.approval_ref.as_deref() {
-            Some(reference) if !reference.trim().is_empty() => ExecutableAction::with_approval(
+            Some(reference) if !reference.trim().is_empty() => {
+                ExecutableAction::with_authority_and_approval(
+                    envelope.action.clone(),
+                    workspace.clone(),
+                    effective_capabilities,
+                    reference,
+                )
+            }
+            _ => ExecutableAction::with_authority(
                 envelope.action.clone(),
                 workspace.clone(),
-                reference,
+                effective_capabilities,
             ),
-            _ => ExecutableAction::new(envelope.action.clone(), workspace.clone()),
         };
         let executed = execute(&executable);
 
@@ -168,10 +178,9 @@ impl DevelopmentLoop {
         if envelope.policy.risk != envelope.action.risk {
             return Err(DevelopmentLoopError::RiskMismatch);
         }
-        if !has_required_capability(&envelope.action) {
-            return Err(DevelopmentLoopError::CapabilityDenied);
-        }
 
+        // Requested capabilities on the action are never authorization input.
+        // Effective capabilities come only from the trusted envelope policy.
         if let Some(required) = crate::Capability::for_action(envelope.action.action_type) {
             if !envelope
                 .policy
@@ -290,6 +299,29 @@ mod tests {
         assert_eq!(env.lifecycle.state, EnvelopeState::Verified);
         assert_eq!(env.evidence.produced.len(), 1);
         assert!(loop_.evidence.get(&result.evidence_ref).unwrap().verify());
+    }
+
+    #[test]
+    fn requested_capabilities_are_observational_not_authorization_input() {
+        let dir = tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 1024 * 1024).unwrap();
+        let fabric = VerificationFabric::new().with(
+            VerificationKind::UnitTests,
+            mock_verifier(VerificationKind::UnitTests, true),
+        );
+        let mut loop_ = DevelopmentLoop::new(fabric);
+        let mut env = envelope("task-1", 2);
+        env.action.capabilities.clear();
+
+        let result = loop_
+            .run_attempt(&mut env, &workspace, &verification_context(dir.path()))
+            .unwrap();
+
+        assert_eq!(result.outcome, DevelopmentLoopOutcome::Verified);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("marker.txt")).unwrap(),
+            "done"
+        );
     }
 
     #[test]
