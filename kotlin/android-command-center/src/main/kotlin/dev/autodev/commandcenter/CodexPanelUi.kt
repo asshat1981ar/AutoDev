@@ -9,6 +9,7 @@ data class CodexPanelUiModel(
     val resetsAt: Long?,
     val resetCreditsAvailable: Int?,
     val creditBalance: String?,
+    val browserAuthUrl: String?,
     val deviceVerificationUrl: String?,
     val deviceUserCode: String?,
     val busy: Boolean,
@@ -16,6 +17,7 @@ data class CodexPanelUiModel(
 )
 
 fun codexPanelUiModel(state: CodexPanelState): CodexPanelUiModel {
+    val browserPrompt = state.loginPrompt as? CodexLoginPrompt.Browser
     val devicePrompt = state.loginPrompt as? CodexLoginPrompt.DeviceCode
     return CodexPanelUiModel(
         authStatus =
@@ -29,6 +31,7 @@ fun codexPanelUiModel(state: CodexPanelState): CodexPanelUiModel {
         resetsAt = state.rateLimits?.resetsAt,
         resetCreditsAvailable = state.rateLimits?.resetCreditsAvailable,
         creditBalance = state.rateLimits?.creditBalance,
+        browserAuthUrl = browserPrompt?.authUrl,
         deviceVerificationUrl = devicePrompt?.verificationUrl,
         deviceUserCode = devicePrompt?.userCode,
         busy = state.busy,
