@@ -82,14 +82,15 @@ fn jsonl_transport_writes_notifications_without_request_ids() {
 #[test]
 fn malformed_json_and_rpc_errors_fail_closed() {
     let malformed_writer = SharedWriter::default();
-    let mut malformed = JsonlCodexTransport::new(
-        Cursor::new(b"not-json\n".to_vec()),
-        malformed_writer,
-    );
+    let mut malformed =
+        JsonlCodexTransport::new(Cursor::new(b"not-json\n".to_vec()), malformed_writer);
     let malformed_error = malformed
         .request("account/read", json!({}))
         .expect_err("malformed response must fail");
-    assert!(matches!(malformed_error, CodexSubscriptionError::Protocol(_)));
+    assert!(matches!(
+        malformed_error,
+        CodexSubscriptionError::Protocol(_)
+    ));
 
     let error_writer = SharedWriter::default();
     let mut rpc_error = JsonlCodexTransport::new(
