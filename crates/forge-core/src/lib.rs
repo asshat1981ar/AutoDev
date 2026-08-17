@@ -7,6 +7,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod architecture_evidence;
 pub mod context;
 pub mod development_loop;
 pub mod dispatch;
@@ -34,6 +35,11 @@ pub use action::{ActionType, AgentAction, Capability, RiskLevel};
 pub use agent::{
     default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
+};
+pub use architecture_evidence::{
+    rank_options, render_architecture_report, ArchitectureAlternative, ArchitectureCriterion,
+    ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
+    CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use development_loop::{
