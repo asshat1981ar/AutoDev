@@ -25,7 +25,11 @@ impl ActionProposer for FixedProposer {
     }
 }
 
-fn proposal(action_type: ActionType, risk: RiskLevel, payload: serde_json::Value) -> ActionProposal {
+fn proposal(
+    action_type: ActionType,
+    risk: RiskLevel,
+    payload: serde_json::Value,
+) -> ActionProposal {
     ActionProposal {
         action: AgentAction {
             id: "action-1".into(),
@@ -85,9 +89,18 @@ fn execution(workspace: Workspace, verification_passes: bool) -> RunnerExecution
 }
 
 fn advance_to_proposed<S: ObjectiveStore>(runner: &ObjectiveRunner<S, FixedProposer>, id: &str) {
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
-    assert_eq!(runner.advance_once(id).unwrap().status, ObjectiveStatus::Planning);
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
+    assert_eq!(
+        runner.advance_once(id).unwrap().status,
+        ObjectiveStatus::Planning
+    );
 }
 
 #[test]
@@ -133,8 +146,8 @@ fn evidence_reference_resolves_from_persisted_snapshot_after_restart() {
             json!({"path": "README.md"}),
         ),
     });
-    let runner = ObjectiveRunner::new(store, proposer, events())
-        .with_execution(execution(workspace, true));
+    let runner =
+        ObjectiveRunner::new(store, proposer, events()).with_execution(execution(workspace, true));
 
     advance_to_proposed(&runner, "objective-1");
     let completed = runner.advance_once("objective-1").unwrap();
@@ -169,7 +182,10 @@ fn approval_grant_must_match_objective_and_task_scope() {
         .with_execution(execution(workspace, true));
 
     advance_to_proposed(&runner, "objective-1");
-    assert_eq!(runner.advance_once("objective-1").unwrap().status, ObjectiveStatus::Blocked);
+    assert_eq!(
+        runner.advance_once("objective-1").unwrap().status,
+        ObjectiveStatus::Blocked
+    );
 
     let wrong_objective =
         ObjectiveApprovalGrant::new("objective-2", "t-root", "approval-1").unwrap();
@@ -200,15 +216,24 @@ fn matching_scoped_approval_resumes_existing_envelope() {
             json!({"path": "marker.txt", "content": "done"}),
         ),
     });
-    let runner = ObjectiveRunner::new(store, proposer, events())
-        .with_execution(execution(workspace, true));
+    let runner =
+        ObjectiveRunner::new(store, proposer, events()).with_execution(execution(workspace, true));
 
     advance_to_proposed(&runner, "objective-1");
-    assert_eq!(runner.advance_once("objective-1").unwrap().status, ObjectiveStatus::Blocked);
+    assert_eq!(
+        runner.advance_once("objective-1").unwrap().status,
+        ObjectiveStatus::Blocked
+    );
 
     let grant = ObjectiveApprovalGrant::new("objective-1", "t-root", "approval-1").unwrap();
-    assert_eq!(runner.resume_approved(&grant).unwrap().status, ObjectiveStatus::Running);
-    assert_eq!(runner.advance_once("objective-1").unwrap().status, ObjectiveStatus::Completed);
+    assert_eq!(
+        runner.resume_approved(&grant).unwrap().status,
+        ObjectiveStatus::Running
+    );
+    assert_eq!(
+        runner.advance_once("objective-1").unwrap().status,
+        ObjectiveStatus::Completed
+    );
     assert_eq!(
         std::fs::read_to_string(workspace_dir.path().join("marker.txt")).unwrap(),
         "done"
