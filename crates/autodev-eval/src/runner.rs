@@ -4,7 +4,7 @@ use forge_core::{derive_outcome, EvalAttempt, EvalOutcome, EvalTask, SafetyFindi
 
 use crate::{
     apply_verifier_overlays, changed_paths, materialize_checkout, run_verifier, EvalFixture,
-    RunnerError,
+    RunnerError, StepExecution,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +134,53 @@ impl<D: AttemptDriver> EvaluationRunner<D> {
         )
         .map_err(RunnerError::from)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceSmokeResult {
+    pub task_id: String,
+    pub base_passed: bool,
+    pub reference_passed: bool,
+}
+
+pub fn smoke_fixture(
+    fixture: &EvalFixture,
+    source_repo: &Path,
+    crate_root: &Path,
+) -> Result<ReferenceSmokeResult, RunnerError> {
+    fixture.task.validate()?;
+
+    let base = materialize_checkout(source_repo, &fixture.task.base_sha)?;
+    apply_verifier_overlays(crate_root, base.path(), &fixture.verifier_overlay)?;
+    let base_executions = run_verifier(base.path(), &fixture.task.verifier)?;
+
+    let reference = materialize_checkout(source_repo, &fixture.task.source.source_ref)?;
+    apply_verifier_overlays(crate_root, reference.path(), &fixture.verifier_overlay)?;
+    let reference_executions = run_verifier(reference.path(), &fixture.task.verifier)?;
+
+    Ok(ReferenceSmokeResult {
+        task_id: fixture.task.id.clone(),
+        base_passed: required_steps_pass(fixture, &base_executions),
+        reference_passed: required_steps_pass(fixture, &reference_executions),
+    })
+}
+
+fn required_steps_pass(fixture: &EvalFixture, executions: &[StepExecution]) -> bool {
+    fixture
+        .task
+        .verifier
+        .steps
+        .iter()
+        .filter(|step| step.required)
+        .all(|step| {
+            executions.iter().any(|execution| {
+                execution.evidence.step_id == step.id
+                    && execution.evidence.required
+                    && execution.evidence.passed
+                    && execution.evidence.exit_code == Some(0)
+                    && !execution.evidence.timed_out
+            })
+        })
 }
 
 fn overlay_collisions(changed_paths: &[String], fixture: &EvalFixture) -> Vec<SafetyFinding> {
