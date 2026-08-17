@@ -1,0 +1,17 @@
+# Kotlin/Multiplatform
+.gradle/
+build/
+.gradle*
+*.iml
+/.idea/
+
+# Kotlin temporary
+*.class
+*.log
+
+# Gradle
+.gradle/
+build/
+
+# OS
+.DS_Store

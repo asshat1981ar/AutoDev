@@ -77,6 +77,28 @@ Agents propose intent. Context retrieval supplies relevant repository evidence. 
 
 This separation is the foundation for safe autonomous software development.
 
+## Kotlin Multiplatform modules
+
+The `kotlin/` workspace contains the KMP 2.x control-plane modules. Build and
+test from the `kotlin/` directory with the Gradle wrapper (no system Gradle
+required; the wrapper auto-provisions the distribution):
+
+```bash
+cd kotlin
+./gradlew clean assemble test
+./gradlew ktlintCheck
+```
+
+| Module | Source set | Responsibility |
+| --- | --- | --- |
+| `mpp-core` | `commonMain` + `jvmMain`/`iosMain` | Code-graph extraction, platform filesystem (`expect`/`actual`), MCP tool dispatcher, AST patch review |
+| `mpp-codegraph` | `commonMain` | Symbol-graph query engine (declarations, scope membership, offset resolution) |
+| `mpp-server` | `jvmMain` | Ktor Netty server with Server-Sent Events streaming (`/health`, `/events`) |
+| `mpp-ui` | `commonMain` | Dependency-free diff/preview rendering (Nano DSL) |
+
+`commonMain` is pure: no JVM or Darwin types leak across the boundary. OS
+primitives live behind `expect`/`actual` contracts resolved per target.
+
 ## Status
 
 Early architecture and foundation phase. The trusted execution, agent registry, model fabric, orchestration, verification, provenance, and first deterministic repository-context primitives are now established. APIs and module boundaries are expected to evolve while the execution protocol is integrated.
