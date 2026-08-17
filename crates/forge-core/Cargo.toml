@@ -18,6 +18,7 @@ thiserror = "2"
 sha2 = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
 ureq = { version = "2", default-features = false, features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [dev-dependencies]
 tempfile = "3"
