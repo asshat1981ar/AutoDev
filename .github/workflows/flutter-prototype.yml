@@ -25,9 +25,16 @@ jobs:
       - name: Resolve dependencies
         working-directory: flutter/autodev_studio
         run: flutter pub get
-      - name: Test
+      - name: Test files independently
         working-directory: flutter/autodev_studio
-        run: flutter test --reporter expanded --timeout 30s
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r test_file; do
+            echo "::group::$test_file"
+            timeout 90s flutter test "$test_file" --reporter expanded --timeout 30s
+            echo "::endgroup::"
+          done < <(find test -name '*_test.dart' -type f | sort)
       - name: Analyze
         working-directory: flutter/autodev_studio
         run: flutter analyze
