@@ -15,6 +15,7 @@
 - Shared application state may be held only through explicit cloneable handles captured by the handler factory.
 - MCP mutation-facing tools return typed proposals only; they never call raw filesystem, process, Git, or approval APIs.
 - Gap discovery may autonomously generate and stage candidate files but may not grant capabilities, weaken policy, install credentials, change approvals, or merge/deploy itself.
+- Unevaluated Skill candidates must stay outside the active `.cline/skills/` discovery namespace. Stage them under `.cline/candidates/skills/` until promotion is separately authorized.
 - Skills and MCP candidates require baseline evidence and measurable evaluation before promotion.
 - Web/CLI are the next new client surfaces; Flutter and Go remain experiment-gated.
 - No production claim without executed verification.
@@ -61,16 +62,15 @@
 **Files:**
 - Modify: `crates/forge-core/src/capability_gap.rs`
 - Test: `crates/forge-core/tests/capability_gap.rs`
-- Modify: `docs/architecture/self-improvement-proposals.md`
 
 **Interfaces:**
 - Consumes: `CapabilityCandidate`.
-- Produces: deterministic `CandidateArtifact` files and `AgentAction` write proposals for `.cline/skills/<id>/SKILL.md` and `.cline/mcp/generated/<id>.json`.
+- Produces: deterministic `CandidateArtifact` files and `AgentAction` write proposals for `.cline/candidates/skills/<id>/SKILL.md` and `.cline/mcp/generated/<id>.json`.
 
 - [ ] **Step 1: Add RED tests** for deterministic, confined artifact paths and rejection of unsafe IDs/path traversal.
 - [ ] **Step 2: Implement deterministic artifact generation** with no runtime privilege grant.
 - [ ] **Step 3: Add candidate evaluation and promotion rules** so non-improving candidates are rejected.
-- [ ] **Step 4: Re-run security/adversarial tests.**
+- [ ] **Step 4: Re-run security/adversarial tests, including proof that generated Skill candidates do not land under active `.cline/skills/`.**
 
 ### Task 4: Hybrid Architecture Simulation
 
