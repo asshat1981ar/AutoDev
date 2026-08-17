@@ -8,18 +8,18 @@ import (
 )
 
 const (
-	defaultBindAddress        = "127.0.0.1:8791"
-	defaultObservationCap     = 256
-	defaultMaxSessions        = 16
+	defaultBindAddress    = "127.0.0.1:8791"
+	defaultObservationCap = 256
+	defaultMaxSessions    = 16
 )
 
 type Config struct {
-	BindAddress        string
+	BindAddress         string
 	ObservationCapacity int
-	MaxSessions        int
-	UpstreamName       string
-	HTTPControl        bool
-	LocalToken         string
+	MaxSessions         int
+	UpstreamName        string
+	HTTPControl         bool
+	LocalToken          string
 }
 
 func Load(getenv func(string) string) (Config, error) {
