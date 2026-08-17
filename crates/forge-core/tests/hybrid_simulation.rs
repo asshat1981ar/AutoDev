@@ -68,3 +68,17 @@ fn default_model_runs_every_locked_hybrid_candidate() {
     assert!(results.iter().all(|result| result.security_violations == 0));
     assert!(strongest_candidate(&results, &SimulationWeights::default()).is_some());
 }
+
+#[test]
+fn default_30_seed_model_selects_rust_kmp() {
+    let results = simulate_hybrid_topologies(&HybridSimulationConfig::default().with_seeds(30));
+    let selected = strongest_candidate(&results, &SimulationWeights::default())
+        .expect("default model must leave an eligible candidate");
+
+    assert_eq!(selected.topology, HybridTopology::RustKmp);
+    assert_eq!(selected.success_bps, 8188);
+    assert_eq!(selected.cost_milliunits, 1017);
+    assert_eq!(selected.latency_ms, 104);
+    assert_eq!(selected.security_violations, 0);
+    assert_eq!(selected.complexity, 2);
+}
