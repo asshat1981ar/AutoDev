@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "id": "obj-0005",
+  "repository": "owner/repo",
+  "description": "Run verification",
+  "branch": "autodev/objective-obj0005",
+  "status": "running"
+}
