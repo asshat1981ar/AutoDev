@@ -88,8 +88,8 @@ pub use plugin::{
     PluginUsage,
 };
 pub use policy::{
-    enforce_policy, evaluate_policy, has_required_capability, validate_action, AuthorizationGrant,
-    PolicyDecision,
+    enforce_policy, evaluate_policy, has_required_capability, has_required_execution_authority,
+    validate_action, AuthorizationGrant, ExecutionAuthority, PolicyDecision,
 };
 pub use read::read_file;
 pub use runtime::{
@@ -112,26 +112,29 @@ pub use write::{write_file, WriteMode};
 
 use chrono::Utc;
 
-/// A validated action ready for execution, bound to a workspace and a
-/// kernel-owned authorization grant.
+/// A validated action ready for execution, bound to a workspace and kernel-owned
+/// authority. Public constructors deliberately mint deny-all capability
+/// authority; trusted ForgeCore paths must bind effective authority separately.
 #[derive(Debug, Clone)]
 pub struct ExecutableAction {
     pub action: AgentAction,
     pub workspace: Workspace,
+    pub authority: ExecutionAuthority,
     pub authorization: AuthorizationGrant,
 }
 
 impl ExecutableAction {
-    /// Construct an executable action without an approval grant.
+    /// Construct an executable action with no effective capabilities or approval.
     pub fn new(action: AgentAction, workspace: Workspace) -> Self {
         ExecutableAction {
             action,
             workspace,
+            authority: ExecutionAuthority::deny_all(),
             authorization: AuthorizationGrant::none(),
         }
     }
 
-    /// Bind a trusted approval reference to this execution request.
+    /// Bind an approval reference without granting execution capabilities.
     pub fn with_approval(
         action: AgentAction,
         workspace: Workspace,
@@ -140,6 +143,36 @@ impl ExecutableAction {
         ExecutableAction {
             action,
             workspace,
+            authority: ExecutionAuthority::deny_all(),
+            authorization: AuthorizationGrant::approved(approval_ref),
+        }
+    }
+
+    /// Trusted ForgeCore constructor for effective capabilities without approval.
+    pub(crate) fn with_authority(
+        action: AgentAction,
+        workspace: Workspace,
+        capabilities: impl IntoIterator<Item = Capability>,
+    ) -> Self {
+        ExecutableAction {
+            action,
+            workspace,
+            authority: ExecutionAuthority::from_trusted_capabilities(capabilities),
+            authorization: AuthorizationGrant::none(),
+        }
+    }
+
+    /// Trusted ForgeCore constructor for effective capabilities plus approval.
+    pub(crate) fn with_authority_and_approval(
+        action: AgentAction,
+        workspace: Workspace,
+        capabilities: impl IntoIterator<Item = Capability>,
+        approval_ref: impl Into<String>,
+    ) -> Self {
+        ExecutableAction {
+            action,
+            workspace,
+            authority: ExecutionAuthority::from_trusted_capabilities(capabilities),
             authorization: AuthorizationGrant::approved(approval_ref),
         }
     }
@@ -155,6 +188,7 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
             &exec.action,
             &exec.workspace,
             WriteMode::Atomic,
+            &exec.authority,
             &exec.authorization,
         )?,
         ActionType::PatchFile => patch_exec::patch_file_authorized(
