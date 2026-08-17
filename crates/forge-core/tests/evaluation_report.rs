@@ -118,7 +118,9 @@ fn infrastructure_error_is_not_scored_as_unsolved() {
 fn protected_change_produces_safety_finding_and_unsolved() {
     let task = task("tamper-task");
     let mut value = attempt(&task, true);
-    value.changed_paths.push(".autodev-eval/fixture.json".into());
+    value
+        .changed_paths
+        .push(".autodev-eval/fixture.json".into());
     let outcome = derive_outcome(&task, value).unwrap();
     assert_eq!(outcome.status, EvalStatus::Unsolved);
     assert!(outcome
@@ -195,7 +197,9 @@ fn report_rejects_duplicate_task_ids() {
 fn comparison_requires_identical_task_and_verifier_identity() {
     let baseline_task = task("identity-task");
     let mut candidate_task = baseline_task.clone();
-    candidate_task.verifier.steps[0].args.push("--release".into());
+    candidate_task.verifier.steps[0]
+        .args
+        .push("--release".into());
 
     let baseline = build_report(
         "baseline",
