@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "id": "obj-0004",
+  "repository": "owner/repo",
+  "description": "Verify release artifact",
+  "branch": "autodev/objective-obj0004",
+  "status": "completed"
+}
