@@ -1,5 +1,6 @@
 mod events;
 mod objective;
+mod paths;
 mod runner;
 mod store;
 
@@ -27,9 +28,10 @@ use uuid::Uuid;
 
 pub use events::ObjectiveEvent;
 pub use objective::{ObjectiveStatus, ObjectiveView};
+pub use paths::{default_state_dir, validate_control_plane_paths, ControlPlanePathError};
 pub use runner::{
-    run_objective_cycle, run_objective_loop, ActionProposer, ModelActionProposer, ObjectiveRunner,
-    RunnerError, RunnerExecution, VerificationFactory,
+    run_objective_cycle, run_objective_loop, ActionProposer, ModelActionProposer,
+    ObjectiveApprovalGrant, ObjectiveRunner, RunnerError, RunnerExecution, VerificationFactory,
 };
 pub use store::{
     FileObjectiveStore, InMemoryObjectiveStore, ObjectiveSnapshot, ObjectiveStore, StoreError,
@@ -117,6 +119,7 @@ impl<S: ObjectiveStore> AppState<S> {
             view: view.clone(),
             graph,
             orchestrator: VerifiedOrchestratorState::default(),
+            evidence: vec![],
         };
         self.store.put(&snapshot)?;
         let _ = self
