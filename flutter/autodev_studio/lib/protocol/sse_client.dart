@@ -4,10 +4,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'ports.dart';
 
 typedef Delay = Future<void> Function(Duration duration);
 
-final class AutoDevEventStream {
+final class AutoDevEventStream implements ObjectiveEventSource {
   AutoDevEventStream({http.Client? client, Delay? delay})
     : _client = client ?? http.Client(),
       _ownsClient = client == null,
@@ -31,6 +32,7 @@ final class AutoDevEventStream {
   bool _started = false;
   bool _closed = false;
 
+  @override
   Stream<ObjectiveEvent> connect(Uri endpoint) {
     if (_started) {
       throw StateError('AutoDevEventStream.connect may only be called once');
@@ -45,6 +47,7 @@ final class AutoDevEventStream {
     return controller.stream;
   }
 
+  @override
   Future<void> close() async {
     if (_closed) {
       await _runner;
