@@ -19,9 +19,49 @@ pub enum PolicyDecision {
     Deny,
 }
 
-/// Kernel-owned authorization material. Unlike `AgentAction.capabilities`, this
-/// value is never supplied by the model; it is created by the trusted
-/// orchestration boundary after an approval decision has been recorded.
+/// Kernel-owned capability authority used by execution adapters.
+///
+/// This type deliberately does not implement `Serialize` or `Deserialize` and
+/// its granting constructor is crate-private. Model-generated protocol objects
+/// can request capabilities, but only trusted ForgeCore code can mint effective
+/// execution authority.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExecutionAuthority {
+    capabilities: Vec<Capability>,
+}
+
+impl ExecutionAuthority {
+    /// Construct an authority that grants nothing. This is the safe default for
+    /// public entry points that have no trusted authorization context.
+    pub fn deny_all() -> Self {
+        Self::default()
+    }
+
+    /// Mint effective authority from capability state already established by a
+    /// trusted kernel path. This is intentionally unavailable outside ForgeCore.
+    pub(crate) fn from_trusted_capabilities(
+        capabilities: impl IntoIterator<Item = Capability>,
+    ) -> Self {
+        let mut effective = Vec::new();
+        for capability in capabilities {
+            if !effective.iter().any(|existing| existing == &capability) {
+                effective.push(capability);
+            }
+        }
+        Self {
+            capabilities: effective,
+        }
+    }
+
+    /// Whether this authority grants a concrete capability.
+    pub fn allows(&self, capability: &Capability) -> bool {
+        self.capabilities.iter().any(|granted| granted == capability)
+    }
+}
+
+/// Kernel-owned approval material. Unlike `AgentAction` fields, this value is
+/// never supplied by the model; it is created by the trusted orchestration
+/// boundary after an approval decision has been recorded.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AuthorizationGrant {
     pub approval_ref: Option<String>,
@@ -70,13 +110,25 @@ pub fn validate_action(action: &AgentAction) -> Result<(), ExecutionError> {
     Ok(())
 }
 
-/// Check that the action type maps to a capability the agent has been granted.
+/// Legacy intent-level capability check.
 ///
-/// Returns `true` when the action's required capability is present in the
-/// granted set, or when the action type has no capability requirement.
+/// This helper remains temporarily for non-migrated call sites. Execution
+/// adapters must use [`has_required_execution_authority`] instead. The values on
+/// `AgentAction` are requests/diagnostics and are not effective authority.
 pub fn has_required_capability(action: &AgentAction) -> bool {
     match Capability::for_action(action.action_type) {
         Some(required) => action.capabilities.iter().any(|c| c == &required),
+        None => true,
+    }
+}
+
+/// Check the capability required by an action against kernel-owned authority.
+pub fn has_required_execution_authority(
+    action: &AgentAction,
+    authority: &ExecutionAuthority,
+) -> bool {
+    match Capability::for_action(action.action_type) {
+        Some(required) => authority.allows(&required),
         None => true,
     }
 }
@@ -88,9 +140,7 @@ pub fn required_capability(action: &AgentAction) -> Option<Capability> {
 
 /// Evaluate the full policy for an action.
 ///
-/// Performs structural validation, then applies risk-based authorization. The
-/// capability check is separate (`has_required_capability`) so that a denied
-/// action can be distinguished from one that merely requires approval.
+/// Performs structural validation, then applies risk-based authorization.
 pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, ExecutionError> {
     validate_action(action)?;
 
@@ -104,8 +154,8 @@ pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, Execution
 
 /// Resolve a policy decision against a trusted authorization grant.
 ///
-/// An agent cannot satisfy approval by changing its payload or capabilities;
-/// only a kernel-created `AuthorizationGrant` can discharge a
+/// An agent cannot satisfy approval by changing its payload or requested
+/// capabilities; only a kernel-created `AuthorizationGrant` can discharge a
 /// `RequireApproval` decision.
 pub fn enforce_policy(
     action: &AgentAction,
