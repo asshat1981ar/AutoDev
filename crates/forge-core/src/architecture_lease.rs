@@ -279,9 +279,9 @@ impl LeasePolicyRegistry {
                     .ok_or(LeasePolicyError::MissingRelaxationMetadata)?;
                 relaxation.validate()?;
                 let approval_reference = &relaxation.approval_reference;
-                let approved = approvals.iter().any(|evidence| {
-                    evidence.approved && evidence.reference == *approval_reference
-                });
+                let approved = approvals
+                    .iter()
+                    .any(|evidence| evidence.approved && evidence.reference == *approval_reference);
                 if !approved {
                     return Err(LeasePolicyError::MissingRepositoryApproval(
                         approval_reference.clone(),
@@ -334,14 +334,15 @@ fn compare_policy_change(
     }
 
     let rule_change = compare_rule(&base.rules, &replacement.rules)?;
-    let revalidation_change = compare_revalidation(
-        base.revalidation_mode,
-        replacement.revalidation_mode,
-    );
+    let revalidation_change =
+        compare_revalidation(base.revalidation_mode, replacement.revalidation_mode);
     combine_policy_changes(rule_change, revalidation_change)
 }
 
-fn compare_rule(base: &LeaseRule, replacement: &LeaseRule) -> Result<PolicyChange, LeasePolicyError> {
+fn compare_rule(
+    base: &LeaseRule,
+    replacement: &LeaseRule,
+) -> Result<PolicyChange, LeasePolicyError> {
     if base == replacement {
         return Ok(PolicyChange::Equivalent);
     }
