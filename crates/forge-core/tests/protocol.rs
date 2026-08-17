@@ -5,7 +5,6 @@
 
 use forge_core::{
     ActionType, AgentAction, Capability, ExecutionResult, ExecutionStatus, RiskLevel, TaskNode,
-    TaskStatus,
 };
 use serde_json::json;
 use std::path::PathBuf;
@@ -130,7 +129,7 @@ fn capability_round_trips() {
         Capability::Mcp,
         Capability::RunTest,
         Capability::ApprovalCritical,
-        Capability::Other("custom:tool".to_string()),
+        Capability::Unknown("custom:tool".to_string()),
     ] {
         let json = serde_json::to_value(&capability).unwrap();
         let restored: Capability = serde_json::from_value(json).unwrap();
@@ -141,7 +140,7 @@ fn capability_round_trips() {
 #[test]
 fn unknown_capability_is_preserved() {
     let capability: Capability = serde_json::from_value(json!("plugin:custom")).unwrap();
-    assert_eq!(capability, Capability::Other("plugin:custom".to_string()));
+    assert_eq!(capability, Capability::Unknown("plugin:custom".to_string()));
 }
 
 #[test]
