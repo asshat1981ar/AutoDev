@@ -118,9 +118,7 @@ impl Default for SimulationWeights {
 }
 
 /// Run all locked topology candidates using the same seed schedule.
-pub fn simulate_hybrid_topologies(
-    config: &HybridSimulationConfig,
-) -> Vec<HybridSimulationSummary> {
+pub fn simulate_hybrid_topologies(config: &HybridSimulationConfig) -> Vec<HybridSimulationSummary> {
     HybridTopology::ALL
         .iter()
         .copied()
@@ -155,9 +153,7 @@ pub fn simulate_hybrid_traces(
 
 /// Return non-dominated eligible summaries ordered by success descending and
 /// then cost ascending for deterministic presentation.
-pub fn pareto_frontier(
-    summaries: &[HybridSimulationSummary],
-) -> Vec<HybridSimulationSummary> {
+pub fn pareto_frontier(summaries: &[HybridSimulationSummary]) -> Vec<HybridSimulationSummary> {
     let mut frontier: Vec<HybridSimulationSummary> = summaries
         .iter()
         .filter(|candidate| candidate.security_violations == 0)
@@ -191,13 +187,15 @@ pub fn strongest_candidate(
     summaries: &[HybridSimulationSummary],
     weights: &SimulationWeights,
 ) -> Option<HybridSimulationSummary> {
-    pareto_frontier(summaries).into_iter().max_by(|left, right| {
-        utility(left, weights)
-            .cmp(&utility(right, weights))
-            .then_with(|| left.success_bps.cmp(&right.success_bps))
-            .then_with(|| right.cost_milliunits.cmp(&left.cost_milliunits))
-            .then_with(|| right.topology.cmp(&left.topology))
-    })
+    pareto_frontier(summaries)
+        .into_iter()
+        .max_by(|left, right| {
+            utility(left, weights)
+                .cmp(&utility(right, weights))
+                .then_with(|| left.success_bps.cmp(&right.success_bps))
+                .then_with(|| right.cost_milliunits.cmp(&left.cost_milliunits))
+                .then_with(|| right.topology.cmp(&left.topology))
+        })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -250,8 +248,11 @@ fn summarize(traces: &[HybridSimulationTrace]) -> HybridSimulationSummary {
         .expect("simulation always emits at least one trace");
     HybridSimulationSummary {
         topology: first.topology,
-        success_bps: (traces.iter().map(|trace| trace.success_bps as u64).sum::<u64>() / count)
-            as u16,
+        success_bps: (traces
+            .iter()
+            .map(|trace| trace.success_bps as u64)
+            .sum::<u64>()
+            / count) as u16,
         cost_milliunits: (traces
             .iter()
             .map(|trace| trace.cost_milliunits as u64)
@@ -262,10 +263,7 @@ fn summarize(traces: &[HybridSimulationTrace]) -> HybridSimulationSummary {
             .map(|trace| trace.latency_ms as u64)
             .sum::<u64>()
             / count) as u32,
-        security_violations: traces
-            .iter()
-            .map(|trace| trace.security_violations)
-            .sum(),
+        security_violations: traces.iter().map(|trace| trace.security_violations).sum(),
         complexity: first.complexity,
         trace_count: traces.len() as u32,
     }
