@@ -113,8 +113,9 @@ fn proposal_session_is_read_only_and_returns_typed_intent() {
         ],
     );
     let subscription = CodexSubscriptionClient::new_initialized_for_test(transport);
-    let mut client = CodexProposalClient::from_authenticated_subscription(subscription, "/isolated")
-        .expect("authenticated subscription is accepted");
+    let mut client =
+        CodexProposalClient::from_authenticated_subscription(subscription, "/isolated")
+            .expect("authenticated subscription is accepted");
 
     let proposed = client
         .propose_action(&CodexProposalRequest {
@@ -166,7 +167,7 @@ fn proposal_rejects_model_identity_drift() {
                 "requiresOpenaiAuth": true
             }),
             json!({"thread": {"id": "thread-1"}, "model": "gpt-5.3-codex"}),
-            json!({"turn": {"id": "turn-1", "status": "inProgress"}),
+            json!({"turn": {"id": "turn-1", "status": "inProgress"}}),
         ],
         [
             json!({
@@ -188,8 +189,9 @@ fn proposal_rejects_model_identity_drift() {
         ],
     );
     let subscription = CodexSubscriptionClient::new_initialized_for_test(transport);
-    let mut client = CodexProposalClient::from_authenticated_subscription(subscription, "/isolated")
-        .expect("authenticated subscription is accepted");
+    let mut client =
+        CodexProposalClient::from_authenticated_subscription(subscription, "/isolated")
+            .expect("authenticated subscription is accepted");
 
     let error = client
         .propose_action(&CodexProposalRequest {
