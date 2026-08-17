@@ -3,6 +3,7 @@ package edge
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type Manager struct {
 	observationCapacity int
 	delay               DelayFunc
 	observations        *statusQueue
+	latest              sync.Map
 }
 
 func NewManager(options ...ManagerOption) *Manager {
@@ -227,7 +229,25 @@ func (m *Manager) NextObservation(ctx context.Context) (ConnectivityStatus, erro
 	}
 }
 
+func (m *Manager) ConnectivitySnapshot() []ConnectivityStatus {
+	statuses := make([]ConnectivityStatus, 0)
+	m.latest.Range(func(_, value any) bool {
+		status, ok := value.(ConnectivityStatus)
+		if ok {
+			statuses = append(statuses, status)
+		}
+		return true
+	})
+	sort.Slice(statuses, func(left, right int) bool {
+		return statuses[left].SourceID < statuses[right].SourceID
+	})
+	return statuses
+}
+
 func (m *Manager) publishObservation(status ConnectivityStatus) {
+	if status.SourceID != "" {
+		m.latest.Store(status.SourceID, status)
+	}
 	m.observations.publish(status)
 }
 
