@@ -1,8 +1,10 @@
 //! Adversarial tests for the trust boundary between model intent and kernel authority.
 
+use std::process::Command;
+
 use forge_core::{
-    action::AgentAction, patch_file, read_file, write_file, ExecutionError, PatchMode, Workspace,
-    WriteMode,
+    action::AgentAction, execute_git, patch_file, read_file, write_file, ExecutionError, PatchMode,
+    Workspace, WriteMode,
 };
 use serde_json::json;
 
@@ -106,4 +108,34 @@ fn requested_capabilities_do_not_authorize_patch_execution() {
         std::fs::read_to_string(target).expect("target"),
         "one\ntwo\n"
     );
+}
+
+#[test]
+fn requested_capabilities_do_not_authorize_git_read_execution() {
+    let dir = tempfile::tempdir().expect("temporary workspace");
+    let init = Command::new("git")
+        .arg("-C")
+        .arg(dir.path())
+        .args(["init", "-q"])
+        .status()
+        .expect("git init");
+    assert!(init.success());
+    let workspace = Workspace::new(dir.path(), 4096).expect("workspace");
+    let requested = json!({
+        "id": "requested-git-read",
+        "task_id": "task-1",
+        "agent_id": "untrusted-agent",
+        "type": "git",
+        "reason": "request git read authority",
+        "risk": "low",
+        "requested_capabilities": ["git"],
+        "payload": { "operation": "status" },
+        "expected": {}
+    });
+    let action: AgentAction = serde_json::from_value(requested).expect("valid intent");
+
+    let error = execute_git(&action, &workspace)
+        .expect_err("requested capability must not authorize git subprocess execution");
+
+    assert!(matches!(error, ExecutionError::GitCapabilityDenied("git")));
 }
