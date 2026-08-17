@@ -1,10 +1,11 @@
 use std::{sync::Arc, thread, time::Duration};
 
+use forge_core::policy::effective_risk_for_action;
 use forge_core::{
     default_profiles, propose_action, ActionProposal, ActionProposalError, ActionType, AgentAction,
     AgentProfile, AgentRole, Assigner, Capability, ContextRefs, Decomposer, DevelopmentLoop,
-    EnvelopeError, EvidenceBinding, ExecutionEnvelope, Lifecycle, ModelProvider, Phase, Planner,
-    PolicyBinding, PolicyDecision, Task, TaskNode, TaskStatus, VerificationContext,
+    EnvelopeError, EvidenceBinding, EvidenceStore, ExecutionEnvelope, Lifecycle, ModelProvider,
+    Phase, Planner, PolicyBinding, PolicyDecision, Task, TaskNode, TaskStatus, VerificationContext,
     VerificationFabric, VerifiedOrchestrator, VerifiedOrchestratorError, Workspace,
 };
 use tokio::sync::broadcast;
@@ -65,6 +66,41 @@ impl RunnerExecution {
             role,
             verification,
         }
+    }
+}
+
+/// Approval material scoped to one objective and task.
+///
+/// The control-plane HTTP surface does not construct this type. A future
+/// authenticated approval authority must create it and pass it to the internal
+/// runner API after validating the human/automation decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectiveApprovalGrant {
+    objective_id: String,
+    task_id: String,
+    approval_ref: String,
+}
+
+impl ObjectiveApprovalGrant {
+    pub fn new(
+        objective_id: impl Into<String>,
+        task_id: impl Into<String>,
+        approval_ref: impl Into<String>,
+    ) -> Result<Self, RunnerError> {
+        let objective_id = objective_id.into();
+        let task_id = task_id.into();
+        let approval_ref = approval_ref.into();
+        if objective_id.trim().is_empty()
+            || task_id.trim().is_empty()
+            || approval_ref.trim().is_empty()
+        {
+            return Err(RunnerError::InvalidApprovalGrant);
+        }
+        Ok(Self {
+            objective_id,
+            task_id,
+            approval_ref: approval_ref.trim().to_string(),
+        })
     }
 }
 
@@ -138,27 +174,30 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
 
     pub fn resume_approved(
         &self,
-        objective_id: &str,
-        approval_ref: &str,
+        grant: &ObjectiveApprovalGrant,
     ) -> Result<ObjectiveView, RunnerError> {
-        if approval_ref.trim().is_empty() {
-            return Err(RunnerError::ApprovalResumeFailed(objective_id.to_string()));
-        }
         let mut snapshot = self
             .store
-            .get(objective_id)?
-            .ok_or_else(|| RunnerError::ObjectiveNotFound(objective_id.to_string()))?;
+            .get(&grant.objective_id)?
+            .ok_or_else(|| RunnerError::ObjectiveNotFound(grant.objective_id.clone()))?;
         let task_id = snapshot
             .view
             .current_task_id
             .clone()
-            .ok_or_else(|| RunnerError::ApprovalResumeFailed(objective_id.to_string()))?;
+            .ok_or_else(|| RunnerError::ApprovalResumeFailed(grant.objective_id.clone()))?;
+        if task_id != grant.task_id {
+            return Err(RunnerError::ApprovalScopeMismatch {
+                objective_id: grant.objective_id.clone(),
+                expected_task_id: task_id,
+                grant_task_id: grant.task_id.clone(),
+            });
+        }
         let envelope = snapshot
             .orchestrator
             .envelopes
-            .get(&task_id)
+            .get(&grant.task_id)
             .cloned()
-            .ok_or_else(|| RunnerError::ApprovalResumeFailed(objective_id.to_string()))?;
+            .ok_or_else(|| RunnerError::ApprovalResumeFailed(grant.objective_id.clone()))?;
         let role = self
             .execution
             .as_ref()
@@ -175,8 +214,12 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             Box::new(move |_| envelope.clone()),
         );
         orchestrator.state = snapshot.orchestrator.clone();
-        if !orchestrator.resume_approved(&mut snapshot.graph, &task_id, approval_ref) {
-            return Err(RunnerError::ApprovalResumeFailed(objective_id.to_string()));
+        if !orchestrator.resume_approved(
+            &mut snapshot.graph,
+            &grant.task_id,
+            &grant.approval_ref,
+        ) {
+            return Err(RunnerError::ApprovalResumeFailed(grant.objective_id.clone()));
         }
         snapshot.orchestrator = orchestrator.state;
         snapshot.view.status = ObjectiveStatus::Running;
@@ -279,6 +322,8 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
         envelope.validate()?;
 
         let role = execution.role;
+        let mut development = DevelopmentLoop::new((execution.verification)());
+        development.evidence = restore_evidence_store(&snapshot.evidence)?;
         let mut orchestrator = VerifiedOrchestrator::new(
             Decomposer {
                 decompose: Box::new(|_| vec![]),
@@ -286,7 +331,7 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             Assigner {
                 assign: Box::new(move |_| Some(role.as_str().to_string())),
             },
-            DevelopmentLoop::new((execution.verification)()),
+            development,
             Box::new(move |_| envelope.clone()),
         );
         orchestrator.state = snapshot.orchestrator.clone();
@@ -296,7 +341,8 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             changed: changed_paths(&task),
         };
         let phase = orchestrator.advance(&mut snapshot.graph, &execution.workspace, &context)?;
-        snapshot.orchestrator = orchestrator.state;
+        snapshot.orchestrator = orchestrator.state.clone();
+        snapshot.evidence = orchestrator.development.evidence.records().to_vec();
         update_view_from_verified_state(&mut snapshot, phase);
         let message = lifecycle_message(snapshot.view.status);
         self.persist_and_emit(snapshot, message)
@@ -374,13 +420,14 @@ fn trusted_capabilities_for_task(
         });
     }
 
+    let trusted_risk = effective_risk_for_action(&action);
     let required = required_capabilities_for_action(&action);
     for capability in &required {
-        if !profile.may(capability, action.risk) {
+        if !profile.may(capability, trusted_risk) {
             return Err(RunnerError::AgentCapabilityDenied {
                 role: profile.role,
                 capability: capability.clone(),
-                risk: action.risk,
+                risk: trusted_risk,
             });
         }
     }
@@ -420,6 +467,7 @@ fn execution_envelope_from_task(
 
     action.task_id = task.id.clone();
     action.agent_id = role.as_str().to_string();
+    action.risk = effective_risk_for_action(&action);
     action.capabilities = capabilities.clone();
     let requires_approval = action.risk != forge_core::RiskLevel::Low;
 
@@ -441,6 +489,20 @@ fn execution_envelope_from_task(
         },
         lifecycle: Lifecycle::new(max_attempts.max(1)),
     })
+}
+
+fn restore_evidence_store(records: &[forge_core::Evidence]) -> Result<EvidenceStore, RunnerError> {
+    let mut store = EvidenceStore::new();
+    for evidence in records {
+        if !evidence.verify() {
+            return Err(RunnerError::CorruptEvidence(evidence.record.id.clone()));
+        }
+        let restored = store.insert(evidence.record.clone());
+        if restored.fingerprint != evidence.fingerprint {
+            return Err(RunnerError::CorruptEvidence(evidence.record.id.clone()));
+        }
+    }
+    Ok(store)
 }
 
 fn update_view_from_verified_state(snapshot: &mut ObjectiveSnapshot, phase: Phase) {
@@ -558,6 +620,18 @@ pub enum RunnerError {
     },
     #[error("objective has no ready task")]
     NoReadyTask,
+    #[error("approval grant is missing objective, task, or approval identity")]
+    InvalidApprovalGrant,
+    #[error(
+        "approval grant for objective '{objective_id}' targets task '{grant_task_id}', expected '{expected_task_id}'"
+    )]
+    ApprovalScopeMismatch {
+        objective_id: String,
+        expected_task_id: String,
+        grant_task_id: String,
+    },
     #[error("objective '{0}' cannot resume from approval")]
     ApprovalResumeFailed(String),
+    #[error("persisted evidence '{0}' failed fingerprint verification")]
+    CorruptEvidence(String),
 }
