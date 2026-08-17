@@ -1,0 +1,19 @@
+name: autodev_studio
+description: Desktop-first AutoDev objective, evidence, and code-graph review prototype.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
