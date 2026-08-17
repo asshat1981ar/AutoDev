@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "snapshot_id": "graph-empty",
+  "repository": "owner/repo",
+  "revision": null,
+  "nodes": [],
+  "edges": []
+}
