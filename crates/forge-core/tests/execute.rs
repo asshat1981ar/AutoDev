@@ -68,7 +68,6 @@ fn execution_is_deterministic() {
 
     let e1 = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws.clone())).unwrap();
     let e2 = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws)).unwrap();
-    // Same input -> identical content hash and verification payload.
     assert_eq!(e1.verification, e2.verification);
     assert_eq!(e1.stdout, e2.stdout);
 }
@@ -77,13 +76,12 @@ fn execution_is_deterministic() {
 fn dry_run_does_not_touch_filesystem() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
-    // The file does not exist, but dry_run must succeed without touching it.
     let result = forge_core::dry_run(&action("missing.txt"));
     assert!(
         result.is_ok(),
         "dry_run should not require the file to exist"
     );
-    let _ = ws; // keep ws alive
+    let _ = ws;
 }
 
 #[test]
@@ -95,7 +93,7 @@ fn workspace_rejects_nonexistent_root() {
 }
 
 #[test]
-fn execute_writes_a_file_end_to_end() {
+fn public_execute_does_not_promote_requested_write_capability() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     std::fs::write(dir.path().join("c.txt"), b"old").unwrap();
@@ -105,15 +103,12 @@ fn execute_writes_a_file_end_to_end() {
     a.capabilities = vec![Capability::WriteFile];
     a.payload = json!({ "path": "c.txt", "content": "new" });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
-    assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
+    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
-        "new"
+        "old"
     );
-    let v = result.verification.unwrap();
-    assert!(v["diff"].is_string());
-    assert_eq!(v["created"], false);
 }
 
 #[test]
