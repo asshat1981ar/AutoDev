@@ -11,6 +11,8 @@ mod workspace;
 
 pub use error::RunnerError;
 pub use fixture::{load_corpus, load_fixture, EvalFixture, FixtureError, VerifierOverlay};
-pub use runner::{AttemptDriver, AttemptMetadata, EvaluationRunner};
+pub use runner::{
+    smoke_fixture, AttemptDriver, AttemptMetadata, EvaluationRunner, ReferenceSmokeResult,
+};
 pub use verifier::{apply_verifier_overlays, run_verifier, StepExecution};
 pub use workspace::{changed_paths, materialize_checkout, IsolatedCheckout};
