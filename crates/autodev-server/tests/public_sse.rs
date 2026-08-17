@@ -1,8 +1,8 @@
+use autodev_server::{router, AppState};
 use axum::{
     body::{Body, Bytes},
     http::Request,
 };
-use autodev_server::{router, AppState};
 use serde_json::Value;
 use tokio_stream::StreamExt;
 use tower::ServiceExt;
@@ -58,9 +58,15 @@ async fn objective_queue_event_uses_public_v1_envelope() {
 
     assert_eq!(event["schema_version"], "1");
     assert_eq!(event["type"], "objective_queued");
-    assert!(event["event_id"].as_str().is_some_and(|value| !value.is_empty()));
-    assert!(event["timestamp"].as_str().is_some_and(|value| value.ends_with('Z')));
-    assert!(event["objective_id"].as_str().is_some_and(|value| !value.is_empty()));
+    assert!(event["event_id"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    assert!(event["timestamp"]
+        .as_str()
+        .is_some_and(|value| value.ends_with('Z')));
+    assert!(event["objective_id"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
     assert_eq!(event["run_id"], Value::Null);
     assert_eq!(event["task_id"], Value::Null);
     assert_eq!(event["data"]["repository"], "owner/repo");
