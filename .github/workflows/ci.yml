@@ -12,7 +12,7 @@ env:
 
 jobs:
   rust:
-    name: Rust - fmt, clippy, build, test
+    name: Rust - fmt, clippy, build, test, container
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,6 +30,8 @@ jobs:
         run: cargo build --workspace
       - name: Test
         run: cargo test --workspace
+      - name: Build server container
+        run: docker build -f ../Dockerfile -t autodev-server:ci ..
 
   kotlin:
     name: Kotlin - build, test, ktlint
