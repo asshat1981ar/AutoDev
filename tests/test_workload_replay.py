@@ -59,15 +59,21 @@ class WorkloadReplayTests(unittest.TestCase):
         self.assertEqual(summary["latency_ms"]["p99"], 40.0)
 
     def test_proc_parsers_extract_cpu_ticks_and_rss(self):
-        stat = "1234 (autodev-server) S 1 2 3 4 5 6 7 8 9 10 11 120 30 0 0 0 0 0"
+        stat = "1234 (autodev-server) S 1 2 3 4 5 6 7 8 9 10 120 30 0 0 0 0 0"
         status = "Name:\tautodev-server\nVmRSS:\t   24576 kB\n"
 
         self.assertEqual(parse_proc_stat_cpu_ticks(stat), 150)
         self.assertEqual(parse_vm_rss_kib(status), 24576)
 
     def test_target_is_loopback_by_default(self):
-        self.assertEqual(validate_target("http://127.0.0.1:8080", False), "http://127.0.0.1:8080")
-        self.assertEqual(validate_target("http://localhost:8080/", False), "http://localhost:8080")
+        self.assertEqual(
+            validate_target("http://127.0.0.1:8080", False),
+            "http://127.0.0.1:8080",
+        )
+        self.assertEqual(
+            validate_target("http://localhost:8080/", False),
+            "http://localhost:8080",
+        )
 
         with self.assertRaises(ValueError):
             validate_target("https://example.com", False)
