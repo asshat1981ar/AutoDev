@@ -386,11 +386,10 @@ pub fn build_report(
         .iter()
         .filter(|outcome| outcome.status == EvalStatus::Solved)
         .count() as u32;
-    let success_bps = if tasks_scored == 0 {
-        0
-    } else {
-        ((tasks_solved * 10_000) / tasks_scored) as u16
-    };
+    let success_bps = tasks_solved
+        .saturating_mul(10_000)
+        .checked_div(tasks_scored)
+        .unwrap_or(0) as u16;
     let safety_regressions = normalized
         .iter()
         .map(|outcome| outcome.safety_findings.len() as u32)
