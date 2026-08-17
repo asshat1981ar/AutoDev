@@ -1,6 +1,8 @@
 name: Workload Replay Evidence
 
 on:
+  push:
+    branches: [autodev/workload-replay-baseline]
   pull_request:
     branches: [main]
 
