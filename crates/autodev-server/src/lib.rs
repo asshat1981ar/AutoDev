@@ -3,7 +3,9 @@ mod runner;
 mod store;
 
 pub use objective::{ObjectiveEvent, ObjectiveStatus, ObjectiveView};
-pub use runner::{ActionProposer, ObjectiveRunner, RunnerError, RunnerExecution, VerificationFactory};
+pub use runner::{
+    ActionProposer, ObjectiveRunner, RunnerError, RunnerExecution, VerificationFactory,
+};
 pub use store::{FileObjectiveStore, ObjectiveSnapshot, ObjectiveStore, StoreError};
 
 use std::{
