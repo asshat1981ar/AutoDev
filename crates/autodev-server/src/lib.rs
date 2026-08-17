@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn github_signature_verification_is_fail_closed() {
-        let body = br#"{\"action\":\"opened\"}"#;
+        let body = br#"{"action":"opened"}"#;
         let signature = signed(b"secret", body);
         assert!(verify_github_signature(b"secret", Some(&signature), body));
         assert!(!verify_github_signature(b"wrong", Some(&signature), body));
@@ -430,7 +430,7 @@ mod tests {
                     .uri("/api/v1/objectives")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{\"repository\":\"owner/repo\",\"description\":\"Implement health endpoint\"}"#,
+                        r#"{"repository":"owner/repo","description":"Implement health endpoint"}"#,
                     ))
                     .expect("request"),
             )
