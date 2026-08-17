@@ -5,10 +5,11 @@ use std::path::Path;
 use chrono::Utc;
 
 use crate::action::AgentAction;
+use crate::authority::ExecutionAuthority;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus};
 use crate::patch::{Patch, PatchResult};
-use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
+use crate::policy::{enforce_policy, has_required_capability};
 use crate::workspace::{PathResolution, Workspace};
 use crate::write::atomic_write;
 
@@ -27,7 +28,7 @@ pub fn patch_file(
     workspace: &Workspace,
     mode: PatchMode,
 ) -> Result<ExecutionResult, ExecutionError> {
-    patch_file_authorized(action, workspace, mode, &AuthorizationGrant::none())
+    patch_file_authorized(action, workspace, mode, &ExecutionAuthority::none())
 }
 
 /// Trusted patch entry point used by the execution-envelope path.
@@ -35,12 +36,12 @@ pub(crate) fn patch_file_authorized(
     action: &AgentAction,
     workspace: &Workspace,
     mode: PatchMode,
-    grant: &AuthorizationGrant,
+    authority: &ExecutionAuthority,
 ) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
-    enforce_policy(action, grant)?;
-    if !has_required_capability(action) {
+    enforce_policy(action, authority)?;
+    if !has_required_capability(action, authority) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
@@ -181,6 +182,7 @@ fn patch_failures_to_string(result: &PatchResult) -> String {
 mod tests {
     use super::*;
     use crate::action::{ActionType, AgentAction, Capability, RiskLevel};
+    use crate::authority::GrantedCapability;
     use serde_json::json;
 
     fn base_action(path: &str, patch: &str) -> AgentAction {
@@ -197,13 +199,27 @@ mod tests {
         }
     }
 
+    fn patch_allowed(
+        action: &AgentAction,
+        workspace: &Workspace,
+        mode: PatchMode,
+    ) -> Result<ExecutionResult, ExecutionError> {
+        patch_file_authorized(
+            action,
+            workspace,
+            mode,
+            &ExecutionAuthority::granted(vec![GrantedCapability::PatchFile]),
+        )
+    }
+
     #[test]
     fn patch_applies_to_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\ntwo\nthree\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
+        let result =
+            patch_allowed(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -219,7 +235,8 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun).unwrap();
+        let result =
+            patch_allowed(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun).unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -233,7 +250,8 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"uno\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let err = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
+        let err =
+            patch_allowed(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
         assert!(matches!(err, ExecutionError::PatchConflict(_)));
     }
 
@@ -242,7 +260,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n x\n";
-        let err = patch_file(
+        let err = patch_allowed(
             &base_action("missing.txt", patch_text),
             &ws,
             PatchMode::Apply,
@@ -266,7 +284,7 @@ mod tests {
     fn traversal_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = patch_file(
+        let err = patch_allowed(
             &base_action("../escape.txt", "--- a\n+++ b\n@@ -1,1 +1,1 @@\n x\n"),
             &ws,
             PatchMode::Apply,
@@ -280,7 +298,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
-        let err = patch_file(
+        let err = patch_allowed(
             &base_action("a.txt", "not a patch at all"),
             &ws,
             PatchMode::Apply,
@@ -305,7 +323,7 @@ mod tests {
             &action,
             &ws,
             PatchMode::Apply,
-            &AuthorizationGrant::approved("approval-1"),
+            &ExecutionAuthority::with_approval(vec![GrantedCapability::PatchFile], "approval-1"),
         )
         .unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
