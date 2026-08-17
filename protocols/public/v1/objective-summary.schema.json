@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/protocols/public/v1/objective-summary.schema.json",
+  "title": "AutoDev Objective Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "repository", "description", "branch", "status"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "id": { "type": "string", "minLength": 1 },
+    "repository": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "planning", "running", "blocked", "verifying", "replanned", "completed", "failed"]
+    }
+  }
+}
