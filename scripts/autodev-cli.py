@@ -54,7 +54,7 @@ class Client:
             headers={"accept": "text/event-stream"},
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=None) as response:
                 if response.status != 200:
                     raise CliError(f"unexpected HTTP status {response.status}")
                 for raw_line in response:
