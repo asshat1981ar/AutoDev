@@ -278,8 +278,11 @@ fn runner_executes_persisted_low_risk_intent_through_verified_orchestrator() {
     let directory = tempdir().expect("temp directory");
     let workspace_root = directory.path().join("workspace");
     fs::create_dir_all(&workspace_root).expect("workspace directory");
-    fs::write(workspace_root.join("README.md"), b"trusted execution fixture\n")
-        .expect("workspace fixture");
+    fs::write(
+        workspace_root.join("README.md"),
+        b"trusted execution fixture\n",
+    )
+    .expect("workspace fixture");
 
     let store = Arc::new(FileObjectiveStore::new(directory.path().join("state")));
     store
