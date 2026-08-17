@@ -185,8 +185,7 @@ fn medium_risk_write_blocks_without_trusted_approval_and_can_resume_internally()
     assert_eq!(envelope.policy.approval_ref, None);
     assert_eq!(envelope.action.capabilities, vec![Capability::WriteFile]);
 
-    let grant = ObjectiveApprovalGrant::new("objective-1", "t-root", "trusted-approval-1")
-        .unwrap();
+    let grant = ObjectiveApprovalGrant::new("objective-1", "t-root", "trusted-approval-1").unwrap();
     let resumed = runner.resume_approved(&grant).unwrap();
     assert_eq!(resumed.status, ObjectiveStatus::Running);
     let completed = runner.advance_once("objective-1").unwrap();
