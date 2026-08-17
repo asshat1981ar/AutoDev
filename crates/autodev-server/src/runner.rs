@@ -133,7 +133,7 @@ fn execution_envelope_from_task(
         task_id: task.id.clone(),
         policy: PolicyBinding {
             risk: action.risk,
-            capabilities: action.capabilities.clone(),
+            capabilities: vec![],
             requires_approval,
             approval_ref: None,
         },
