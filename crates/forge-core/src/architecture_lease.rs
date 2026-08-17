@@ -153,6 +153,63 @@ pub struct EffectivePolicy {
     pub fingerprint: String,
 }
 
+/// Repository-backed approval reference type accepted for policy relaxation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalReferenceKind {
+    Commit,
+    PullRequest,
+    Adr,
+}
+
+/// Normalized repository-backed approval reference.
+///
+/// This is approval *evidence*, not an execution authorization grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalReference {
+    pub kind: ApprovalReferenceKind,
+    pub reference: String,
+}
+
+impl ApprovalReference {
+    fn validate(&self) -> Result<(), LeasePolicyError> {
+        required(&self.reference, "approval_reference")
+    }
+}
+
+/// Normalized observation that a repository approval reference was approved.
+///
+/// Connectors may produce this observation; ForgeCore alone evaluates whether
+/// it satisfies a controlled policy-relaxation rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryApprovalEvidence {
+    pub reference: ApprovalReference,
+    pub approved: bool,
+}
+
+/// Metadata required when a repository policy intentionally relaxes a floor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PolicyRelaxation {
+    pub rationale: String,
+    pub approval_reference: ApprovalReference,
+}
+
+impl PolicyRelaxation {
+    fn validate(&self) -> Result<(), LeasePolicyError> {
+        required(&self.rationale, "relaxation_rationale")?;
+        self.approval_reference.validate()
+    }
+}
+
+/// Repository policy replacement applied against a registered safety floor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryPolicyOverride {
+    pub policy_id: String,
+    pub replacement: LeasePolicyDefinition,
+    pub allow_relaxation: bool,
+    pub relaxation: Option<PolicyRelaxation>,
+}
+
 /// Registry of named lease policies. Unknown or malformed policies fail closed.
 #[derive(Debug, Clone, Default)]
 pub struct LeasePolicyRegistry {
@@ -176,19 +233,168 @@ impl LeasePolicyRegistry {
 
     /// Compile a named definition into immutable effective policy state.
     pub fn compile(&self, id: &str) -> Result<EffectivePolicy, LeasePolicyError> {
+        let definition = self.definition(id)?;
+        compile_definition(definition)
+    }
+
+    /// Compile a repository override against a registered policy floor.
+    ///
+    /// Obvious tightening is accepted without approval. Obvious relaxation
+    /// requires explicit opt-in, rationale, and matching repository-backed
+    /// approval evidence. Comparisons that require general logical reasoning
+    /// fail closed before approval metadata is considered.
+    pub fn compile_with_override(
+        &self,
+        id: &str,
+        override_policy: &RepositoryPolicyOverride,
+        approvals: &[RepositoryApprovalEvidence],
+    ) -> Result<EffectivePolicy, LeasePolicyError> {
+        let base = self.definition(id)?;
+        required(&override_policy.policy_id, "override_policy_id")?;
+        if override_policy.policy_id != id {
+            return Err(LeasePolicyError::OverridePolicyMismatch {
+                expected: id.to_string(),
+                actual: override_policy.policy_id.clone(),
+            });
+        }
+        if override_policy.replacement.id != id {
+            return Err(LeasePolicyError::OverridePolicyMismatch {
+                expected: id.to_string(),
+                actual: override_policy.replacement.id.clone(),
+            });
+        }
+        override_policy.replacement.validate()?;
+
+        match compare_policy_change(base, &override_policy.replacement)? {
+            PolicyChange::Equivalent | PolicyChange::Tightening => {
+                compile_definition(&override_policy.replacement)
+            }
+            PolicyChange::Relaxation => {
+                if !override_policy.allow_relaxation {
+                    return Err(LeasePolicyError::RelaxationNotAllowed);
+                }
+                let relaxation = override_policy
+                    .relaxation
+                    .as_ref()
+                    .ok_or(LeasePolicyError::MissingRelaxationMetadata)?;
+                relaxation.validate()?;
+                let approval_reference = &relaxation.approval_reference;
+                let approved = approvals.iter().any(|evidence| {
+                    evidence.approved && evidence.reference == *approval_reference
+                });
+                if !approved {
+                    return Err(LeasePolicyError::MissingRepositoryApproval(
+                        approval_reference.clone(),
+                    ));
+                }
+                compile_definition(&override_policy.replacement)
+            }
+        }
+    }
+
+    fn definition(&self, id: &str) -> Result<&LeasePolicyDefinition, LeasePolicyError> {
         let definition = self
             .definitions
             .get(id)
             .ok_or_else(|| LeasePolicyError::UnknownPolicyId(id.to_string()))?;
         definition.validate()?;
-        Ok(EffectivePolicy {
-            id: definition.id.clone(),
-            version: definition.version.clone(),
-            rules: definition.rules.clone(),
-            risk_tier: definition.risk_tier,
-            revalidation_mode: definition.revalidation_mode,
-            fingerprint: definition.fingerprint()?,
-        })
+        Ok(definition)
+    }
+}
+
+fn compile_definition(
+    definition: &LeasePolicyDefinition,
+) -> Result<EffectivePolicy, LeasePolicyError> {
+    definition.validate()?;
+    Ok(EffectivePolicy {
+        id: definition.id.clone(),
+        version: definition.version.clone(),
+        rules: definition.rules.clone(),
+        risk_tier: definition.risk_tier,
+        revalidation_mode: definition.revalidation_mode,
+        fingerprint: definition.fingerprint()?,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyChange {
+    Equivalent,
+    Tightening,
+    Relaxation,
+}
+
+fn compare_policy_change(
+    base: &LeasePolicyDefinition,
+    replacement: &LeasePolicyDefinition,
+) -> Result<PolicyChange, LeasePolicyError> {
+    // Changing the assigned risk tier changes policy meaning but is not safely
+    // comparable as a simple relaxation/tightening relation here.
+    if base.risk_tier != replacement.risk_tier {
+        return Err(LeasePolicyError::UnsupportedPolicyComparison);
+    }
+
+    let rule_change = compare_rule(&base.rules, &replacement.rules)?;
+    let revalidation_change = compare_revalidation(
+        base.revalidation_mode,
+        replacement.revalidation_mode,
+    );
+    combine_policy_changes(rule_change, revalidation_change)
+}
+
+fn compare_rule(base: &LeaseRule, replacement: &LeaseRule) -> Result<PolicyChange, LeasePolicyError> {
+    if base == replacement {
+        return Ok(PolicyChange::Equivalent);
+    }
+
+    match (base, replacement) {
+        (
+            LeaseRule::MaxAge {
+                seconds: base_seconds,
+            },
+            LeaseRule::MaxAge {
+                seconds: replacement_seconds,
+            },
+        ) => Ok(if replacement_seconds < base_seconds {
+            PolicyChange::Tightening
+        } else {
+            PolicyChange::Relaxation
+        }),
+        (LeaseRule::RiskAtMost(base_risk), LeaseRule::RiskAtMost(replacement_risk)) => {
+            Ok(if replacement_risk < base_risk {
+                PolicyChange::Tightening
+            } else {
+                PolicyChange::Relaxation
+            })
+        }
+        _ => Err(LeasePolicyError::UnsupportedPolicyComparison),
+    }
+}
+
+fn compare_revalidation(base: RevalidationMode, replacement: RevalidationMode) -> PolicyChange {
+    match (base, replacement) {
+        (left, right) if left == right => PolicyChange::Equivalent,
+        (RevalidationMode::AutomaticIfUnchanged, RevalidationMode::Explicit) => {
+            PolicyChange::Tightening
+        }
+        (RevalidationMode::Explicit, RevalidationMode::AutomaticIfUnchanged) => {
+            PolicyChange::Relaxation
+        }
+        _ => PolicyChange::Equivalent,
+    }
+}
+
+fn combine_policy_changes(
+    left: PolicyChange,
+    right: PolicyChange,
+) -> Result<PolicyChange, LeasePolicyError> {
+    match (left, right) {
+        (PolicyChange::Equivalent, change) | (change, PolicyChange::Equivalent) => Ok(change),
+        (PolicyChange::Tightening, PolicyChange::Tightening) => Ok(PolicyChange::Tightening),
+        (PolicyChange::Relaxation, PolicyChange::Relaxation) => Ok(PolicyChange::Relaxation),
+        (PolicyChange::Tightening, PolicyChange::Relaxation)
+        | (PolicyChange::Relaxation, PolicyChange::Tightening) => {
+            Err(LeasePolicyError::UnsupportedPolicyComparison)
+        }
     }
 }
 
@@ -205,6 +411,16 @@ pub enum LeasePolicyError {
     DuplicatePolicyId(String),
     #[error("unknown lease policy id `{0}`")]
     UnknownPolicyId(String),
+    #[error("repository override policy mismatch: expected `{expected}`, got `{actual}`")]
+    OverridePolicyMismatch { expected: String, actual: String },
+    #[error("repository policy relaxation is not allowed")]
+    RelaxationNotAllowed,
+    #[error("repository policy relaxation metadata is required")]
+    MissingRelaxationMetadata,
+    #[error("missing approved repository evidence for {0:?}")]
+    MissingRepositoryApproval(ApprovalReference),
+    #[error("policy comparison is unsupported and therefore fails closed")]
+    UnsupportedPolicyComparison,
 }
 
 fn required(value: &str, field: &'static str) -> Result<(), LeasePolicyError> {
