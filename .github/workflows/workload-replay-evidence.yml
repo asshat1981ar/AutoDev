@@ -75,6 +75,21 @@ jobs:
             --concurrency 32 \
             --pid "$(cat performance-evidence/server.pid)" \
             --output performance-evidence/rust-c32.json
+      - name: Mixed authentication failure isolation
+        run: |
+          set +e
+          python scripts/workload_replay.py \
+            --target http://127.0.0.1:18080 \
+            --token intentionally-wrong-token \
+            --iterations 100 \
+            --warmup-iterations 0 \
+            --concurrency 32 \
+            --pid "$(cat performance-evidence/server.pid)" \
+            --output performance-evidence/rust-auth-failure-c32.json
+          replay_status=$?
+          set -e
+          test "$replay_status" -eq 2
+          curl --fail --silent http://127.0.0.1:18080/health >/dev/null
       - name: Stop server
         if: always()
         run: |
