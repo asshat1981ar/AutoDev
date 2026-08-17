@@ -1,0 +1,32 @@
+{
+  "schema_version": "1",
+  "snapshot_id": "graph-0001",
+  "repository": "owner/repo",
+  "revision": "abc123",
+  "nodes": [
+    {
+      "id": "node-1",
+      "label": "MainActivity",
+      "kind": "class",
+      "file": "kotlin/android-command-center/src/main/kotlin/dev/autodev/commandcenter/MainActivity.kt",
+      "enclosing": "dev.autodev.commandcenter",
+      "span": { "start": 0, "end": 120 }
+    },
+    {
+      "id": "node-2",
+      "label": "connect",
+      "kind": "function",
+      "file": "kotlin/android-command-center/src/main/kotlin/dev/autodev/commandcenter/MainActivity.kt",
+      "enclosing": "dev.autodev.commandcenter.CommandCenterViewModel",
+      "span": { "start": 121, "end": 280 }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "node-1",
+      "to": "node-2",
+      "kind": "contains"
+    }
+  ]
+}
