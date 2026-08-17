@@ -240,6 +240,15 @@ pub enum ArchitectureEvidenceError {
     EmptyField(&'static str),
     #[error("confidence must be between 0 and 100, got {0}")]
     InvalidConfidence(u8),
+    #[error("duplicate evidence id `{0}`")]
+    DuplicateEvidenceId(String),
+    #[error("{item_kind} `{item_id}` belongs to objective `{actual}`; expected `{expected}`")]
+    ObjectiveMismatch {
+        item_kind: &'static str,
+        item_id: String,
+        expected: String,
+        actual: String,
+    },
     #[error("decision `{0}` must include at least one rejected alternative")]
     MissingRejectedAlternative(String),
     #[error("decision `{0}` references unknown evidence `{1}`")]
@@ -339,13 +348,34 @@ pub fn render_architecture_report(
     required_ref(&input.title, "title")?;
     required_ref(&input.desired_outcome, "desired_outcome")?;
 
-    let evidence_by_id: BTreeMap<String, EvidenceRecord> = input
-        .evidence
-        .iter()
-        .cloned()
-        .map(|record| (record.id.clone(), record))
-        .collect();
+    let mut evidence_by_id = BTreeMap::new();
+    for record in &input.evidence {
+        if record.objective_id != input.objective_id {
+            return Err(ArchitectureEvidenceError::ObjectiveMismatch {
+                item_kind: "evidence",
+                item_id: record.id.clone(),
+                expected: input.objective_id.clone(),
+                actual: record.objective_id.clone(),
+            });
+        }
+        if evidence_by_id
+            .insert(record.id.clone(), record.clone())
+            .is_some()
+        {
+            return Err(ArchitectureEvidenceError::DuplicateEvidenceId(
+                record.id.clone(),
+            ));
+        }
+    }
     for decision in &input.decisions {
+        if decision.objective_id != input.objective_id {
+            return Err(ArchitectureEvidenceError::ObjectiveMismatch {
+                item_kind: "decision",
+                item_id: decision.id.clone(),
+                expected: input.objective_id.clone(),
+                actual: decision.objective_id.clone(),
+            });
+        }
         decision.validate(&evidence_by_id)?;
     }
 
