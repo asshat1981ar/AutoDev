@@ -14,9 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = match CodexProcessService::spawn(&codex_binary, env!("CARGO_PKG_VERSION")) {
         Ok(service) => AppState::with_codex_service(secret, Arc::new(service)),
         Err(_) => {
-            eprintln!(
-                "Codex subscription provider unavailable; auth endpoints will return 503"
-            );
+            eprintln!("Codex subscription provider unavailable; auth endpoints will return 503");
             AppState::new(secret)
         }
     };
