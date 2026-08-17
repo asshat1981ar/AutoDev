@@ -197,7 +197,10 @@ async fn codex_rate_limits_and_logout_are_safe_control_plane_operations() {
 async fn codex_unavailable_and_protocol_errors_fail_closed_without_leaking_details() {
     let unavailable = router(AppState::new(None));
     let unavailable_response = call(unavailable, "GET", "/api/v1/codex/account").await;
-    assert_eq!(unavailable_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        unavailable_response.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
     assert_eq!(
         body_json(unavailable_response).await,
         json!({"error": "codex_provider_unavailable"})
