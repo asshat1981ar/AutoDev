@@ -1,5 +1,6 @@
 use forge_core::{
-    default_profiles, propose_action, ActionType, AgentRole, MockProvider, PolicyDecision, Task,
+    default_profiles, propose_action, ActionType, AgentRole, MockProvider, PolicyDecision, RiskLevel,
+    Task,
 };
 
 fn task() -> Task {
@@ -33,6 +34,7 @@ fn proposal_generates_typed_action_without_execution() {
     let proposal = propose_action("dev-1", &profile, &provider, &task()).expect("proposal");
 
     assert_eq!(proposal.action.action_type, ActionType::ReadFile);
+    assert_eq!(proposal.action.risk, RiskLevel::Low);
     assert_eq!(proposal.decision, PolicyDecision::Allow);
     assert_eq!(proposal.model, "mock-model");
 }
@@ -55,6 +57,63 @@ fn proposal_preserves_approval_requirement_without_approving() {
     assert_eq!(proposal.decision, PolicyDecision::RequireApproval);
     assert!(proposal.action.payload.get("approval_ref").is_none());
     assert!(proposal.action.payload.get("approved").is_none());
+}
+
+#[test]
+fn proposal_raises_underreported_write_risk_to_trusted_floor() {
+    let provider = MockProvider::new(
+        serde_json::json!({
+            "action": "write_file",
+            "reason": "model understates mutation",
+            "risk": "low",
+            "payload": {"path": "src/lib.rs", "content": "x"}
+        })
+        .to_string(),
+    );
+    let profile = profile(AgentRole::Developer);
+
+    let proposal = propose_action("dev-1", &profile, &provider, &task()).expect("proposal");
+
+    assert_eq!(proposal.action.risk, RiskLevel::Medium);
+    assert_eq!(proposal.decision, PolicyDecision::RequireApproval);
+}
+
+#[test]
+fn proposal_raises_underreported_mutating_git_risk_to_trusted_floor() {
+    let provider = MockProvider::new(
+        serde_json::json!({
+            "action": "git",
+            "reason": "checkpoint repository",
+            "risk": "low",
+            "payload": {"operation": "checkpoint", "message": "checkpoint"}
+        })
+        .to_string(),
+    );
+    let profile = profile(AgentRole::Developer);
+
+    let proposal = propose_action("dev-1", &profile, &provider, &task()).expect("proposal");
+
+    assert_eq!(proposal.action.risk, RiskLevel::Medium);
+    assert_eq!(proposal.decision, PolicyDecision::RequireApproval);
+}
+
+#[test]
+fn proposal_raises_underreported_rollback_risk_to_high() {
+    let provider = MockProvider::new(
+        serde_json::json!({
+            "action": "git",
+            "reason": "rollback repository",
+            "risk": "low",
+            "payload": {"operation": "rollback", "command": "checkout"}
+        })
+        .to_string(),
+    );
+    let profile = profile(AgentRole::Release);
+
+    let proposal = propose_action("release-1", &profile, &provider, &task()).expect("proposal");
+
+    assert_eq!(proposal.action.risk, RiskLevel::High);
+    assert_eq!(proposal.decision, PolicyDecision::RequireApproval);
 }
 
 #[test]
