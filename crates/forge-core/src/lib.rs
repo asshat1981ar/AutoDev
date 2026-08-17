@@ -6,6 +6,7 @@
 //! model assignment primitives that can prepare bounded execution plans.
 
 pub mod action;
+pub mod action_proposal;
 pub mod agent;
 pub mod codex_app_server;
 pub mod codex_proposal;
@@ -34,6 +35,7 @@ pub mod workspace;
 pub mod write;
 
 pub use action::{ActionType, AgentAction, Capability, RiskLevel};
+pub use action_proposal::{propose_action, ActionProposal};
 pub use agent::{
     default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
