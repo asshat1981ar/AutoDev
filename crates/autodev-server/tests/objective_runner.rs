@@ -10,7 +10,10 @@ use autodev_server::{
     ActionProposer, FileObjectiveStore, ObjectiveRunner, ObjectiveSnapshot, ObjectiveStatus,
     ObjectiveStore, ObjectiveView, RunnerError,
 };
-use forge_core::{ActionProposal, TaskGraph, TaskNode, TaskStatus, VerifiedOrchestratorState};
+use forge_core::{
+    ActionProposal, ActionType, AgentAction, Capability, PolicyDecision, RiskLevel, TaskGraph,
+    TaskNode, TaskStatus, VerifiedOrchestratorState,
+};
 use tempfile::tempdir;
 use tokio::sync::broadcast;
 
@@ -69,6 +72,39 @@ impl ActionProposer for CountingProposer {
     fn propose(&self, _task: &TaskNode) -> Result<ActionProposal, RunnerError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         panic!("planning preparation must not request an action proposal")
+    }
+}
+
+struct ReadFileProposer {
+    calls: AtomicUsize,
+}
+
+impl ReadFileProposer {
+    fn new() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl ActionProposer for ReadFileProposer {
+    fn propose(&self, task: &TaskNode) -> Result<ActionProposal, RunnerError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(ActionProposal {
+            action: AgentAction {
+                id: format!("proposal-{}", task.id),
+                task_id: task.id.clone(),
+                agent_id: "developer".to_string(),
+                action_type: ActionType::ReadFile,
+                reason: "inspect repository state".to_string(),
+                risk: RiskLevel::Low,
+                capabilities: vec![Capability::ReadFile],
+                payload: serde_json::json!({"path": "README.md"}),
+                expected: serde_json::json!({}),
+            },
+            decision: PolicyDecision::Allow,
+            model: "fake-model".to_string(),
+        })
     }
 }
 
@@ -182,5 +218,56 @@ fn runner_decomposes_planning_root_to_ready_without_proposal() {
     assert_eq!(event.event_type, "objective_planning");
     assert_eq!(event.phase.as_deref(), Some("decompose"));
     assert_eq!(event.status, ObjectiveStatus::Planning);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn runner_persists_typed_action_proposal_for_ready_task() {
+    let directory = tempdir().expect("temp directory");
+    let store = Arc::new(FileObjectiveStore::new(directory.path()));
+    store
+        .put(&queued_snapshot("objective-propose-1"))
+        .expect("persist queued objective");
+
+    let proposer = Arc::new(ReadFileProposer::new());
+    let (events, mut receiver) = broadcast::channel(8);
+    let runner = ObjectiveRunner::new(Arc::clone(&store), Arc::clone(&proposer), events);
+
+    runner
+        .advance_once("objective-propose-1")
+        .expect("advance to planning");
+    receiver.try_recv().expect("planning event");
+    runner
+        .advance_once("objective-propose-1")
+        .expect("advance to ready");
+    receiver.try_recv().expect("decomposition event");
+
+    let before = store
+        .get("objective-propose-1")
+        .expect("load ready objective")
+        .expect("ready objective exists");
+    assert_eq!(before.graph.root().status, TaskStatus::Ready);
+    assert!(before.graph.root().planned_action.is_none());
+
+    runner
+        .advance_once("objective-propose-1")
+        .expect("persist action proposal");
+
+    assert_eq!(proposer.calls.load(Ordering::SeqCst), 1);
+    let persisted = store
+        .get("objective-propose-1")
+        .expect("load proposed objective")
+        .expect("proposed objective exists");
+    let planned_action = persisted
+        .graph
+        .root()
+        .planned_action
+        .as_ref()
+        .expect("serialized typed action");
+    assert_eq!(planned_action["type"], "read_file");
+    assert_eq!(planned_action["payload"]["path"], "README.md");
+    assert!(planned_action.get("approval_ref").is_none());
+    assert!(planned_action["payload"].get("approved").is_none());
+    assert_eq!(persisted.graph.root().status, TaskStatus::Ready);
     assert!(receiver.try_recv().is_err());
 }
