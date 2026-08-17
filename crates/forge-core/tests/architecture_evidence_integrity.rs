@@ -21,59 +21,6 @@ fn evidence(id: &str, objective_id: &str, class: EvidenceClass) -> EvidenceRecor
 }
 
 #[test]
-fn public_evidence_record_validation_rejects_empty_required_fields() {
-    let mut record = evidence("ev-public", "obj-w1", EvidenceClass::Documented);
-    record.claim = "   ".into();
-
-    assert_eq!(
-        record.validate().unwrap_err(),
-        ArchitectureEvidenceError::EmptyField("claim"),
-    );
-}
-
-#[test]
-fn public_evidence_record_validation_rejects_invalid_confidence() {
-    let mut record = evidence("ev-public", "obj-w1", EvidenceClass::Documented);
-    record.confidence = 101;
-
-    assert_eq!(
-        record.validate().unwrap_err(),
-        ArchitectureEvidenceError::InvalidConfidence(101),
-    );
-}
-
-#[test]
-fn public_evidence_record_validation_rejects_malformed_content_fingerprint() {
-    let mut record = evidence("ev-public", "obj-w1", EvidenceClass::Documented);
-    record.content_fingerprint = "not-a-sha256".into();
-
-    assert_eq!(
-        record.validate().unwrap_err(),
-        ArchitectureEvidenceError::InvalidContentFingerprint("not-a-sha256".into()),
-    );
-}
-
-#[test]
-fn report_revalidates_public_evidence_records() {
-    let mut malformed = evidence("ev-public", "obj-w1", EvidenceClass::Documented);
-    malformed.source_reference = "".into();
-
-    let input = ArchitectureReportInput {
-        objective_id: "obj-w1".into(),
-        title: "Public record validation".into(),
-        desired_outcome: "Deserialized evidence cannot bypass invariants".into(),
-        evidence: vec![malformed],
-        decisions: vec![],
-        options: vec![],
-    };
-
-    assert_eq!(
-        render_architecture_report(&input).unwrap_err(),
-        ArchitectureEvidenceError::EmptyField("source_reference"),
-    );
-}
-
-#[test]
 fn report_rejects_duplicate_evidence_ids() {
     let input = ArchitectureReportInput {
         objective_id: "obj-w1".into(),

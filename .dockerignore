@@ -1,0 +1,11 @@
+.git
+.github
+.cline
+kotlin
+docs
+protocols
+scripts
+tests
+*.md
+!crates/**
+crates/target

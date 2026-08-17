@@ -15,4 +15,4 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
 }
 
-include("mpp-core", "mpp-server", "mpp-ui", "mpp-codegraph")
+include("mpp-core", "mpp-server", "mpp-ui", "mpp-codegraph", "android-command-center")
