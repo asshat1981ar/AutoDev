@@ -93,7 +93,10 @@ fn corpus_reads_only_json_and_returns_tasks_sorted_by_id() {
     fs::write(dir.path().join("README.txt"), b"not a fixture").unwrap();
 
     let corpus = load_corpus(dir.path()).unwrap();
-    let ids: Vec<&str> = corpus.iter().map(|fixture| fixture.task.id.as_str()).collect();
+    let ids: Vec<&str> = corpus
+        .iter()
+        .map(|fixture| fixture.task.id.as_str())
+        .collect();
     assert_eq!(ids, vec!["alpha-task", "zeta-task"]);
 }
 
