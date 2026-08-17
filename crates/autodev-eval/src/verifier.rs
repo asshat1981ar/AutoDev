@@ -140,19 +140,14 @@ where
     })
 }
 
-fn join_capture(
-    handle: thread::JoinHandle<io::Result<Vec<u8>>>,
-) -> Result<Vec<u8>, RunnerError> {
+fn join_capture(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> Result<Vec<u8>, RunnerError> {
     let captured = handle
         .join()
         .map_err(|_| RunnerError::Io(io::Error::other("verifier capture thread panicked")))??;
     Ok(captured)
 }
 
-fn wait_with_timeout(
-    child: &mut Child,
-    timeout: Duration,
-) -> io::Result<(ExitStatus, bool)> {
+fn wait_with_timeout(child: &mut Child, timeout: Duration) -> io::Result<(ExitStatus, bool)> {
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -178,9 +173,8 @@ fn confined_source(root: &Path, relative: &str) -> Result<PathBuf, RunnerError> 
         )));
     }
     let source = root.join(relative);
-    let canonical = fs::canonicalize(&source).map_err(|error| {
-        RunnerError::OverlayIntegrity(format!("{}: {error}", source.display()))
-    })?;
+    let canonical = fs::canonicalize(&source)
+        .map_err(|error| RunnerError::OverlayIntegrity(format!("{}: {error}", source.display())))?;
     if !canonical.starts_with(root) || !canonical.is_file() {
         return Err(RunnerError::OverlayIntegrity(source.display().to_string()));
     }
