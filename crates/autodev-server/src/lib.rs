@@ -1,3 +1,7 @@
+mod objective;
+
+pub use objective::{ObjectiveStatus, ObjectiveView};
+
 use std::{
     collections::BTreeMap,
     convert::Infallible,
@@ -7,7 +11,7 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -21,7 +25,7 @@ use forge_core::{
     CodexSubscriptionError, StdioCodexTransport, TaskGraph,
 };
 use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
 use tokio::sync::{broadcast, RwLock};
@@ -138,14 +142,10 @@ pub struct ObjectiveRequest {
     pub branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ObjectiveRecord {
-    pub id: String,
-    pub repository: String,
-    pub description: String,
-    pub branch: String,
-    pub status: String,
-    pub graph: TaskGraph,
+#[derive(Debug, Clone)]
+struct ObjectiveRecord {
+    view: ObjectiveView,
+    graph: TaskGraph,
 }
 
 #[derive(Clone)]
@@ -178,7 +178,7 @@ impl AppState {
         state
     }
 
-    async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveRecord, &'static str> {
+    async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveView, &'static str> {
         if request.repository.trim().is_empty() {
             return Err("repository is required");
         }
@@ -192,32 +192,36 @@ impl AppState {
             .filter(|branch| !branch.trim().is_empty())
             .unwrap_or_else(|| format!("autodev/objective-{}", &id[..8]));
         let graph = TaskGraph::single(&format!("Objective {id}"), request.description.trim());
-        let record = ObjectiveRecord {
+        let view = ObjectiveView {
             id: id.clone(),
             repository: request.repository.trim().to_string(),
             description: request.description.trim().to_string(),
             branch,
-            status: "queued".to_string(),
+            status: ObjectiveStatus::Queued,
+            current_task_id: None,
+            current_phase: None,
+            latest_evidence_ref: None,
+            blocked_reason: None,
+        };
+        let record = ObjectiveRecord {
+            view: view.clone(),
             graph,
         };
 
-        self.objectives
-            .write()
-            .await
-            .insert(id.clone(), record.clone());
+        self.objectives.write().await.insert(id.clone(), record);
         let _ = self.events.send(
             json!({
                 "type": "objective_queued",
                 "data": {
                     "objective_id": id,
-                    "repository": record.repository,
-                    "branch": record.branch,
-                    "status": record.status,
+                    "repository": view.repository,
+                    "branch": view.branch,
+                    "status": view.status,
                 }
             })
             .to_string(),
         );
-        Ok(record)
+        Ok(view)
     }
 }
 
@@ -228,6 +232,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/objectives",
             get(list_objectives).post(create_objective),
         )
+        .route("/api/v1/objectives/:id", get(get_objective))
         .route("/api/v1/events/stream", get(event_stream))
         .route("/api/v1/codex/account", get(codex_account))
         .route("/api/v1/codex/login/browser", post(codex_browser_login))
@@ -246,9 +251,26 @@ async fn health() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
-async fn list_objectives(State(state): State<AppState>) -> Json<Vec<ObjectiveRecord>> {
+async fn list_objectives(State(state): State<AppState>) -> Json<Vec<ObjectiveView>> {
     let objectives = state.objectives.read().await;
-    Json(objectives.values().cloned().collect())
+    Json(
+        objectives
+            .values()
+            .map(|record| record.view.clone())
+            .collect(),
+    )
+}
+
+async fn get_objective(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    let objectives = state.objectives.read().await;
+    match objectives.get(&id) {
+        Some(record) => Json(record.view.clone()).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "objective_not_found"})),
+        )
+            .into_response(),
+    }
 }
 
 async fn create_objective(
@@ -256,7 +278,7 @@ async fn create_objective(
     Json(request): Json<ObjectiveRequest>,
 ) -> Response {
     match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
         Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
     }
 }
@@ -430,7 +452,7 @@ async fn github_webhook(
         branch: Some(format!("autodev/issue-{issue_number}")),
     };
     match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
         Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
     }
 }
@@ -494,7 +516,7 @@ mod tests {
         let objectives = state.objectives.read().await;
         let record = objectives.values().next().expect("queued objective");
         assert_eq!(record.graph.root().description, "Implement health endpoint");
-        assert_eq!(record.status, "queued");
+        assert_eq!(record.view.status, ObjectiveStatus::Queued);
     }
 
     #[tokio::test]
