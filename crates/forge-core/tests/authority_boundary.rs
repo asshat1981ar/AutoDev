@@ -102,5 +102,8 @@ fn requested_capabilities_do_not_authorize_patch_execution() {
         .expect_err("requested capability must not authorize patch execution");
 
     assert!(matches!(error, ExecutionError::CapabilityDenied));
-    assert_eq!(std::fs::read_to_string(target).expect("target"), "one\ntwo\n");
+    assert_eq!(
+        std::fs::read_to_string(target).expect("target"),
+        "one\ntwo\n"
+    );
 }
