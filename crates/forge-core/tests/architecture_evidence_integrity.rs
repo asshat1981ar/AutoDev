@@ -28,11 +28,7 @@ fn report_rejects_duplicate_evidence_ids() {
         desired_outcome: "References stay unambiguous".into(),
         evidence: vec![
             evidence("ev-duplicate", "obj-w1", EvidenceClass::Documented),
-            evidence(
-                "ev-duplicate",
-                "obj-w1",
-                EvidenceClass::ResearchSupported,
-            ),
+            evidence("ev-duplicate", "obj-w1", EvidenceClass::ResearchSupported),
         ],
         decisions: vec![],
         options: vec![],
@@ -50,11 +46,7 @@ fn report_rejects_evidence_from_another_objective() {
         objective_id: "obj-w1".into(),
         title: "Objective isolation".into(),
         desired_outcome: "Evidence cannot cross objective boundaries".into(),
-        evidence: vec![evidence(
-            "ev-other",
-            "obj-other",
-            EvidenceClass::Documented,
-        )],
+        evidence: vec![evidence("ev-other", "obj-other", EvidenceClass::Documented)],
         decisions: vec![],
         options: vec![],
     };
