@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "event_id": "evt-0001",
+  "type": "objective_queued",
+  "timestamp": "2026-08-17T12:00:00Z",
+  "objective_id": "obj-0001",
+  "run_id": null,
+  "task_id": null,
+  "data": {
+    "repository": "owner/repo",
+    "branch": "autodev/objective-obj0001",
+    "status": "queued"
+  }
+}
