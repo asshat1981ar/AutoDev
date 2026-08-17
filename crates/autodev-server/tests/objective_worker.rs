@@ -80,6 +80,7 @@ async fn worker_cycles_newly_posted_objective_without_second_http_request() {
     assert_eq!(completed.view.status, ObjectiveStatus::Completed);
     assert!(completed.view.latest_evidence_ref.is_some());
     assert_eq!(completed.orchestrator.envelopes.len(), 1);
+    assert_eq!(completed.evidence.len(), 1);
 }
 
 struct SelectiveProposer;
@@ -123,6 +124,7 @@ fn queued_snapshot(id: &str, description: &str) -> ObjectiveSnapshot {
         },
         graph,
         orchestrator: VerifiedOrchestratorState::default(),
+        evidence: vec![],
     }
 }
 
