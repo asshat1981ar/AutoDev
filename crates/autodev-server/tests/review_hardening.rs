@@ -6,9 +6,9 @@ use autodev_server::{
     ObjectiveView, RunnerError, RunnerExecution,
 };
 use forge_core::{
-    mock_verifier, ActionProposal, ActionType, AgentAction, AgentRole, Capability, EvidenceStore,
-    PolicyDecision, RiskLevel, TaskGraph, VerificationFabric, VerificationKind,
-    VerifiedOrchestratorState, Workspace,
+    mock_verifier, ActionProposal, ActionType, AgentAction, AgentRole, Capability, PolicyDecision,
+    RiskLevel, TaskGraph, VerificationFabric, VerificationKind, VerifiedOrchestratorState,
+    Workspace,
 };
 use serde_json::json;
 use tempfile::tempdir;
@@ -63,7 +63,7 @@ fn snapshot(id: &str) -> ObjectiveSnapshot {
         },
         graph: TaskGraph::single("objective", "review hardening"),
         orchestrator: VerifiedOrchestratorState::default(),
-        evidence: EvidenceStore::new(),
+        evidence: vec![],
     }
 }
 
@@ -143,7 +143,11 @@ fn evidence_reference_resolves_from_persisted_snapshot_after_restart() {
 
     let reopened = FileObjectiveStore::open(state_dir.path()).unwrap();
     let restored = reopened.get("objective-1").unwrap().unwrap();
-    let evidence = restored.evidence.get(&evidence_ref).expect("durable evidence");
+    let evidence = restored
+        .evidence
+        .iter()
+        .find(|evidence| evidence.record.id == evidence_ref)
+        .expect("durable evidence");
     assert!(evidence.verify());
     assert_eq!(evidence.record.task_id, "t-root");
 }
