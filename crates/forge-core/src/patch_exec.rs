@@ -8,7 +8,9 @@ use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus};
 use crate::patch::{Patch, PatchResult};
-use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
+use crate::policy::{
+    enforce_policy, has_required_execution_authority, AuthorizationGrant, ExecutionAuthority,
+};
 use crate::workspace::{PathResolution, Workspace};
 use crate::write::atomic_write;
 
@@ -21,26 +23,36 @@ pub enum PatchMode {
     Apply,
 }
 
-/// Backward-compatible patch entry point. No approval grant is implied.
+/// Safe public patch entry point.
+///
+/// Model-supplied requested capabilities are intent, never effective authority.
+/// Without independently minted kernel authority this entry point fails closed.
 pub fn patch_file(
     action: &AgentAction,
     workspace: &Workspace,
     mode: PatchMode,
 ) -> Result<ExecutionResult, ExecutionError> {
-    patch_file_authorized(action, workspace, mode, &AuthorizationGrant::none())
+    patch_file_authorized(
+        action,
+        workspace,
+        mode,
+        &ExecutionAuthority::deny_all(),
+        &AuthorizationGrant::none(),
+    )
 }
 
-/// Trusted patch entry point used by the execution-envelope path.
+/// Trusted patch entry point used by ForgeCore execution paths.
 pub(crate) fn patch_file_authorized(
     action: &AgentAction,
     workspace: &Workspace,
     mode: PatchMode,
+    authority: &ExecutionAuthority,
     grant: &AuthorizationGrant,
 ) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
     enforce_policy(action, grant)?;
-    if !has_required_capability(action) {
+    if !has_required_execution_authority(action, authority) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
@@ -197,13 +209,43 @@ mod tests {
         }
     }
 
+    fn patch_with_authority(
+        action: &AgentAction,
+        workspace: &Workspace,
+        mode: PatchMode,
+    ) -> Result<ExecutionResult, ExecutionError> {
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::PatchFile]);
+        patch_file_authorized(
+            action,
+            workspace,
+            mode,
+            &authority,
+            &AuthorizationGrant::none(),
+        )
+    }
+
     #[test]
-    fn patch_applies_to_existing_file() {
+    fn public_patch_fails_closed_without_kernel_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"one\ntwo\n").unwrap();
+        let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
+        let err = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
+        assert!(matches!(err, ExecutionError::CapabilityDenied));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "one\ntwo\n"
+        );
+    }
+
+    #[test]
+    fn patch_applies_to_existing_file_with_kernel_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\ntwo\nthree\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
+        let result = patch_with_authority(&base_action("a.txt", patch_text), &ws, PatchMode::Apply)
+            .unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -219,7 +261,12 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun).unwrap();
+        let result = patch_with_authority(
+            &base_action("a.txt", patch_text),
+            &ws,
+            PatchMode::DryRun,
+        )
+        .unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -233,7 +280,8 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"uno\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let err = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
+        let err = patch_with_authority(&base_action("a.txt", patch_text), &ws, PatchMode::Apply)
+            .unwrap_err();
         assert!(matches!(err, ExecutionError::PatchConflict(_)));
     }
 
@@ -242,7 +290,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n x\n";
-        let err = patch_file(
+        let err = patch_with_authority(
             &base_action("missing.txt", patch_text),
             &ws,
             PatchMode::Apply,
@@ -252,12 +300,11 @@ mod tests {
     }
 
     #[test]
-    fn denied_capability_is_rejected() {
+    fn denied_authority_is_rejected_even_when_requested() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
-        let mut action = base_action("a.txt", "--- a/a\n+++ b/a\n@@ -1,1 +1,1 @@\n-x\n");
-        action.capabilities.clear();
+        let action = base_action("a.txt", "--- a/a\n+++ b/a\n@@ -1,1 +1,1 @@\n-x\n");
         let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
@@ -266,7 +313,7 @@ mod tests {
     fn traversal_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = patch_file(
+        let err = patch_with_authority(
             &base_action("../escape.txt", "--- a\n+++ b\n@@ -1,1 +1,1 @@\n x\n"),
             &ws,
             PatchMode::Apply,
@@ -280,7 +327,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
-        let err = patch_file(
+        let err = patch_with_authority(
             &base_action("a.txt", "not a patch at all"),
             &ws,
             PatchMode::Apply,
@@ -290,21 +337,30 @@ mod tests {
     }
 
     #[test]
-    fn high_risk_patch_requires_trusted_grant() {
+    fn high_risk_patch_requires_trusted_grant_and_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
         let mut action = base_action("a.txt", patch_text);
         action.risk = RiskLevel::High;
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::PatchFile]);
         assert!(matches!(
-            patch_file(&action, &ws, PatchMode::Apply).unwrap_err(),
+            patch_file_authorized(
+                &action,
+                &ws,
+                PatchMode::Apply,
+                &authority,
+                &AuthorizationGrant::none(),
+            )
+            .unwrap_err(),
             ExecutionError::RequiresApproval
         ));
         let result = patch_file_authorized(
             &action,
             &ws,
             PatchMode::Apply,
+            &authority,
             &AuthorizationGrant::approved("approval-1"),
         )
         .unwrap();
