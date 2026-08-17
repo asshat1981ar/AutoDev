@@ -8,7 +8,7 @@ use forge_core::{
     error::ExecutionError,
     patch_exec::{patch_file, PatchMode},
     read::read_file,
-    workspace::Workspace,
+    workspace::{PathResolution, Workspace},
 };
 use serde_json::json;
 
@@ -43,11 +43,15 @@ fn adversarial_traversal_deep() {
         json!({ "path": "../../../../etc/passwd" }),
         vec![Capability::ReadFile],
     );
-    let err = read_file(&action, &ws).unwrap_err();
+
+    let resolution = ws.resolve_path(std::path::Path::new("../../../../etc/passwd"));
     assert!(matches!(
-        err,
-        ExecutionError::PathTraversal(_) | ExecutionError::PathOutsideWorkspace(_)
+        resolution,
+        PathResolution::Invalid(_) | PathResolution::Denied(_)
     ));
+
+    let err = read_file(&action, &ws).unwrap_err();
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
 
 #[test]
@@ -59,8 +63,12 @@ fn adversarial_absolute_path_escape() {
         json!({ "path": "/etc/passwd" }),
         vec![Capability::ReadFile],
     );
+
+    let resolution = ws.resolve_path(std::path::Path::new("/etc/passwd"));
+    assert!(matches!(resolution, PathResolution::Denied(_)));
+
     let err = read_file(&action, &ws).unwrap_err();
-    assert!(matches!(err, ExecutionError::PathOutsideWorkspace(_)));
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
 
 #[test]
@@ -79,8 +87,12 @@ fn adversarial_symlink_escape_read() {
         json!({ "path": "link.txt" }),
         vec![Capability::ReadFile],
     );
+
+    let resolution = ws.resolve_path(std::path::Path::new("link.txt"));
+    assert!(matches!(resolution, PathResolution::Denied(_)));
+
     let err = read_file(&action, &ws).unwrap_err();
-    assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
 
 #[test]
@@ -162,14 +174,11 @@ fn adversarial_read_oversized_file() {
         json!({ "path": "big.txt" }),
         vec![Capability::ReadFile],
     );
+
+    // Public/model-originated intent must never reach resource-sensitive reads.
+    // The trusted ReadFile path still exercises OversizedFile in read.rs unit tests.
     let err = read_file(&action, &ws).unwrap_err();
-    // Assert that it fails due to size limits (exact error variant depends on workspace.rs)
-    let err_str = err.to_string().to_lowercase();
-    assert!(
-        err_str.contains("size")
-            || err_str.contains("large")
-            || matches!(err, ExecutionError::Io(_, _))
-    );
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
 
 // ============================================================================
