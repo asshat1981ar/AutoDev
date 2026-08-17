@@ -1,0 +1,26 @@
+name: MCP Lockfile
+on:
+  push:
+    branches: [autodev/polyglot-stateless-mcp-red]
+permissions:
+  contents: write
+jobs:
+  lock:
+    if: ${{ !startsWith(github.event.head_commit.message, 'build(auto):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve workspace lockfile
+        working-directory: crates
+        run: cargo check -p autodev-server
+      - name: Commit lockfile
+        run: |
+          if git diff --quiet -- crates/Cargo.lock; then exit 0; fi
+          git config user.name "autodev-lockfile[bot]"
+          git config user.email "autodev-lockfile[bot]@users.noreply.github.com"
+          git add crates/Cargo.lock
+          git commit -m "build(auto): update MCP Cargo lockfile"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
