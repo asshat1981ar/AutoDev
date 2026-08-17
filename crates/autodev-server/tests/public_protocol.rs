@@ -19,7 +19,8 @@ fn fixture(name: &str) -> String {
 #[test]
 fn queued_objective_event_matches_canonical_fixture() {
     let encoded = fixture("objective-event.queued.json");
-    let event: PublicObjectiveEvent = serde_json::from_str(&encoded).expect("typed objective event");
+    let event: PublicObjectiveEvent =
+        serde_json::from_str(&encoded).expect("typed objective event");
 
     assert_eq!(event.schema_version, PUBLIC_SCHEMA_VERSION);
     assert_eq!(event.event_type, "objective_queued");
