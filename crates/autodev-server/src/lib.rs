@@ -211,19 +211,12 @@ impl AppState {
         record.view.current_task_id = Some(record.graph.root.clone());
         let view = record.view.clone();
 
-        self.objectives.write().await.insert(id.clone(), record);
-        let _ = self.events.send(
-            json!({
-                "type": "objective_queued",
-                "data": {
-                    "objective_id": id,
-                    "repository": view.repository,
-                    "branch": view.branch,
-                    "status": view.status,
-                }
-            })
-            .to_string(),
-        );
+        self.objectives.write().await.insert(id, record);
+        if let Ok(payload) =
+            serde_json::to_string(&ObjectiveEvent::from_view(&view, "objective accepted"))
+        {
+            let _ = self.events.send(payload);
+        }
         Ok(view)
     }
 }
