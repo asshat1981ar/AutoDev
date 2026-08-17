@@ -187,7 +187,7 @@ async fn action_proposal_is_untrusted_and_never_authorizes_execution() {
         .expect("proposal tool should return text content");
     let proposal: Value = serde_json::from_str(text).expect("proposal should be AgentAction JSON");
 
-    assert_eq!(proposal["action_type"], "write_file");
+    assert_eq!(proposal["type"], "write_file");
     assert_eq!(proposal["payload"]["operation"], "write_file");
     assert_eq!(
         proposal["payload"]["path"],
@@ -218,7 +218,7 @@ async fn action_proposal_rejects_path_traversal_before_forgecore() {
         .await
         .expect("router response");
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"]["code"], -32602);
     assert!(body["result"].is_null());
