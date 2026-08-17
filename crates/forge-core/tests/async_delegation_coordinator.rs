@@ -83,10 +83,8 @@ impl DelegatedTaskExecutor for BlockingExecutor {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn coordinator_never_exceeds_global_concurrency_limit() {
     let executor = Arc::new(BlockingExecutor::new());
-    let coordinator = AsyncDelegationCoordinator::new(
-        CoordinatorConfig::new(3, 16).unwrap(),
-        executor.clone(),
-    );
+    let coordinator =
+        AsyncDelegationCoordinator::new(CoordinatorConfig::new(3, 16).unwrap(), executor.clone());
     let tasks = (0..8).map(task).collect::<Vec<_>>();
 
     let handle = tokio::spawn(async move { coordinator.execute_batch(tasks).await.unwrap() });
@@ -132,10 +130,8 @@ impl DelegatedTaskExecutor for CountingExecutor {
 #[tokio::test]
 async fn empty_batch_does_not_invoke_executor() {
     let executor = Arc::new(CountingExecutor::default());
-    let coordinator = AsyncDelegationCoordinator::new(
-        CoordinatorConfig::new(4, 16).unwrap(),
-        executor.clone(),
-    );
+    let coordinator =
+        AsyncDelegationCoordinator::new(CoordinatorConfig::new(4, 16).unwrap(), executor.clone());
 
     let result = coordinator.execute_batch(vec![]).await.unwrap();
 
