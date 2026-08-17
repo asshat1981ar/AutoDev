@@ -3,8 +3,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::{
-    ActionType, AgentAction, AgentProfile, Capability, ModelError, ModelProvider, ModelRequest,
-    PolicyDecision, RiskLevel, Task,
+    effective_risk_for_action, ActionType, AgentAction, AgentProfile, Capability, ModelError,
+    ModelProvider, ModelRequest, PolicyDecision, RiskLevel, Task,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,7 +44,7 @@ pub fn propose_action(
     let response = provider.generate(&request)?;
     let parsed: ModelAction = serde_json::from_str(response.content.trim())?;
     let action_type = parse_action_type(&parsed.action)?;
-    let action = AgentAction {
+    let mut action = AgentAction {
         id: format!("{}:{}", task.id, parsed.action),
         task_id: task.id.clone(),
         agent_id: agent_id.to_string(),
@@ -55,6 +55,7 @@ pub fn propose_action(
         payload: parsed.payload,
         expected: Value::Null,
     };
+    action.risk = effective_risk_for_action(&action);
 
     let tool_allowed = profile
         .policy
