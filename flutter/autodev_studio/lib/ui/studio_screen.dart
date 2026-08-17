@@ -7,10 +7,10 @@ class StudioScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('AutoDev Studio')),
-      body: const Center(
+      body: Center(
         child: Semantics(
           label: 'AutoDev connection status: disconnected',
-          child: Text('Disconnected'),
+          child: const Text('Disconnected'),
         ),
       ),
     );
