@@ -112,6 +112,12 @@ impl<T: CodexRpcTransport> CodexSubscriptionClient<T> {
         &self.transport
     }
 
+    /// Move the already-initialized app-server connection into another safe
+    /// protocol adapter without exposing any authentication credential.
+    pub fn into_transport(self) -> T {
+        self.transport
+    }
+
     pub fn initialize(&mut self, version: &str) -> Result<CodexServerInfo, CodexSubscriptionError> {
         if self.initialized {
             return Err(CodexSubscriptionError::Protocol(
