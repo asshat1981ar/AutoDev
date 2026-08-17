@@ -64,16 +64,12 @@ impl RiskLevel {
     }
 }
 
-/// A capability that may be granted to an agent.
+/// A capability that may be requested by an agent or granted by the kernel.
 ///
-/// Capabilities are declared, never inferred. Known variants map to the
-/// platform's action types plus the special `approval:critical` capability.
-/// Unknown capability strings are preserved via [`Capability::Unknown`] so the
-/// protocol remains forward-compatible while still being strongly typed for
-/// the capabilities the kernel understands.
-///
-/// Serialization is a plain string (e.g. `"read_file"`), matching the schema's
-/// `capabilities: string[]` contract.
+/// Known variants map to the platform's action types plus the special
+/// `approval:critical` marker. Unknown capability strings are preserved via
+/// [`Capability::Unknown`] so protocol parsing remains forward-compatible while
+/// the kernel can still fail closed for capabilities it does not understand.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Capability {
     ReadFile,
@@ -173,7 +169,9 @@ pub struct AgentAction {
     pub action_type: ActionType,
     pub reason: String,
     pub risk: RiskLevel,
-    #[serde(default)]
+    /// Capability intent carried for diagnostics and planning only. Kernel
+    /// authorization must be derived independently from trusted policy state.
+    #[serde(default, rename = "requested_capabilities")]
     pub capabilities: Vec<Capability>,
     pub payload: serde_json::Value,
     #[serde(default)]
