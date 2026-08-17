@@ -17,21 +17,24 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.5'
-          cache: false
+          cache-dependency-path: go/autodev-edge/go.sum
       - name: Toolchain
         run: go version
-      - name: Resolve dependency lock
+      - name: Dependency lock is tidy
         working-directory: go/autodev-edge
-        run: go mod tidy
-      - name: Upload generated dependency lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: autodev-edge-go-sum
-          path: go/autodev-edge/go.sum
-          if-no-files-found: error
-      - name: Test
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Format check
+        working-directory: go/autodev-edge
+        run: |
+          test -z "$(gofmt -l .)"
+      - name: Test with race detector
         working-directory: go/autodev-edge
         run: go test ./... -race
       - name: Vet
         working-directory: go/autodev-edge
         run: go vet ./...
+      - name: Build
+        working-directory: go/autodev-edge
+        run: go build ./cmd/autodev-edge
