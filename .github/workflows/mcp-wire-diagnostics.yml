@@ -1,0 +1,26 @@
+name: MCP Wire Diagnostics
+on:
+  push:
+    branches: [autodev/polyglot-stateless-mcp-red]
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    if: ${{ !startsWith(github.event.head_commit.message, 'diagnostics(auto):') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Capture MCP wire test output
+        working-directory: crates
+        run: |
+          cargo test -p autodev-server --test mcp_stateless -- --nocapture > ../mcp-wire-test.txt 2>&1 || true
+      - name: Commit diagnostics
+        run: |
+          git config user.name "autodev-diagnostics[bot]"
+          git config user.email "autodev-diagnostics[bot]@users.noreply.github.com"
+          git add mcp-wire-test.txt
+          git commit -m "diagnostics(auto): capture MCP wire test output"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
