@@ -60,7 +60,10 @@ fn materialized_checkout_is_detached_at_exact_requested_sha_and_clean() {
     assert_eq!(git(checkout.path(), &["symbolic-ref", "-q", "HEAD"]), "");
     assert!(changed_paths(checkout.path()).unwrap().is_empty());
 
-    assert_eq!(git(source.path(), &["rev-parse", "HEAD"]), source_head_before);
+    assert_eq!(
+        git(source.path(), &["rev-parse", "HEAD"]),
+        source_head_before
+    );
     assert_eq!(
         git(source.path(), &["status", "--porcelain=v1"]),
         source_status_before
