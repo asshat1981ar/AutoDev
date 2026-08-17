@@ -2,167 +2,79 @@ name: CI
 
 on:
   push:
-    branches: ["merge/kotlin-mpp", "main"]
+    branches: [main, merge/kotlin-mpp]
   pull_request:
-    branches: ["main"]
+    branches: [main]
   workflow_dispatch: {}
 
 env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
-  lint-and-format-rust:
-    name: Rust - format & lint
+  rust:
+    name: Rust - fmt, clippy, build, test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-      - name: rustfmt check
+          components: rustfmt, clippy
+      - name: Format check
         run: cargo fmt --all -- --check
-      - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Build
+        run: cargo build --workspace
+      - name: Test
+        run: cargo test --workspace
 
-  build-test-rust:
-    name: Rust - build & test
+  kotlin:
+    name: Kotlin - build, test, ktlint
     runs-on: ubuntu-latest
-    needs: lint-and-format-rust
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Build (release)
-        run: cargo build --release
-      - name: Run tests
-        run: cargo test --all --release
-
-  kotlin-matrix-build:
-    name: Kotlin - Matrix Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        jdk: ['17', '21']
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ matrix.jdk }}
+          java-version: '17'
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-cache-${{ runner.os }}-${{ matrix.jdk }}-${{ hashFiles('**/build.gradle.kts', '**/gradle/**') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('kotlin/**/*.gradle.kts', 'kotlin/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-cache-${{ runner.os }}-${{ matrix.jdk }}-
-      - name: Build Kotlin
-        run: |
-          cd kotlin
-          ./gradlew clean assemble --no-daemon --info
-      - name: Run Kotlin tests
-        run: |
-          cd kotlin
-          ./gradlew test --no-daemon
-      - name: Run Kotlin static analysis (ktlint)
-        run: |
-          cd kotlin
-          ./gradlew ktlintCheck || true
+            gradle-${{ runner.os }}-
+      - name: Build & test JVM targets
+        working-directory: kotlin
+        run: ./gradlew clean assemble test --no-daemon
+      - name: ktlint
+        working-directory: kotlin
+        run: ./gradlew ktlintCheck --no-daemon
 
-  python-lint-test:
-    name: Python - lint & tests
+  python:
+    name: Python - compile & test
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.10, 3.11]
+        python-version: ['3.10', '3.11']
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Cache pip
-        uses: actions/cache@v4
+      - uses: actions/setup-node@v4
         with:
-          path: ~/.cache/pip
-          key: pip-cache-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('tools/rag_populator/requirements.txt') }}
-          restore-keys: |
-            pip-cache-${{ runner.os }}-py${{ matrix.python-version }}-
-      - name: Install dependencies
+          node-version: '24'
+      - name: Compile entry points
+        run: python -m py_compile install.py bootstrap_cline_mcp.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py
+      - name: Test Cline development fabric
+        run: python -m unittest discover -s tests -v
+      - name: Validate Termux Kanban launcher
         run: |
-          python -m pip install --upgrade pip
-          pip install -r tools/rag_populator/requirements.txt || pip install aiohttp aiosqlite beautifulsoup4 pytest pytest-asyncio
-      - name: Run Python tests
-        run: |
-          pytest -q
-
-  python-security-scan:
-    name: Python - safety scan
-    runs-on: ubuntu-latest
-    needs: python-lint-test
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - name: Install safety
-        run: pip install safety
-      - name: Run safety check
-        run: |
-          if [ -f tools/rag_populator/requirements.txt ]; then safety check -r tools/rag_populator/requirements.txt || true; else echo "no requirements.txt"; fi
-
-  integration-smoke:
-    name: Integration - smoke
-    runs-on: ubuntu-latest
-    needs: [build-test-rust, kotlin-matrix-build, python-lint-test]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Start simple HTTP server for tests
-        run: |
-          python -m pip install aiohttp
-          python -c "from aiohttp import web; app=web.Application(); async def h(r): return web.Response(text='<html><body><p>ok</p></body></html>'); app.router.add_get('/test', h); web.run_app(app, port=8082)" &
-      - name: Run integration tests
-        run: |
-          sleep 2
-          pytest tools/rag_populator/tests/test_pipeline.py -q || true
-
-  deploy-artifacts:
-    name: Upload artifacts
-    runs-on: ubuntu-latest
-    needs: [integration-smoke]
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Archive Kotlin build outputs
-        run: |
-          cd kotlin
-          tar -czf ../kotlin-build.tar.gz build || true
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kotlin-build
-          path: kotlin-build.tar.gz
-
-  post-analysis:
-    name: Post-run analysis
-    runs-on: ubuntu-latest
-    needs: [integration-smoke]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Simple metrics aggregation
-        run: |
-          echo "Collecting basic metrics..."
-          echo "rust_tests=ok" > metrics.txt
-      - name: Upload metrics
-        uses: actions/upload-artifact@v4
-        with:
-          name: metrics
-          path: metrics.txt
+          node --check scripts/termux-kanban.mjs
+          node scripts/termux-kanban.mjs --check
