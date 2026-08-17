@@ -17,6 +17,19 @@ pub struct PublicObjectiveSummary {
     pub status: String,
 }
 
+impl From<&ObjectiveRecord> for PublicObjectiveSummary {
+    fn from(record: &ObjectiveRecord) -> Self {
+        Self {
+            schema_version: PUBLIC_SCHEMA_VERSION.to_string(),
+            id: record.id.clone(),
+            repository: record.repository.clone(),
+            description: record.description.clone(),
+            branch: record.branch.clone(),
+            status: record.status.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicObjectiveCreate {
     pub repository: String,
