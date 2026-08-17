@@ -11,10 +11,10 @@ import (
 )
 
 type fakeClient struct {
-	active     atomic.Int64
-	maxActive  atomic.Int64
-	failures   atomic.Int64
-	connected  chan struct{}
+	active    atomic.Int64
+	maxActive atomic.Int64
+	failures  atomic.Int64
+	connected chan struct{}
 }
 
 func (c *fakeClient) Connect(ctx context.Context, upstream mcpclient.Upstream) (mcpclient.Session, error) {
