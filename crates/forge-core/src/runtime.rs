@@ -11,7 +11,9 @@
 //! Failure states: FAILED, BLOCKED, CANCELLED
 //! ```
 
-use crate::action::{AgentAction, Capability};
+use crate::action::AgentAction;
+#[cfg(test)]
+use crate::action::Capability;
 use crate::action_proposal::{
     assemble_context as proposal_context, invoke_model as proposal_invoke_model,
     propose_action_with_model, select_model as proposal_select_model,
