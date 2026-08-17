@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>AutoDev Command Center</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">AUTODEV CONTROL PLANE</p>
+        <h1>AutoDev Command Center</h1>
+        <p class="lede">Observe objectives, enqueue bounded work, and follow live control-plane events. Execution authority remains in ForgeCore.</p>
+      </div>
+      <div class="connection-panel" aria-label="Server connection">
+        <label for="server-url">Server</label>
+        <div class="server-row">
+          <input id="server-url" name="server-url" type="url" inputmode="url" value="http://127.0.0.1:8080" spellcheck="false">
+          <button id="connect-button" type="button" class="secondary">Connect</button>
+        </div>
+        <div class="status-line">
+          <span id="connection-dot" class="status-dot" aria-hidden="true"></span>
+          <span id="connection-status" role="status">Not connected</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="Objective summary">
+      <article class="metric-card">
+        <span>Objectives</span>
+        <strong id="objective-count">0</strong>
+      </article>
+      <article class="metric-card">
+        <span>Queued</span>
+        <strong id="queued-count">0</strong>
+      </article>
+      <article class="metric-card">
+        <span>Active</span>
+        <strong id="active-count">0</strong>
+      </article>
+      <article class="metric-card">
+        <span>Events</span>
+        <strong id="event-count">0</strong>
+      </article>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="panel objectives-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">WORK QUEUE</p>
+            <h2>Objectives</h2>
+          </div>
+          <button id="refresh-button" type="button" class="secondary">Refresh</button>
+        </div>
+        <div id="objective-list" class="objective-list" aria-live="polite">
+          <p class="empty-state">Connect to an AutoDev server to load objectives.</p>
+        </div>
+      </section>
+
+      <aside class="side-column">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">INTAKE</p>
+              <h2>Queue objective</h2>
+            </div>
+          </div>
+          <form id="objective-form">
+            <label for="repository">Repository</label>
+            <input id="repository" name="repository" required autocomplete="off" placeholder="owner/repo">
+
+            <label for="description">Description</label>
+            <textarea id="description" name="description" required rows="5" placeholder="Describe the bounded outcome to produce."></textarea>
+
+            <label for="branch">Branch <span class="optional">optional</span></label>
+            <input id="branch" name="branch" autocomplete="off" placeholder="autodev/feature-name">
+
+            <button id="submit-button" type="submit" class="primary">Queue objective</button>
+            <p id="form-status" class="form-status" role="status"></p>
+          </form>
+        </section>
+
+        <section class="panel event-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LIVE EVIDENCE</p>
+              <h2>Event stream</h2>
+            </div>
+            <button id="clear-events-button" type="button" class="secondary">Clear</button>
+          </div>
+          <ol id="event-list" class="event-list" aria-live="polite"></ol>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <template id="objective-template">
+    <article class="objective-card">
+      <div class="objective-topline">
+        <span class="objective-status"></span>
+        <code class="objective-id"></code>
+      </div>
+      <h3 class="objective-description"></h3>
+      <dl>
+        <div><dt>Repository</dt><dd class="objective-repository"></dd></div>
+        <div><dt>Branch</dt><dd class="objective-branch"></dd></div>
+      </dl>
+    </article>
+  </template>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
