@@ -4,24 +4,27 @@
 
 **Goal:** Build a reproducible five-task AutoDev evaluation substrate that can prove whether one development configuration strictly improves verified task success without verifier weakening or safety regression.
 
-**Architecture:** Keep all evaluation semantics pure inside `forge_core::evaluation`; add a separate `autodev-eval` workspace crate for local Git materialization, hidden verifier overlays, structured verifier execution, evidence capture, corpus smoke checks, and CLI/report handling. Evaluation infrastructure never mints authorization, never becomes a second orchestrator, and never trusts agent completion claims.
+**Architecture:** Keep evaluation semantics pure inside `forge_core::evaluation`; add a separate `autodev-eval` workspace crate for isolated historical checkouts, hidden verifier overlays, structured verifier execution, evidence capture, corpus smoke checks, and report comparison. Development attempts enter through an `AttemptDriver` interface so v0 does not bypass ForgeCore’s current fail-closed process sandbox or create a second execution authority.
 
-**Tech Stack:** Rust 2021, existing `forge-core`, `serde`/`serde_json`, `sha2`, `thiserror`, `tempfile`, standard-library `std::process`, Git CLI for local isolated checkouts, existing Cargo/Gradle/Node verification commands, GitHub Actions.
+**Tech Stack:** Rust 2021, existing `forge-core`, `serde`/`serde_json`, `sha2`, `thiserror`, `tempfile`, standard-library `std::process`, local Git CLI, existing Cargo/Gradle/Node verification commands, GitHub Actions.
 
 ## Global Constraints
 
-- `forge_core::evaluation` is side-effect free. It may validate, normalize, fingerprint, derive outcomes, aggregate reports, and compare reports; it may not invoke Git, spawn processes, call models, read arbitrary repository files, authorize actions, or activate candidates.
-- `autodev-eval` is an evaluation adapter, not an execution authority. Agent/development attempts are injected through an `AttemptDriver` boundary; v0 does not add an unrestricted host-shell development driver.
-- Verifier commands are structured as `program + args + working_directory + timeout_seconds`; opaque shell command strings are rejected.
-- The evaluator's fixture definitions and hidden verifier assets remain outside the evaluated checkout and are not added to agent context.
-- When hidden verifier assets are needed, capture agent-produced changed paths first, then copy hash-verified verifier assets into the temporary checkout only for verification. Overlay paths do not count as agent changes.
-- Success is derived only from required execution-backed verifier evidence. Text such as “tests pass” has no scoring effect.
-- Infrastructure failures are distinct from scored task failures and are excluded from the verified-success denominator.
-- Safety/integrity findings are an independent axis. A candidate with any safety regression cannot be classified `Improved`.
-- Report comparison fails closed as `Incomparable` when task fingerprints or verifier fingerprints differ.
-- Every task follows RED → GREEN → refactor/verify → commit. Run the narrow test first, then the full Rust workspace gate for Rust-facing slices.
-- Preserve current repository gates: Rust fmt/clippy/build/test/container, Kotlin/Android build/test/ktlint/APK, Python fabric checks.
-- Do not broaden this plan into automatic PR mining, SWE-bench, learned routing, reinforcement learning, distributed workers, generated verifier commands, or automatic candidate promotion.
+- `forge_core::evaluation` is side-effect free: no Git, process spawning, model calls, arbitrary repository I/O, authorization, candidate activation, or policy mutation.
+- `autodev-eval` is an experiment adapter, not an autonomous orchestrator.
+- v0 does not add an unrestricted host-shell agent driver. The current ForgeCore `Execute` path is fail-closed without a process sandbox, so a production development driver must be injected from an already-authorized execution path later.
+- Verifier commands are structured `program + args + working_directory + timeout_seconds`; opaque shell command strings are rejected.
+- Fixture definitions and hidden verifier assets stay outside the evaluated checkout and outside agent context.
+- Capture agent-produced changed paths before verifier overlays are copied into the checkout.
+- If the agent has already created or modified a hidden verifier destination, record a `verifier_overlay_collision` safety finding before overwriting it for verification.
+- Hidden verifier asset SHA-256 digests are part of `VerificationRecipe`, so changing a hidden probe changes the verifier fingerprint and makes old/new reports incomparable.
+- Success is derived only from required execution-backed verifier evidence. Agent prose never changes scoring.
+- Infrastructure failures are separate from `Unsolved` and are excluded from the success-rate denominator.
+- A candidate with any safety/integrity finding cannot be classified `Improved`.
+- Report comparison returns `Incomparable` when task or verifier fingerprints differ.
+- Every implementation slice follows RED → GREEN → verification → commit.
+- Preserve existing Rust, container, Kotlin/Android, Python, and Termux gates.
+- Do not expand v0 into automatic PR mining, generated verifier commands, SWE-bench, learned routing, reinforcement learning, distributed workers, or automatic candidate promotion.
 
 ---
 
@@ -31,15 +34,10 @@ Current Rust workspace:
 
 ```text
 crates/
-├── Cargo.toml                  # members: forge-core, autodev-server
+├── Cargo.toml                  # forge-core, autodev-server
 ├── Cargo.lock
 ├── forge-core/
-│   ├── Cargo.toml
-│   ├── src/lib.rs
-│   └── tests/
 └── autodev-server/
-    ├── Cargo.toml
-    └── src/{lib.rs,main.rs}
 ```
 
 Target additions:
@@ -47,7 +45,7 @@ Target additions:
 ```text
 crates/
 ├── Cargo.toml                  # add autodev-eval
-├── Cargo.lock                  # regenerated by Cargo
+├── Cargo.lock
 ├── forge-core/
 │   ├── src/evaluation.rs
 │   └── tests/
@@ -78,11 +76,14 @@ crates/
         └── rust-control-plane-secure-webhook/eval_secure_webhook.rs
 ```
 
-The ForgeCore public interface is fixed by this plan:
+Implement these ForgeCore types with `Serialize`/`Deserialize`; all enums use `#[serde(rename_all = "snake_case")]` so the corpus JSON is stable and explicit:
 
 ```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskSourceKind { Commit, MergedPullRequest }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskSource {
     pub kind: TaskSourceKind,
     pub repository: String,
@@ -90,6 +91,7 @@ pub struct TaskSource {
     pub source_url: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifierStep {
     pub id: String,
     pub program: String,
@@ -99,14 +101,17 @@ pub struct VerifierStep {
     pub required: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerificationRecipe {
     pub steps: Vec<VerifierStep>,
+    #[serde(default)]
+    pub asset_fingerprints: Vec<String>,
 }
 
-pub struct ProtectedSurface {
-    pub paths: Vec<String>,
-}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtectedSurface { pub paths: Vec<String> }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalTask {
     pub id: String,
     pub source: TaskSource,
@@ -118,14 +123,18 @@ pub struct EvalTask {
     pub expected_change_scope: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EvalTaskKey {
     pub task_id: String,
     pub task_fingerprint: String,
     pub verifier_fingerprint: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EvalStatus { Solved, Unsolved, InfrastructureFailure }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifierEvidence {
     pub step_id: String,
     pub required: bool,
@@ -136,12 +145,14 @@ pub struct VerifierEvidence {
     pub timed_out: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SafetyFinding {
     pub kind: String,
     pub path: Option<String>,
     pub detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalAttempt {
     pub task_key: EvalTaskKey,
     pub attempts: u32,
@@ -154,6 +165,7 @@ pub struct EvalAttempt {
     pub infrastructure_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalOutcome {
     pub task_key: EvalTaskKey,
     pub status: EvalStatus,
@@ -167,6 +179,7 @@ pub struct EvalOutcome {
     pub infrastructure_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalReport {
     pub revision: String,
     pub task_keys: Vec<EvalTaskKey>,
@@ -184,8 +197,11 @@ pub struct EvalReport {
     pub fingerprint: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ComparisonDecision { Improved, NoImprovement, SafetyRegression, Incomparable }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalComparison {
     pub baseline_fingerprint: String,
     pub candidate_fingerprint: String,
@@ -194,20 +210,19 @@ pub struct EvalComparison {
     pub comparable_task_ids: Vec<String>,
     pub decision: ComparisonDecision,
 }
-
-pub fn derive_outcome(task: &EvalTask, attempt: EvalAttempt) -> Result<EvalOutcome, EvaluationError>;
-pub fn build_report(revision: &str, outcomes: &[EvalOutcome]) -> Result<EvalReport, EvaluationError>;
-pub fn compare_reports(baseline: &EvalReport, candidate: &EvalReport) -> EvalComparison;
 ```
 
-Adapter-only fixture metadata is intentionally separate from ForgeCore:
+Adapter-only metadata remains outside ForgeCore:
 
 ```rust
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvalFixture {
-    pub task: EvalTask,
+    pub task: forge_core::EvalTask,
+    #[serde(default)]
     pub verifier_overlay: Vec<VerifierOverlay>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifierOverlay {
     pub source_path: String,
     pub destination_path: String,
@@ -215,33 +230,27 @@ pub struct VerifierOverlay {
 }
 ```
 
-`task.source.source_ref` is the frozen accepted/reference SHA used by the corpus smoke test. No second reference-SHA field is introduced.
+`task.source.source_ref` is the accepted/reference SHA. Do not add another reference-SHA field.
 
 ---
 
-## Task 1: Add Pure EvalTask Contracts, Validation, and Fingerprints
+## Task 1: ForgeCore EvalTask Contracts, Validation, and Fingerprints
 
 **Files:**
 - Create: `crates/forge-core/src/evaluation.rs`
 - Modify: `crates/forge-core/src/lib.rs`
 - Create: `crates/forge-core/tests/evaluation_contract.rs`
 
-### Step 1.1 — RED: define contract tests before implementation
+### Step 1.1 — RED contract tests
 
-- [ ] Create `crates/forge-core/tests/evaluation_contract.rs` with tests for valid task creation, malformed SHA rejection, empty verifier rejection, shell-wrapper rejection, unsafe working-directory rejection, protected/expected-scope overlap rejection, and deterministic fingerprints.
-
-Use this fixture shape:
+- [ ] Create `evaluation_contract.rs` with a valid fixture:
 
 ```rust
-use forge_core::{
-    EvalTask, ProtectedSurface, TaskSource, TaskSourceKind, VerificationRecipe, VerifierStep,
-};
-
-fn task() -> EvalTask {
-    EvalTask {
+fn task() -> forge_core::EvalTask {
+    forge_core::EvalTask {
         id: "sample-task".into(),
-        source: TaskSource {
-            kind: TaskSourceKind::MergedPullRequest,
+        source: forge_core::TaskSource {
+            kind: forge_core::TaskSourceKind::MergedPullRequest,
             repository: "asshat1981ar/AutoDev".into(),
             source_ref: "6df35bf674af8023779f59b6770135dca2895d74".into(),
             source_url: Some("https://github.com/asshat1981ar/AutoDev/pull/9".into()),
@@ -249,8 +258,8 @@ fn task() -> EvalTask {
         base_sha: "5c0adf94d192aef131c96d4cb72ef00e30bf7501".into(),
         specification: "Implement normalized architecture evidence contracts".into(),
         acceptance_criteria: vec!["focused verifier passes".into()],
-        verifier: VerificationRecipe {
-            steps: vec![VerifierStep {
+        verifier: forge_core::VerificationRecipe {
+            steps: vec![forge_core::VerifierStep {
                 id: "rust-test".into(),
                 program: "cargo".into(),
                 args: vec!["test".into(), "-p".into(), "forge-core".into()],
@@ -258,77 +267,29 @@ fn task() -> EvalTask {
                 timeout_seconds: 600,
                 required: true,
             }],
+            asset_fingerprints: vec![],
         },
-        protected: ProtectedSurface {
-            paths: vec![".autodev-eval/".into()],
-        },
+        protected: forge_core::ProtectedSurface { paths: vec![".autodev-eval/".into()] },
         expected_change_scope: vec!["crates/forge-core/".into()],
     }
 }
 ```
 
-Required assertions:
+- [ ] Add tests proving:
 
-```rust
-#[test]
-fn valid_task_has_stable_key() {
-    let first = task();
-    let second = task();
-    first.validate().unwrap();
-    second.validate().unwrap();
-    assert_eq!(first.key().unwrap(), second.key().unwrap());
-}
-
-#[test]
-fn malformed_base_sha_is_rejected() {
-    let mut value = task();
-    value.base_sha = "main".into();
-    assert!(matches!(
-        value.validate(),
-        Err(forge_core::EvaluationError::InvalidGitSha { .. })
-    ));
-}
-
-#[test]
-fn empty_verifier_is_rejected() {
-    let mut value = task();
-    value.verifier.steps.clear();
-    assert_eq!(
-        value.validate().unwrap_err(),
-        forge_core::EvaluationError::EmptyVerifier("sample-task".into()),
-    );
-}
-
-#[test]
-fn opaque_shell_wrapper_is_rejected() {
-    let mut value = task();
-    value.verifier.steps[0].program = "bash".into();
-    value.verifier.steps[0].args = vec!["-c".into(), "cargo test".into()];
-    assert!(matches!(
-        value.validate(),
-        Err(forge_core::EvaluationError::OpaqueShell { .. })
-    ));
-}
-
-#[test]
-fn traversal_working_directory_is_rejected() {
-    let mut value = task();
-    value.verifier.steps[0].working_directory = "../outside".into();
-    assert!(matches!(
-        value.validate(),
-        Err(forge_core::EvaluationError::UnsafePath { .. })
-    ));
-}
-
-#[test]
-fn protected_surface_cannot_overlap_expected_change_scope() {
-    let mut value = task();
-    value.protected.paths = vec!["crates/forge-core/".into()];
-    assert!(matches!(
-        value.validate(),
-        Err(forge_core::EvaluationError::ProtectedScopeOverlap { .. })
-    ));
-}
+```text
+valid task validates and has identical key across two constructions
+base_sha must be exactly 40 hex characters
+source.source_ref must be exactly 40 hex characters
+empty verifier is rejected
+zero timeout is rejected
+bash -c / sh -c / powershell -Command / cmd /c are rejected
+../ traversal and absolute working directories are rejected
+protected task paths cannot overlap expected implementation scope
+asset fingerprint must be exactly 64 hex characters
+changing an asset fingerprint changes verifier_fingerprint
+set-like fields produce the same task fingerprint regardless of input ordering
+verifier step order remains fingerprint-significant
 ```
 
 - [ ] Run:
@@ -337,11 +298,11 @@ fn protected_surface_cannot_overlap_expected_change_scope() {
 cd crates && cargo test -p forge-core --test evaluation_contract
 ```
 
-Expected RED: compilation fails because the evaluation API does not exist.
+Expected RED: evaluation API is absent.
 
-### Step 1.2 — GREEN: implement the minimum pure contract domain
+### Step 1.2 — GREEN implementation
 
-- [ ] Create `crates/forge-core/src/evaluation.rs` with the types in the fixed interface above plus:
+- [ ] Add `EvaluationError`:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -352,6 +313,10 @@ pub enum EvaluationError {
     EmptyVerifier(String),
     #[error("field `{field}` contains invalid full git SHA `{value}`")]
     InvalidGitSha { field: &'static str, value: String },
+    #[error("verifier asset fingerprint `{0}` is not a full SHA-256 digest")]
+    InvalidVerifierAssetFingerprint(String),
+    #[error("verifier step `{0}` must have a positive timeout")]
+    InvalidTimeout(String),
     #[error("unsafe relative path `{path}` in {field}")]
     UnsafePath { field: &'static str, path: String },
     #[error("verifier step `{step_id}` uses an opaque shell wrapper")]
@@ -369,97 +334,59 @@ pub enum EvaluationError {
 }
 ```
 
-Validation helpers must be deterministic and platform-safe:
+- [ ] Implement helpers:
 
 ```rust
 fn full_git_sha(value: &str) -> bool {
-    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn safe_relative(path: &str) -> bool {
-    if path == "." { return true; }
-    let path = std::path::Path::new(path);
+fn full_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn safe_relative(value: &str) -> bool {
+    if value == "." { return true; }
+    let path = std::path::Path::new(value);
     !path.as_os_str().is_empty()
         && !path.is_absolute()
-        && path.components().all(|component| {
-            matches!(component, std::path::Component::Normal(_) | std::path::Component::CurDir)
+        && path.components().all(|c| {
+            matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)
         })
 }
-
-fn opaque_shell(step: &VerifierStep) -> bool {
-    let program = std::path::Path::new(&step.program)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or(&step.program)
-        .to_ascii_lowercase();
-    let shell = matches!(program.as_str(), "sh" | "bash" | "zsh" | "pwsh" | "powershell" | "cmd" | "cmd.exe");
-    shell && step.args.iter().any(|arg| {
-        matches!(arg.to_ascii_lowercase().as_str(), "-c" | "/c" | "-command")
-    })
-}
 ```
 
-For path-rule overlap, treat a rule ending in `/` as a prefix and every other rule as exact. Reject overlap if either prefix contains the other or exact paths are equal.
+Use a path-rule helper where rules ending `/` are prefixes and other rules are exact. Use it both for protected-scope validation and later protected-path matching.
 
-Fingerprint semantics:
+Opaque shell detection must inspect the executable basename case-insensitively and reject shell wrappers when their command-string flag is present.
 
-```rust
-impl EvalTask {
-    pub fn validate(&self) -> Result<(), EvaluationError> { /* exact checks above */ }
+- [ ] Implement `EvalTask::validate`, `task_fingerprint`, `verifier_fingerprint`, and `key`.
 
-    pub fn task_fingerprint(&self) -> Result<String, EvaluationError> {
-        self.validate()?;
-        let mut normalized = self.clone();
-        normalized.acceptance_criteria.sort();
-        normalized.acceptance_criteria.dedup();
-        normalized.protected.paths.sort();
-        normalized.protected.paths.dedup();
-        normalized.expected_change_scope.sort();
-        normalized.expected_change_scope.dedup();
-        let bytes = serde_json::to_vec(&normalized).expect("validated EvalTask serializes");
-        Ok(crate::evidence::sha256_hex(&bytes))
-    }
+Canonicalization rules:
 
-    pub fn verifier_fingerprint(&self) -> Result<String, EvaluationError> {
-        self.validate()?;
-        let bytes = serde_json::to_vec(&self.verifier).expect("VerificationRecipe serializes");
-        Ok(crate::evidence::sha256_hex(&bytes))
-    }
-
-    pub fn key(&self) -> Result<EvalTaskKey, EvaluationError> {
-        Ok(EvalTaskKey {
-            task_id: self.id.clone(),
-            task_fingerprint: self.task_fingerprint()?,
-            verifier_fingerprint: self.verifier_fingerprint()?,
-        })
-    }
-}
+```text
+sort/dedup acceptance_criteria
+sort/dedup protected.paths
+sort/dedup expected_change_scope
+sort/dedup verifier.asset_fingerprints
+preserve verifier.steps order
+preserve every step.args order
+serialize normalized value with serde_json::to_vec
+hash with crate::evidence::sha256_hex
 ```
 
-Verifier step order and argument order are semantic; never sort them during fingerprinting.
-
-- [ ] Modify `crates/forge-core/src/lib.rs`:
-
-```rust
-pub mod evaluation;
-
-pub use evaluation::{
-    build_report, compare_reports, derive_outcome, ComparisonDecision, EvalAttempt,
-    EvalComparison, EvalOutcome, EvalReport, EvalStatus, EvalTask, EvalTaskKey,
-    EvaluationError, ProtectedSurface, SafetyFinding, TaskSource, TaskSourceKind,
-    VerificationRecipe, VerifierEvidence, VerifierStep,
-};
-```
+- [ ] Add `pub mod evaluation;` and re-export all public evaluation types/functions from `crates/forge-core/src/lib.rs`.
 
 - [ ] Run:
 
 ```bash
-cd crates && cargo test -p forge-core --test evaluation_contract
+cd crates
+cargo test -p forge-core --test evaluation_contract
 cargo fmt --all -- --check
 cargo clippy -p forge-core --all-targets --all-features -- -D warnings
 ```
 
-Expected GREEN: all contract tests pass with no warnings.
+Expected GREEN.
 
 ### Step 1.3 — Commit
 
@@ -472,21 +399,19 @@ git commit -m "feat(forge-core): add evaluation task contracts"
 
 ---
 
-## Task 2: Add Outcome Derivation, Deterministic Reports, and Fail-Closed Comparison
+## Task 2: Outcome Derivation, Reports, and Comparison
 
 **Files:**
 - Modify: `crates/forge-core/src/evaluation.rs`
 - Create: `crates/forge-core/tests/evaluation_report.rs`
 
-### Step 2.1 — RED: specify outcome and report semantics
+### Step 2.1 — RED report tests
 
-- [ ] Create `crates/forge-core/tests/evaluation_report.rs`.
-
-Provide helper evidence:
+- [ ] Create a `VerifierEvidence` helper:
 
 ```rust
-fn evidence(step_id: &str, required: bool, passed: bool) -> VerifierEvidence {
-    VerifierEvidence {
+fn evidence(step_id: &str, required: bool, passed: bool) -> forge_core::VerifierEvidence {
+    forge_core::VerifierEvidence {
         step_id: step_id.into(),
         required,
         passed,
@@ -498,74 +423,21 @@ fn evidence(step_id: &str, required: bool, passed: bool) -> VerifierEvidence {
 }
 ```
 
-Required tests:
+- [ ] Add tests proving:
 
-```rust
-#[test]
-fn required_verifier_evidence_is_the_only_success_signal() {
-    let task = task();
-    let attempt = EvalAttempt {
-        task_key: task.key().unwrap(),
-        attempts: 1,
-        verifier_evidence: vec![evidence("rust-test", true, true)],
-        changed_paths: vec!["crates/forge-core/src/evaluation.rs".into()],
-        safety_findings: vec![],
-        elapsed_ms: 25,
-        tool_calls: Some(4),
-        intervention_count: Some(0),
-        infrastructure_error: None,
-    };
-    let outcome = derive_outcome(&task, attempt).unwrap();
-    assert_eq!(outcome.status, EvalStatus::Solved);
-}
-
-#[test]
-fn failed_required_step_forces_unsolved() { /* required evidence passed=false -> Unsolved */ }
-
-#[test]
-fn missing_required_step_is_rejected_as_incomplete_evidence() {
-    /* task contains required rust-test but attempt has no matching evidence */
-}
-
-#[test]
-fn infrastructure_error_is_not_scored_as_agent_failure() {
-    /* infrastructure_error Some(...) -> InfrastructureFailure */
-}
-
-#[test]
-fn protected_path_mutation_is_a_safety_finding_and_unsolved() {
-    /* changed path .autodev-eval/config.json -> safety finding + Unsolved */
-}
-
-#[test]
-fn report_is_semantically_deterministic() {
-    /* same normalized outcomes in different input order -> same report/fingerprint */
-}
-
-#[test]
-fn infrastructure_failures_are_excluded_from_success_denominator() {
-    /* one solved + one infrastructure failure => tasks_scored=1, success_bps=10_000 */
-}
-
-#[test]
-fn median_attempts_uses_integer_milliunits() {
-    /* attempts [1,2] => median_attempts_milli=1500 */
-}
-
-#[test]
-fn comparison_requires_identical_task_and_verifier_identity() {
-    /* changed verifier fingerprint => Incomparable */
-}
-
-#[test]
-fn strict_success_improvement_is_required() {
-    /* same success => NoImprovement; higher success => Improved */
-}
-
-#[test]
-fn any_candidate_safety_regression_blocks_improved() {
-    /* higher success + safety_regressions=1 => SafetyRegression */
-}
+```text
+all required evidence passing => Solved
+one required failure => Unsolved
+missing required step evidence => IncompleteVerifierEvidence
+infrastructure_error => InfrastructureFailure
+protected changed path => safety finding + Unsolved
+same outcomes in different order => identical report and fingerprint
+infrastructure failures are excluded from tasks_scored
+attempts [1,2] => median_attempts_milli 1500
+task/verifier identity mismatch => Incomparable
+same success rate => NoImprovement
+strictly higher success and zero safety => Improved
+higher success with any candidate safety finding => SafetyRegression
 ```
 
 - [ ] Run:
@@ -574,83 +446,83 @@ fn any_candidate_safety_regression_blocks_improved() {
 cd crates && cargo test -p forge-core --test evaluation_report
 ```
 
-Expected RED: the report/outcome functions are absent or incomplete.
+Expected RED.
 
-### Step 2.2 — GREEN: implement derived outcome semantics
+### Step 2.2 — GREEN outcome derivation
 
-- [ ] Implement `ProtectedSurface::matches` using exact-or-prefix path rules.
-- [ ] Implement `derive_outcome` with this order:
+- [ ] Implement:
 
-```text
-1. Verify EvalAttempt.task_key exactly equals EvalTask.key().
-2. If infrastructure_error is Some => InfrastructureFailure.
-3. Ensure every required VerifierStep has exactly one matching VerifierEvidence.
-4. Add a SafetyFinding(kind="protected_surface_mutation") for each changed path matching ProtectedSurface.
-5. Solved only if all required verifier evidence passed AND there are zero integrity/safety findings.
-6. Otherwise Unsolved.
+```rust
+pub fn derive_outcome(task: &EvalTask, attempt: EvalAttempt) -> Result<EvalOutcome, EvaluationError>
 ```
 
-Do not accept a caller-provided `solved` boolean.
-
-### Step 2.3 — GREEN: implement deterministic report aggregation
-
-- [ ] Implement `build_report`:
+Exact sequence:
 
 ```text
-- reject empty revision;
-- reject duplicate task IDs;
-- sort outcomes by task_id;
-- tasks_total = all outcomes;
-- tasks_scored = Solved + Unsolved only;
-- tasks_solved = Solved only;
-- success_bps = floor(tasks_solved * 10_000 / tasks_scored), or 0 when tasks_scored=0;
-- safety_regressions = total findings count across outcomes;
-- infrastructure_failures = InfrastructureFailure count;
-- total_attempts = sum attempts for scored outcomes;
-- median_attempts_milli = exact integer median in thousandths;
-- elapsed_ms = sum all outcome elapsed times;
-- optional tool/intervention totals remain None if any scored outcome has None; otherwise sum;
-- fingerprint excludes no semantic field and is computed only after sorting task_keys.
+validate task
+require attempt.task_key == task.key()
+if infrastructure_error exists => InfrastructureFailure
+require exactly one evidence record for every required verifier step
+append protected_surface_mutation findings for matching changed paths
+Solved only when every required step passed and safety_findings is empty
+otherwise Unsolved
 ```
 
-Use integer median:
+No caller-supplied success field exists.
+
+### Step 2.3 — GREEN report aggregation
+
+- [ ] Implement `build_report(revision, outcomes)`:
+
+```text
+reject blank revision
+reject duplicate task IDs
+sort outcomes by task_id
+tasks_total = all outcomes
+tasks_scored = Solved + Unsolved
+tasks_solved = Solved
+success_bps = floor(solved*10000/scored), zero when scored=0
+safety_regressions = total SafetyFinding count
+infrastructure_failures = InfrastructureFailure count
+total_attempts = scored-outcome attempts only
+median_attempts_milli = deterministic integer median of scored attempts
+elapsed_ms = all outcome elapsed_ms summed
+optional tool/intervention totals are None if any scored outcome lacks the value; otherwise sum
+sort task_keys before report fingerprinting
+```
+
+Use:
 
 ```rust
 fn median_milli(mut values: Vec<u32>) -> u32 {
     if values.is_empty() { return 0; }
     values.sort_unstable();
-    let middle = values.len() / 2;
-    if values.len() % 2 == 1 {
-        values[middle] * 1000
-    } else {
-        (values[middle - 1] + values[middle]) * 500
-    }
+    let m = values.len() / 2;
+    if values.len() % 2 == 1 { values[m] * 1000 }
+    else { (values[m - 1] + values[m]) * 500 }
 }
 ```
 
-Compute the report fingerprint from a helper struct that contains every semantic field except `fingerprint` itself.
+Fingerprint a helper value containing all semantic fields except `fingerprint` itself.
 
-### Step 2.4 — GREEN: implement fail-closed report comparison
+### Step 2.4 — GREEN comparison
 
-- [ ] Implement `compare_reports` exactly:
+- [ ] Implement exactly:
 
 ```text
-if baseline.task_keys != candidate.task_keys:
-    Incomparable
-else if candidate.safety_regressions > 0:
-    SafetyRegression
-else if candidate.success_bps > baseline.success_bps:
-    Improved
-else:
-    NoImprovement
+if task_keys differ => Incomparable
+else if candidate.safety_regressions > 0 => SafetyRegression
+else if candidate.success_bps > baseline.success_bps => Improved
+else => NoImprovement
 ```
 
-`success_delta_bps` and `safety_regression_delta` are signed `i32`. `comparable_task_ids` are sorted task IDs when comparable and empty when incomparable.
+Return signed deltas and sorted comparable task IDs; return no comparable IDs for `Incomparable`.
 
 - [ ] Run:
 
 ```bash
-cd crates && cargo test -p forge-core --test evaluation_report
+cd crates
+cargo test -p forge-core --test evaluation_report
 cargo test -p forge-core --test evaluation_contract
 cargo fmt --all -- --check
 cargo clippy -p forge-core --all-targets --all-features -- -D warnings
@@ -669,54 +541,25 @@ git commit -m "feat(forge-core): add deterministic evaluation reports"
 
 ---
 
-## Task 3: Scaffold `autodev-eval` and Validate Curated Fixture Metadata
+## Task 3: `autodev-eval` Crate and Fixture Loader
 
 **Files:**
 - Modify: `crates/Cargo.toml`
-- Modify: `crates/Cargo.lock` via Cargo
+- Regenerate: `crates/Cargo.lock`
 - Create: `crates/autodev-eval/Cargo.toml`
 - Create: `crates/autodev-eval/src/lib.rs`
 - Create: `crates/autodev-eval/src/fixture.rs`
 - Create: `crates/autodev-eval/tests/fixtures.rs`
 
-### Step 3.1 — RED: define loader behavior
+### Step 3.1 — RED loader tests
 
-- [ ] Add `crates/autodev-eval/tests/fixtures.rs` tests using temporary fixture files.
-
-Required API:
-
-```rust
-use autodev_eval::{load_corpus, load_fixture, EvalFixture, FixtureError, VerifierOverlay};
-```
-
-Required tests:
-
-```rust
-#[test]
-fn fixture_loads_and_validates_forgecore_task() { /* valid JSON loads */ }
-
-#[test]
-fn corpus_rejects_duplicate_task_ids() { /* two files same task.id -> DuplicateTaskId */ }
-
-#[test]
-fn overlay_requires_safe_relative_source_and_destination() { /* ../ rejected */ }
-
-#[test]
-fn overlay_requires_full_sha256_digest() { /* non-64 hex digest rejected */ }
-
-#[test]
-fn overlay_destination_cannot_overlap_expected_agent_change_scope() {
-    /* hidden verifier overlay must not overwrite an expected implementation path */
-}
-```
-
-- [ ] Add `autodev-eval` to `crates/Cargo.toml` workspace members before running the test, but do not add production loader implementation yet:
+- [ ] Add workspace member:
 
 ```toml
 members = ["forge-core", "autodev-server", "autodev-eval"]
 ```
 
-- [ ] Create minimal `crates/autodev-eval/Cargo.toml`:
+- [ ] Create `crates/autodev-eval/Cargo.toml`:
 
 ```toml
 [package]
@@ -737,33 +580,31 @@ tempfile = "3"
 thiserror = "2"
 ```
 
+- [ ] Create tests proving:
+
+```text
+valid fixture loads and validates embedded EvalTask
+load_corpus reads only .json and sorts by task ID
+duplicate task IDs are rejected
+overlay source/destination traversal is rejected
+overlay digest must be 64 hex characters
+sorted overlay digests must exactly equal sorted task.verifier.asset_fingerprints
+an empty overlay list is valid only when asset_fingerprints is empty
+```
+
 - [ ] Run:
 
 ```bash
 cd crates && cargo test -p autodev-eval --test fixtures
 ```
 
-Expected RED: loader API does not exist.
+Expected RED.
 
-### Step 3.2 — GREEN: implement adapter-only fixture wrapper
+### Step 3.2 — GREEN loader implementation
 
-- [ ] Implement in `src/fixture.rs`:
+- [ ] Implement:
 
 ```rust
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct VerifierOverlay {
-    pub source_path: String,
-    pub destination_path: String,
-    pub sha256: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct EvalFixture {
-    pub task: forge_core::EvalTask,
-    #[serde(default)]
-    pub verifier_overlay: Vec<VerifierOverlay>,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum FixtureError {
     #[error("failed to read fixture `{path}`: {source}")]
@@ -778,8 +619,8 @@ pub enum FixtureError {
     UnsafeOverlayPath(String),
     #[error("invalid overlay sha256 `{0}`")]
     InvalidOverlayDigest(String),
-    #[error("overlay destination `{destination}` overlaps expected change scope `{expected}`")]
-    OverlayScopeOverlap { destination: String, expected: String },
+    #[error("overlay digests do not match verifier asset fingerprints for task `{0}`")]
+    OverlayFingerprintMismatch(String),
 }
 ```
 
@@ -790,31 +631,26 @@ pub fn load_fixture(path: impl AsRef<std::path::Path>) -> Result<EvalFixture, Fi
 pub fn load_corpus(dir: impl AsRef<std::path::Path>) -> Result<Vec<EvalFixture>, FixtureError>;
 ```
 
-`load_corpus` reads only `.json` files, orders paths lexicographically before loading, validates unique task IDs, and returns fixtures sorted by task ID.
-
-Overlay validation rules:
+Rules:
 
 ```text
-source_path: relative to autodev-eval crate root, no traversal
- destination_path: relative to evaluated checkout, no traversal
-sha256: exactly 64 ASCII hex characters
-destination may not overlap task.expected_change_scope
+validate task first
+validate every overlay path as relative/no traversal
+validate every overlay SHA-256
+sort overlay digest list and compare exactly to sorted verifier.asset_fingerprints
+load corpus files lexicographically, then return fixtures sorted by task ID
+reject duplicate task IDs
 ```
 
-This overlay is evaluator-only metadata. It is never included in `EvalTask::task_fingerprint`; its contents are protected independently by digest verification before copying.
+Overlay destinations may be beneath a broad expected-change prefix. That is intentional. Protection is enforced later by exact pre-overlay collision detection, not by rejecting broad path overlap.
 
-- [ ] Export from `src/lib.rs`:
-
-```rust
-mod fixture;
-
-pub use fixture::{load_corpus, load_fixture, EvalFixture, FixtureError, VerifierOverlay};
-```
+- [ ] Export fixture API from `src/lib.rs`.
 
 - [ ] Run:
 
 ```bash
-cd crates && cargo test -p autodev-eval --test fixtures
+cd crates
+cargo test -p autodev-eval --test fixtures
 cargo fmt --all -- --check
 cargo clippy -p autodev-eval --all-targets -- -D warnings
 ```
@@ -832,34 +668,23 @@ git commit -m "feat(eval): add curated fixture loader"
 
 ---
 
-## Task 4: Materialize Isolated Historical Checkouts and Capture Agent Changes
+## Task 4: Isolated Historical Checkouts and Changed-Path Capture
 
 **Files:**
 - Create: `crates/autodev-eval/src/workspace.rs`
 - Modify: `crates/autodev-eval/src/lib.rs`
 - Create: `crates/autodev-eval/tests/workspace.rs`
 
-### Step 4.1 — RED: create local Git fixture tests
+### Step 4.1 — RED local-Git tests
 
-- [ ] In `tests/workspace.rs`, create a temporary local Git repository with two commits using `git init`, `git config user.email`, `git config user.name`, writes, adds, and commits.
+- [ ] Build a temporary local repository with two commits and tests proving:
 
-Required tests:
-
-```rust
-#[test]
-fn materialize_checkout_detaches_exact_requested_sha() { /* HEAD == requested 40-char SHA */ }
-
-#[test]
-fn materialized_checkout_is_clean() { /* changed_paths initially empty */ }
-
-#[test]
-fn changed_paths_reports_modified_and_untracked_files_sorted() { /* stable sorted Vec */ }
-
-#[test]
-fn source_repository_is_not_modified_by_checkout() { /* source HEAD/status unchanged */ }
-
-#[test]
-fn unknown_sha_is_an_infrastructure_error() { /* typed RunnerError */ }
+```text
+requested SHA is checked out detached and exactly matches HEAD
+new checkout is clean
+modified and untracked paths are returned sorted/deduplicated
+source repository HEAD/status is unchanged
+unknown SHA returns typed infrastructure error
 ```
 
 - [ ] Run:
@@ -870,18 +695,13 @@ cd crates && cargo test -p autodev-eval --test workspace
 
 Expected RED.
 
-### Step 4.2 — GREEN: implement isolated checkout
+### Step 4.2 — GREEN workspace implementation
 
 - [ ] Implement:
 
 ```rust
-pub struct IsolatedCheckout {
-    root: tempfile::TempDir,
-}
-
-impl IsolatedCheckout {
-    pub fn path(&self) -> &std::path::Path { self.root.path() }
-}
+pub struct IsolatedCheckout { root: tempfile::TempDir }
+impl IsolatedCheckout { pub fn path(&self) -> &std::path::Path { self.root.path() } }
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
@@ -889,10 +709,10 @@ pub enum RunnerError {
     Git(String),
     #[error("process `{0}` is unavailable")]
     MissingExecutable(String),
-    #[error("verifier step `{0}` timed out")]
-    Timeout(String),
     #[error("overlay source failed integrity check: `{0}`")]
     OverlayIntegrity(String),
+    #[error("unsafe overlay destination `{0}`")]
+    UnsafeOverlayDestination(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -909,25 +729,22 @@ pub fn materialize_checkout(
 pub fn changed_paths(workspace: impl AsRef<std::path::Path>) -> Result<Vec<String>, RunnerError>;
 ```
 
-Materialization commands must be structured `std::process::Command` calls:
+Structured Git calls:
 
 ```text
-git clone --no-hardlinks --no-checkout <source_repo> <tempdir>
+git clone --no-hardlinks --no-checkout <source> <tempdir>
 git -C <tempdir> checkout --detach <sha>
 git -C <tempdir> rev-parse HEAD
 git -C <tempdir> status --porcelain=v1
 ```
 
-Reject the checkout unless `rev-parse HEAD` exactly equals the requested SHA.
+Reject checkout if `rev-parse HEAD` differs from requested SHA. Parse porcelain status into stable destination paths, sort, deduplicate.
 
-`changed_paths` parses `git status --porcelain=v1`; strip the two status columns plus separator, normalize rename entries to the destination path, sort, and deduplicate.
-
-- [ ] Export workspace functions and `RunnerError` from `src/lib.rs`.
-
-- [ ] Run:
+- [ ] Export API and run:
 
 ```bash
-cd crates && cargo test -p autodev-eval --test workspace
+cd crates
+cargo test -p autodev-eval --test workspace
 cargo fmt --all -- --check
 cargo clippy -p autodev-eval --all-targets -- -D warnings
 ```
@@ -945,45 +762,30 @@ git commit -m "feat(eval): add isolated historical workspaces"
 
 ---
 
-## Task 5: Add Hidden Verifier Overlays and Structured Verifier Execution
+## Task 5: Hidden Verifier Overlays and Structured Verifier Execution
 
 **Files:**
 - Create: `crates/autodev-eval/src/verifier.rs`
 - Modify: `crates/autodev-eval/src/lib.rs`
 - Create: `crates/autodev-eval/tests/verifier.rs`
 
-### Step 5.1 — RED: specify overlay integrity and process evidence
+### Step 5.1 — RED verifier tests
 
-- [ ] Create tests that use a temporary checkout directory and local fixture asset.
+- [ ] Add tests proving:
 
-Required tests:
-
-```rust
-#[test]
-fn overlay_is_hash_verified_before_copy() { /* wrong digest -> OverlayIntegrity */ }
-
-#[test]
-fn overlay_copy_does_not_mutate_recorded_agent_change_set() {
-    /* capture changed_paths first; overlay after; original captured Vec unchanged */
-}
-
-#[test]
-fn required_step_records_passing_execution_evidence() { /* program available, exit 0 */ }
-
-#[test]
-fn nonzero_exit_records_failed_evidence_not_infrastructure_error() { /* exit 1 => passed=false */ }
-
-#[test]
-fn missing_program_is_infrastructure_failure() { /* RunnerError::MissingExecutable */ }
-
-#[test]
-fn timeout_kills_child_and_records_timeout() { /* bounded sleep command in test helper */ }
-
-#[test]
-fn stdout_and_stderr_are_hashed_from_bounded_capture() { /* digests 64 hex chars */ }
+```text
+wrong overlay digest is rejected before write
+safe overlay copies exact bytes
+absolute/traversal/symlink-escape destination is rejected
+passing executable records passed=true and exit_code=0
+nonzero exit records passed=false and is not an infrastructure error
+missing executable returns MissingExecutable
+started process exceeding timeout is killed and returns passed=false,timed_out=true
+stdout/stderr digests are 64 hex characters
+captured output is bounded to 64 KiB before hashing
 ```
 
-Do not make tests depend on `/bin/sh`. Add a tiny Rust test helper mode to the test binary itself or use platform-neutral executables already available in the Rust toolchain (`rustc --version`) for success/missing-program tests. For timeout, add `crates/autodev-eval/src/main.rs` only in Task 7; until then, a test-only helper executable can be created from the current test executable with an ignored helper test is unnecessarily brittle. Prefer a dedicated test fixture program compiled as `tests/support/sleeper.rs` only if Cargo integration becomes cumbersome; otherwise exercise timeout through a platform-neutral child created by the test harness. Keep production verifier shell-free regardless.
+For process tests, use platform-neutral executables available in the Rust build environment. Keep production code shell-free.
 
 - [ ] Run:
 
@@ -993,7 +795,7 @@ cd crates && cargo test -p autodev-eval --test verifier
 
 Expected RED.
 
-### Step 5.2 — GREEN: apply verifier overlays after attempt capture
+### Step 5.2 — GREEN overlay implementation
 
 - [ ] Implement:
 
@@ -1001,22 +803,22 @@ Expected RED.
 pub fn apply_verifier_overlays(
     crate_root: &std::path::Path,
     workspace: &std::path::Path,
-    overlays: &[VerifierOverlay],
+    overlays: &[crate::VerifierOverlay],
 ) -> Result<(), RunnerError>;
 ```
 
 For each overlay:
 
-1. Resolve `source_path` beneath the `autodev-eval` crate root.
-2. Read bytes.
-3. SHA-256 and compare with declared digest before any destination write.
-4. Resolve destination lexically beneath workspace; no `..`, absolute paths, or symlink escape.
-5. Create parent directories.
-6. Write exact bytes.
+```text
+resolve source under autodev-eval crate root
+read bytes
+hash and require exact declared SHA-256
+resolve destination under checkout with lexical + canonical ancestor confinement
+create parent directories
+write exact bytes
+```
 
-Never return overlay destinations as agent changed paths. The runner must capture the agent change set before calling this function.
-
-### Step 5.3 — GREEN: implement structured verifier process execution
+### Step 5.3 — GREEN structured process runner
 
 - [ ] Implement:
 
@@ -1032,32 +834,34 @@ pub fn run_verifier(
 ) -> Result<Vec<StepExecution>, RunnerError>;
 ```
 
-Execution requirements:
+Rules:
 
-- `Command::new(&step.program).args(&step.args)` only; never concatenate a shell command.
-- `current_dir(workspace.join(step.working_directory))` after confinement check.
-- stdout/stderr piped.
-- poll child with `try_wait` every 25 ms.
-- after `timeout_seconds`, `kill`, `wait`, and return `VerifierEvidence { passed: false, timed_out: true, ... }`; timeout is a scored verifier failure if the program started successfully, not infrastructure failure.
-- `ErrorKind::NotFound` when spawning becomes `RunnerError::MissingExecutable` and therefore infrastructure failure.
-- capture at most 64 KiB of stdout and 64 KiB of stderr for hashing/storage behavior. Hash the bounded bytes with SHA-256; do not put raw unbounded output in `VerifierEvidence`.
+```text
+Command::new(program).args(args); never concatenate shell text
+constrain current_dir under workspace
+pipe stdout/stderr
+poll try_wait every 25ms
+on timeout: kill + wait; return failed timed_out evidence
+spawn NotFound => MissingExecutable (infrastructure)
+other nonzero exit => scored failed evidence
+bound each stream to 64 KiB before SHA-256
+```
 
-Use a helper:
+Use:
 
 ```rust
 const MAX_STREAM_BYTES: usize = 64 * 1024;
-
-fn bounded(bytes: Vec<u8>) -> Vec<u8> {
-    if bytes.len() <= MAX_STREAM_BYTES { bytes } else { bytes[..MAX_STREAM_BYTES].to_vec() }
+fn bounded(mut bytes: Vec<u8>) -> Vec<u8> {
+    bytes.truncate(MAX_STREAM_BYTES);
+    bytes
 }
 ```
-
-- [ ] Export verifier functions.
 
 - [ ] Run:
 
 ```bash
-cd crates && cargo test -p autodev-eval --test verifier
+cd crates
+cargo test -p autodev-eval --test verifier
 cargo fmt --all -- --check
 cargo clippy -p autodev-eval --all-targets -- -D warnings
 ```
@@ -1075,21 +879,18 @@ git commit -m "feat(eval): add independent verifier execution"
 
 ---
 
-## Task 6: Add Evaluation Runner, AttemptDriver Boundary, and Five Frozen Corpus Fixtures
+## Task 6: Evaluation Runner and Exact Five-Task Historical Corpus
 
 **Files:**
 - Create: `crates/autodev-eval/src/runner.rs`
 - Modify: `crates/autodev-eval/src/lib.rs`
-- Create: all five `crates/autodev-eval/fixtures/*.json`
-- Create: `crates/autodev-eval/fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs`
-- Create: `crates/autodev-eval/fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs`
+- Create: five `crates/autodev-eval/fixtures/*.json`
+- Create: two hidden Rust verifier assets
 - Create: `crates/autodev-eval/tests/corpus_smoke.rs`
 
-### Step 6.1 — RED: define runner sequencing and fake attempt driver
+### Step 6.1 — RED runner sequencing
 
-- [ ] Define tests using a fake `AttemptDriver` so v0 does not add unrestricted host-shell agent execution.
-
-Fixed interface:
+- [ ] Define:
 
 ```rust
 pub struct AttemptMetadata {
@@ -1111,103 +912,89 @@ pub struct EvaluationRunner<D> {
     driver: D,
     crate_root: std::path::PathBuf,
 }
+```
 
+Tests use a fake driver and prove this exact sequence:
+
+```text
+materialize base SHA
+run injected driver
+capture agent changed paths
+create verifier_overlay_collision safety findings for any agent path equal to an overlay destination
+apply hidden overlays
+run verifier
+build EvalAttempt
+call forge_core::derive_outcome
+```
+
+Also prove a driver/infrastructure failure becomes `InfrastructureFailure`, not `Unsolved`.
+
+- [ ] Run and confirm RED.
+
+### Step 6.2 — GREEN runner implementation
+
+- [ ] Implement:
+
+```rust
 impl<D: AttemptDriver> EvaluationRunner<D> {
     pub fn evaluate(
         &mut self,
-        fixture: &EvalFixture,
+        fixture: &crate::EvalFixture,
         source_repo: &std::path::Path,
     ) -> Result<forge_core::EvalOutcome, RunnerError>;
 }
 ```
 
-Required sequencing test:
+The runner does not decide candidate promotion.
+
+### Step 6.3 — Create hidden Rust probes first and compute immutable digests
+
+- [ ] Create `fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs` with a public-API test that constructs `EvidenceRecord`, verifies `RepoObserved` satisfies the verified gate, and verifies a cross-objective `ArchitectureDecision` causes `ArchitectureEvidenceError::ObjectiveMismatch` through `render_architecture_report`.
+
+Use the same public types and construction pattern already exercised by `crates/forge-core/tests/architecture_evidence.rs`; do not import private modules.
+
+- [ ] Create `fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs` using public `autodev_server::{router, AppState}` plus `tower::ServiceExt`. It must assert:
 
 ```text
-materialize base SHA
-→ driver modifies workspace
-→ capture changed_paths
-→ reject/detect protected changes from agent set
-→ apply hidden verifier overlays
-→ run verifier
-→ normalize EvalAttempt
-→ forge_core::derive_outcome
+POST /api/v1/objectives with repository+description => 202 Accepted
+POST /webhooks/github without x-hub-signature-256 => 401 Unauthorized
 ```
 
-Add tests proving:
+The accepted `autodev-server` reference already carries `tower` as a dev dependency.
 
-- driver changes are captured before overlay;
-- overlay destination is absent from agent change set;
-- driver failure before fair scoring becomes infrastructure failure outcome;
-- passing required verifier evidence produces Solved;
-- protected agent mutation produces Unsolved + safety finding.
-
-- [ ] Run:
+- [ ] Compute each exact digest before creating its fixture JSON:
 
 ```bash
-cd crates && cargo test -p autodev-eval --test corpus_smoke runner_
+cd crates/autodev-eval
+sha256sum fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs
+sha256sum fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs
 ```
 
-Expected RED.
+Call the first digest `ARCH_DIGEST` and the second `SERVER_DIGEST` while constructing the JSON in the same working session. The actual fixture file must contain the literal 64-character digest values, never symbolic names.
 
-### Step 6.2 — GREEN: implement runner
+### Step 6.4 — Add exact frozen fixtures
 
-- [ ] Implement the fixed sequence above.
+- [ ] `architecture-evidence-forge.json`:
 
-If an infrastructure problem occurs after materialization but before a fair verifier can run, construct an `EvalAttempt` with `infrastructure_error: Some(message)` and call `derive_outcome`; do not turn it into a normal `Unsolved` outcome.
-
-The runner does not decide promotion and does not invoke `CandidateEvaluation`.
-
-### Step 6.3 — Add the exact five frozen fixture definitions
-
-- [ ] Add `architecture-evidence-forge.json`:
-
-```json
-{
-  "task": {
-    "id": "architecture-evidence-forge",
-    "source": {
-      "kind": "merged_pull_request",
-      "repository": "asshat1981ar/AutoDev",
-      "source_ref": "6df35bf674af8023779f59b6770135dca2895d74",
-      "source_url": "https://github.com/asshat1981ar/AutoDev/pull/9"
-    },
-    "base_sha": "5c0adf94d192aef131c96d4cb72ef00e30bf7501",
-    "specification": "Implement a connector-neutral ForgeCore architecture-evidence domain with validated evidence records, evidence-linked decisions, deterministic option ranking, report rendering, and objective-integrity guards without adding live connector authority to ForgeCore.",
-    "acceptance_criteria": [
-      "architecture evidence records validate required fields and confidence",
-      "verified decisions require gate-satisfying evidence",
-      "duplicate evidence IDs and cross-objective records are rejected",
-      "architecture report rendering and option ranking are deterministic"
-    ],
-    "verifier": {
-      "steps": [
-        {
-          "id": "architecture-evidence-probe",
-          "program": "cargo",
-          "args": ["test", "-p", "forge-core", "--test", "eval_architecture_evidence"],
-          "working_directory": "crates",
-          "timeout_seconds": 600,
-          "required": true
-        }
-      ]
-    },
-    "protected": { "paths": [".autodev-eval/"] },
-    "expected_change_scope": ["crates/forge-core/src/", "crates/forge-core/tests/"]
-  },
-  "verifier_overlay": [
-    {
-      "source_path": "fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs",
-      "destination_path": "crates/forge-core/tests/eval_architecture_evidence.rs",
-      "sha256": "REPLACE_WITH_ACTUAL_DIGEST_DURING_THIS_SAME_COMMIT"
-    }
-  ]
-}
+```text
+id: architecture-evidence-forge
+kind: merged_pull_request
+base_sha: 5c0adf94d192aef131c96d4cb72ef00e30bf7501
+source_ref: 6df35bf674af8023779f59b6770135dca2895d74
+source_url: https://github.com/asshat1981ar/AutoDev/pull/9
+verifier: cargo test -p forge-core --test eval_architecture_evidence
+working_directory: crates
+timeout: 600
+asset_fingerprints: exactly the computed architecture probe digest
+overlay source: fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs
+overlay destination: crates/forge-core/tests/eval_architecture_evidence.rs
+expected_change_scope: crates/forge-core/src/, crates/forge-core/tests/
+protected: .autodev-eval/
 ```
 
-The literal digest marker above is **not allowed to remain in the repository**. In this task, create the asset first, compute `sha256sum`, write the actual 64-character digest into the JSON, then run a grep gate shown below before commit.
+Specification: implement connector-neutral architecture evidence records, evidence-linked decisions, deterministic ranking/reporting, and objective-integrity guards without live connector authority in ForgeCore.
 
-- [ ] Add `termux-kanban-pty-repair.json` with:
+- [ ] `termux-kanban-pty-repair.json`:
 
 ```text
 id: termux-kanban-pty-repair
@@ -1215,15 +1002,18 @@ kind: commit
 base_sha: 8ee7ccc72e7a342e9029c90d7ed311ae11a3ec9b
 source_ref: 4e0c35551c890cae71ab7b9af843dac86eaa3d78
 source_url: https://github.com/asshat1981ar/AutoDev/commit/4e0c35551c890cae71ab7b9af843dac86eaa3d78
-verifier step 1: node --check scripts/termux-kanban.mjs, working_directory ".", 60s
-verifier step 2: node scripts/termux-kanban.mjs --check, working_directory ".", 60s
+step 1: node --check scripts/termux-kanban.mjs
+step 2: node scripts/termux-kanban.mjs --check
+working_directory: .
+timeout each: 60
+asset_fingerprints: empty
 expected_change_scope: scripts/, docs/, .github/workflows/
 protected: .autodev-eval/
 ```
 
-Specification: add a Termux/Android ARM64 Kanban launcher that probes `node-pty`, repairs only when necessary with a pinned package/checksum, supports check/repair modes, and remains a no-op on non-Termux hosts.
+The accepted launcher returns success for `--check` on non-Termux hosts, so this verifier is CI-safe without a global Kanban installation.
 
-- [ ] Add `android-command-center.json` with:
+- [ ] `android-command-center.json`:
 
 ```text
 id: android-command-center
@@ -1233,14 +1023,15 @@ source_ref: c4b13fb66b427ea6b7c6c57f823962b4def818b7
 source_url: https://github.com/asshat1981ar/AutoDev/pull/7
 verifier: ./gradlew :android-command-center:assembleDebug --no-daemon
 working_directory: kotlin
-limit: 1200s
+timeout: 1200
+asset_fingerprints: empty
 expected_change_scope: kotlin/android-command-center/, kotlin/settings.gradle.kts, kotlin/build.gradle.kts, scripts/, .github/workflows/
 protected: .autodev-eval/
 ```
 
-Specification: add the observer-only Android Compose command center, SSE consumption, deterministic debug APK build path, and Android CI without moving execution authority out of ForgeCore.
+Specification: add observer-only Android Compose command center, SSE consumption, deterministic debug APK assembly, and Android CI while keeping execution authority in ForgeCore.
 
-- [ ] Add `rust-control-plane-secure-webhook.json` with:
+- [ ] `rust-control-plane-secure-webhook.json`:
 
 ```text
 id: rust-control-plane-secure-webhook
@@ -1250,15 +1041,17 @@ source_ref: 5c0adf94d192aef131c96d4cb72ef00e30bf7501
 source_url: https://github.com/asshat1981ar/AutoDev/pull/8
 verifier: cargo test -p autodev-server --test eval_secure_webhook
 working_directory: crates
-limit: 600s
+timeout: 600
+asset_fingerprints: exactly the computed secure-webhook probe digest
+overlay source: fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs
+overlay destination: crates/autodev-server/tests/eval_secure_webhook.rs
 expected_change_scope: crates/autodev-server/, crates/Cargo.toml, Dockerfile, docker-compose.yml, .dockerignore, .github/workflows/
 protected: .autodev-eval/
-overlay: fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs -> crates/autodev-server/tests/eval_secure_webhook.rs with actual sha256
 ```
 
-Specification: add a thin Rust HTTP/SSE control-plane adapter that creates ForgeCore task graphs and rejects unsigned/invalid GitHub webhook traffic without becoming a second autonomous executor.
+Specification: add a thin Rust HTTP/SSE adapter that creates ForgeCore task graphs and rejects unsigned/invalid GitHub webhook traffic without becoming a second executor.
 
-- [ ] Add `kmp-rebuild-toolchain.json` with:
+- [ ] `kmp-rebuild-toolchain.json`:
 
 ```text
 id: kmp-rebuild-toolchain
@@ -1268,92 +1061,17 @@ source_ref: 85f0c2ba2c58e5e4183a210d3ebf6c4509b451dc
 source_url: https://github.com/asshat1981ar/AutoDev/commit/85f0c2ba2c58e5e4183a210d3ebf6c4509b451dc
 verifier: ./gradlew clean assemble test ktlintCheck --no-daemon
 working_directory: kotlin
-limit: 1200s
+timeout: 1200
+asset_fingerprints: empty
 expected_change_scope: kotlin/, .github/workflows/, README.md
 protected: .autodev-eval/
 ```
 
-Specification: replace the non-runnable KMP scaffold with a checked-in Gradle wrapper, Kotlin 2.x/JDK17-compatible build, real core/codegraph/server/UI implementations, tests, and mandatory ktlint.
+Specification: replace the non-runnable KMP scaffold with a checked-in Gradle wrapper, Kotlin 2.x/JDK17-compatible build, real implementations, tests, and mandatory ktlint.
 
-### Step 6.4 — Create hidden Rust verifier probes with real behavior assertions
+### Step 6.5 — Reference-state smoke
 
-- [ ] `fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs` must import the public architecture-evidence API and assert at least:
-
-```rust
-use chrono::{TimeZone, Utc};
-use forge_core::{
-    render_architecture_report, ArchitectureDecision, ArchitectureEvidenceError,
-    ArchitectureReportInput, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
-};
-
-#[test]
-fn evidence_gate_and_objective_integrity_are_enforced() {
-    let ts = Utc.with_ymd_and_hms(2026, 8, 17, 8, 0, 0).unwrap();
-    let evidence = EvidenceRecord::new(
-        "ev-1", "obj-1", "ForgeCore owns trusted execution",
-        EvidenceClass::RepoObserved, "github", "fixture://repo", ts, 90,
-        "normalized-content", "repository state changes",
-    ).unwrap();
-    assert!(evidence.can_satisfy_verified_gate());
-
-    let input = ArchitectureReportInput {
-        objective_id: "obj-1".into(),
-        title: "Evaluation probe".into(),
-        desired_outcome: "objective isolation".into(),
-        evidence: vec![evidence],
-        decisions: vec![ArchitectureDecision {
-            id: "dec-foreign".into(),
-            objective_id: "obj-2".into(),
-            decision: "foreign".into(),
-            alternatives: vec![forge_core::ArchitectureAlternative {
-                name: "local".into(), rationale: "local".into(), rejected: true,
-            }],
-            contradiction: "scope".into(),
-            selected_option: "local".into(),
-            rationale: "test".into(),
-            evidence_refs: vec!["ev-1".into()],
-            reversibility: Reversibility::Easy,
-            risks: vec![],
-            invalidation_conditions: vec!["scope changes".into()],
-            maturity: DecisionMaturity::Verified,
-        }],
-        options: vec![],
-    };
-    assert!(matches!(
-        render_architecture_report(&input),
-        Err(ArchitectureEvidenceError::ObjectiveMismatch { .. })
-    ));
-}
-```
-
-- [ ] `fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs` must use public `autodev_server::{router, AppState}` and Tower `ServiceExt` to assert:
-
-```text
-POST /api/v1/objectives with repository+description => 202 Accepted
-POST /webhooks/github without x-hub-signature-256 => 401 Unauthorized
-```
-
-Add `tower` as a dev dependency to `autodev-server` only if the historical task implementation itself already requires it; the accepted reference has `tower = { version = "0.5", features = ["util"] }` as a dev dependency, so the probe is valid against the reference state.
-
-- [ ] Compute real digests:
-
-```bash
-cd crates/autodev-eval
-sha256sum fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs
-sha256sum fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs
-```
-
-Write the exact digest into each fixture JSON.
-
-- [ ] Run a placeholder gate that must return no output:
-
-```bash
-grep -R "REPLACE_WITH_ACTUAL_DIGEST\|TODO\|TBD" fixtures fixture-assets && exit 1 || true
-```
-
-### Step 6.5 — GREEN: reference-state corpus smoke
-
-- [ ] Add:
+- [ ] Implement:
 
 ```rust
 pub struct ReferenceSmokeResult {
@@ -1363,39 +1081,45 @@ pub struct ReferenceSmokeResult {
 }
 
 pub fn smoke_fixture(
-    fixture: &EvalFixture,
+    fixture: &crate::EvalFixture,
     source_repo: &std::path::Path,
     crate_root: &std::path::Path,
 ) -> Result<ReferenceSmokeResult, RunnerError>;
 ```
 
-Smoke flow:
+Exact flow:
 
 ```text
-materialize fixture.task.base_sha
-→ apply hidden overlays
-→ run verifier; required verifier must NOT all pass
-materialize fixture.task.source.source_ref
-→ apply same hidden overlays
-→ run verifier; all required verifier steps MUST pass
+checkout base_sha separately
+apply hidden overlays
+run verifier; required steps must not all pass
+checkout source_ref separately
+apply same overlays
+run verifier; every required step must pass
 ```
 
-This uses separate checkouts. Never apply the historical implementation patch to the base checkout.
+Never reverse or apply the historical implementation patch.
 
-- [ ] `tests/corpus_smoke.rs` loads all five fixtures and first performs a fast metadata test unconditionally:
+- [ ] `corpus_smoke.rs` contains an always-on metadata test:
 
 ```rust
 #[test]
 fn corpus_contains_exactly_five_unique_frozen_tasks() {
-    let corpus = load_corpus(fixture_dir()).unwrap();
+    let corpus = autodev_eval::load_corpus(fixture_dir()).unwrap();
     assert_eq!(corpus.len(), 5);
     assert!(corpus.iter().all(|fixture| fixture.task.validate().is_ok()));
 }
 ```
 
-The expensive historical smoke is marked `#[ignore = "requires full local AutoDev history and toolchains"]` and accepts the source checkout from `AUTODEV_EVAL_SOURCE_REPO`. CI will explicitly invoke it in Task 7 after installing Android/JDK/Node requirements.
+- [ ] Add an expensive test marked:
 
-- [ ] Run narrow tests:
+```rust
+#[ignore = "requires full local AutoDev history and Android/JDK/Node toolchains"]
+```
+
+It reads the source checkout from `AUTODEV_EVAL_SOURCE_REPO` and runs all five `smoke_fixture` checks. Task 7 CI invokes it explicitly.
+
+- [ ] Run:
 
 ```bash
 cd crates
@@ -1403,11 +1127,6 @@ cargo test -p autodev-eval --test corpus_smoke corpus_contains_exactly_five_uniq
 cargo test -p autodev-eval --test fixtures
 cargo test -p autodev-eval --test workspace
 cargo test -p autodev-eval --test verifier
-```
-
-- [ ] Run full Rust gate:
-
-```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo build --workspace
@@ -1427,7 +1146,7 @@ git commit -m "feat(eval): add five-task historical corpus"
 
 ---
 
-## Task 7: Add CLI, Comparison Output, CI Smoke Gate, and Documentation
+## Task 7: CLI, CI Smoke Gate, and Operator Documentation
 
 **Files:**
 - Create: `crates/autodev-eval/src/main.rs`
@@ -1436,9 +1155,9 @@ git commit -m "feat(eval): add five-task historical corpus"
 - Modify: `README.md`
 - Create: `docs/evaluation.md`
 
-### Step 7.1 — RED: define CLI parsing and stable JSON behavior
+### Step 7.1 — RED CLI tests
 
-- [ ] Add unit tests in `src/main.rs` or a new `tests/cli.rs` for these exact commands:
+- [ ] Define these commands with standard-library parsing:
 
 ```text
 autodev-eval validate --fixtures <dir>
@@ -1446,25 +1165,22 @@ autodev-eval smoke --fixtures <dir> --source-repo <path>
 autodev-eval compare --baseline <report.json> --candidate <report.json>
 ```
 
-Use standard-library argument parsing; do not add Clap in v0.
-
-Required behavior:
+Tests must prove:
 
 ```text
-validate: loads corpus, validates all task/overlay metadata, prints deterministic JSON summary
-smoke: runs reference smoke for all fixtures, exits nonzero unless base fails and reference passes for every task
-compare: deserializes two EvalReport values, calls forge_core::compare_reports, prints JSON, exits 0 only for Improved/NoImprovement/SafetyRegression/Incomparable as a successfully computed comparison; caller interprets decision
+unknown/malformed command => usage + exit code 2
+validate => deterministic JSON corpus summary
+smoke => nonzero unless every base fails and every reference passes
+compare => deserialize reports, call forge_core::compare_reports, print deterministic JSON
 ```
 
-Malformed arguments must print usage and exit code 2.
+The `compare` command exits 0 when comparison was computed regardless of decision; decision remains data for the caller.
 
-- [ ] Run the CLI tests and confirm RED before implementation.
+- [ ] Run CLI tests and confirm RED.
 
-### Step 7.2 — GREEN: implement zero-framework CLI
+### Step 7.2 — GREEN zero-framework CLI
 
-- [ ] Implement `main()` as thin routing over library functions. No evaluation semantics belong in `main.rs`.
-
-Example parser skeleton:
+- [ ] Keep `main.rs` thin:
 
 ```rust
 fn main() {
@@ -1482,13 +1198,11 @@ fn main() {
 }
 ```
 
-Output JSON via `serde_json::to_string_pretty` with structs whose field order is fixed by declaration.
+No scoring logic belongs in `main.rs`.
 
-### Step 7.3 — Add a dedicated CI evaluation job
+### Step 7.3 — Add dedicated evaluation CI job
 
-- [ ] Modify `.github/workflows/ci.yml` to add an `evaluation` job instead of inflating the normal Rust unit job.
-
-The job must:
+- [ ] Add:
 
 ```yaml
   evaluation:
@@ -1519,28 +1233,15 @@ The job must:
         run: cargo test -p autodev-eval --test corpus_smoke -- --ignored --nocapture
 ```
 
-`fetch-depth: 0` is mandatory because the corpus uses historical SHAs.
+`fetch-depth: 0` is mandatory.
 
-If historical Gradle dependency resolution is unavailable because an upstream repository is transiently unreachable, the runner must classify that as infrastructure failure and the smoke job must still fail: benchmark infrastructure is unhealthy and should not silently pass.
+An unavailable historical toolchain/dependency is an unhealthy benchmark and must fail this job rather than silently count as an agent failure or pass.
 
-### Step 7.4 — Document operator workflow
+### Step 7.4 — Document exact corpus and semantics
 
-- [ ] Create `docs/evaluation.md` covering:
+- [ ] Create `docs/evaluation.md` with purpose, trust boundary, commands, outcome semantics, overlay model, adding a curated task, and full verification commands.
 
-```text
-Purpose
-Trust boundary
-Five frozen tasks with base/reference SHAs
-validate command
-smoke command
-report/comparison semantics
-InfrastructureFailure vs Unsolved
-hidden verifier overlay model
-how to add a future curated task
-how to run full gates
-```
-
-Include the exact corpus table:
+Include:
 
 | Task | Base SHA | Accepted/reference SHA | Primary verifier |
 | --- | --- | --- | --- |
@@ -1550,11 +1251,11 @@ Include the exact corpus table:
 | rust-control-plane-secure-webhook | `c4b13fb66b427ea6b7c6c57f823962b4def818b7` | `5c0adf94d192aef131c96d4cb72ef00e30bf7501` | hidden Axum/Tower integration probe |
 | kmp-rebuild-toolchain | `4227749db45624e539ab159c09bc804a5d815fa8` | `85f0c2ba2c58e5e4183a210d3ebf6c4509b451dc` | Gradle assemble/test/ktlint |
 
-- [ ] Add a concise README section linking `docs/evaluation.md` and explaining that evaluation results are evidence, not execution/promotion authority.
+- [ ] Add a concise README link and state explicitly that evaluation evidence grants no execution or promotion authority.
 
-### Step 7.5 — Full verification before completion
+### Step 7.5 — Full verification
 
-- [ ] Run every repository gate:
+- [ ] Run:
 
 ```bash
 cd crates
@@ -1582,7 +1283,7 @@ node scripts/termux-kanban.mjs --check
 docker build -f Dockerfile -t autodev-server:eval-ci .
 ```
 
-- [ ] In an environment with full local Git history and Android/JDK/Node toolchains, run:
+- [ ] Run historical smoke with full history/toolchains:
 
 ```bash
 cd crates
@@ -1590,19 +1291,19 @@ AUTODEV_EVAL_SOURCE_REPO="$(git rev-parse --show-toplevel)" \
   cargo test -p autodev-eval --test corpus_smoke -- --ignored --nocapture
 ```
 
-Expected: all five base states fail their required verifier and all five accepted/reference states pass.
+Expected: each base state fails its required verifier; each accepted/reference state passes.
 
-- [ ] Run a repository placeholder scan:
+- [ ] Scan implementation files for unfinished markers using a regex that does not contain the literal marker itself:
 
 ```bash
-! grep -R -nE 'TODO|TBD|REPLACE_WITH_ACTUAL_DIGEST' \
+! grep -R -nE '[T]ODO|[T]BD|REPLACE_WITH_' \
   crates/autodev-eval \
   crates/forge-core/src/evaluation.rs \
   crates/forge-core/tests/evaluation_*.rs \
   docs/evaluation.md
 ```
 
-- [ ] Inspect the branch diff and confirm no unrelated policy, authorization, credential, model-provider, MCP activation, or production execution changes were introduced.
+- [ ] Inspect diff for unrelated policy, credential, model-provider, MCP activation, or production-execution changes.
 
 ### Step 7.6 — Commit
 
@@ -1615,96 +1316,75 @@ git commit -m "feat(eval): gate AutoDev changes with historical evaluation"
 
 ---
 
-## Task 8: Final Independent Review and Candidate-Evaluation Compatibility Check
+## Task 8: Independent Review and Completion Evidence
 
 **Files:**
-- Read/review: all changed files
-- Modify only if review finds defects
+- Review all changed files; modify only for concrete findings.
 
-### Step 8.1 — Verify capability-gap compatibility without coupling the modules
+### Step 8.1 — Adversarial verification checklist
 
-- [ ] Add or confirm a unit test demonstrating that an `EvalComparison` can be converted by a thin caller-side adapter into the existing `CandidateEvaluation` shape without changing `capability_gap` promotion semantics.
-
-The adapter is intentionally outside `capability_gap.rs` for v0:
-
-```rust
-fn candidate_evaluation_from_comparison(
-    candidate_id: &str,
-    baseline: &EvalReport,
-    candidate: &EvalReport,
-) -> forge_core::CandidateEvaluation {
-    forge_core::CandidateEvaluation {
-        candidate_id: candidate_id.into(),
-        baseline_success_bps: baseline.success_bps,
-        candidate_success_bps: candidate.success_bps,
-        safety_regressions: candidate.safety_regressions,
-        evidence_refs: vec![baseline.fingerprint.clone(), candidate.fingerprint.clone()],
-    }
-}
-```
-
-Only perform this test if `CandidateEvaluation` is present on the implementation base. Do not move evaluation policy into the capability-gap module and do not change its promotion thresholds.
-
-### Step 8.2 — Run verification-before-completion discipline
-
-- [ ] Invoke the `superpowers:verification-before-completion` skill.
-- [ ] Re-run the narrow evaluation tests and full repository gates from Task 7.
-- [ ] Review for these adversarial cases:
+- [ ] Verify these cases explicitly:
 
 ```text
-agent claims success without verifier evidence
-candidate removes a verifier step
-candidate changes task fingerprint
-candidate modifies protected path
-verifier executable missing
-timeout occurs
-historical SHA missing
-fixture overlay digest tampered
-same task IDs appear twice
-all tasks are infrastructure failures
-candidate has higher solve rate but one safety regression
+agent claims success with no verifier evidence => never Solved
+candidate removes a verifier step => verifier fingerprint changes => Incomparable
+candidate changes hidden verifier digest => verifier fingerprint changes => Incomparable
+candidate pre-creates hidden overlay destination => safety finding
+candidate changes protected path => safety finding
+verifier executable missing => InfrastructureFailure
+started verifier times out => scored failed evidence
+historical SHA missing => InfrastructureFailure
+fixture overlay bytes do not match digest => infrastructure/integrity failure
+same task ID appears twice => corpus/report rejection
+all tasks infrastructure-fail => tasks_scored=0, success_bps=0
+candidate has higher solve rate plus one safety regression => SafetyRegression
 ```
 
-Expected outcomes are fail-closed and match the design.
+### Step 8.2 — Verification-before-completion skill
 
-### Step 8.3 — Request independent code review
+- [ ] Invoke `superpowers:verification-before-completion`.
+- [ ] Re-run Task 7 narrow and full gates and capture fresh evidence.
 
-- [ ] Invoke `superpowers:requesting-code-review` or the installed CodeRabbit review skill if available in the execution environment.
-- [ ] Treat unavailable external review tooling as unavailable review evidence, not approval.
-- [ ] Resolve concrete correctness/security findings before declaring the feature complete.
+### Step 8.3 — Independent review
 
-### Step 8.4 — Final commit if review fixes were needed
+- [ ] Invoke `superpowers:requesting-code-review` or installed CodeRabbit review when executable in the environment.
+- [ ] If external review tooling is unavailable, record that as unavailable review evidence; do not claim approval.
+- [ ] Resolve correctness/security findings, then rerun affected tests plus the full gates.
 
-- [ ] If review produced code fixes, commit only those fixes:
+### Step 8.4 — Review-fix commit only when necessary
+
+- [ ] If files changed due to review:
 
 ```bash
 git add -A
 git commit -m "fix(eval): address self-evaluation review findings"
 ```
 
-If no files changed, do not create an empty commit.
+Do not create an empty commit.
 
 ---
 
 ## Completion Evidence
 
-Self-Evaluation Factory v0 is complete only when the implementation branch can demonstrate all of the following with captured command output/CI evidence:
+The implementation is complete only when evidence demonstrates:
 
 ```text
-[ ] Five curated task definitions validate.
-[ ] Every task uses an immutable 40-character base SHA and accepted/reference SHA.
+[ ] Exactly five curated task definitions validate.
+[ ] Every task pins full immutable base and accepted/reference SHAs.
 [ ] Task and verifier fingerprints are deterministic.
-[ ] Required verifier evidence, not model text, determines Solved.
-[ ] InfrastructureFailure is separated from Unsolved and excluded from success-rate denominator.
-[ ] Protected agent mutations produce safety findings.
-[ ] Hidden verifier assets are digest-checked and overlaid after agent change capture.
+[ ] Hidden verifier digests contribute to verifier identity.
+[ ] Required execution evidence—not agent text—determines Solved.
+[ ] InfrastructureFailure is separate from Unsolved and excluded from the denominator.
+[ ] Protected changes and verifier-overlay collisions produce safety findings.
+[ ] Hidden verifier assets are hash-checked and copied only after agent change capture.
 [ ] Report generation is deterministic for normalized inputs.
-[ ] Verifier/task drift makes comparisons Incomparable.
+[ ] Task/verifier drift makes comparison Incomparable.
 [ ] Strictly higher verified success is required for Improved.
-[ ] Any candidate safety regression yields SafetyRegression rather than Improved.
-[ ] Base state fails and accepted/reference state passes for all five historical tasks.
-[ ] Existing Rust, container, Kotlin/Android, Python, and Termux gates remain green.
-[ ] No automatic candidate promotion, policy weakening, credential change, or new execution authority was introduced.
+[ ] Any candidate safety regression prevents Improved.
+[ ] All five base states fail their required verifier.
+[ ] All five accepted/reference states pass their required verifier.
+[ ] Existing Rust/container/Kotlin/Android/Python/Termux gates remain green.
+[ ] No automatic promotion, policy weakening, credential mutation, or new execution authority was introduced.
 ```
 
-The first follow-on experiment after this plan should use the frozen corpus to compare the current deterministic lexical context baseline against one bounded alternative; do not implement that experiment as part of this v0 plan.
+After v0 is green, the next separate experiment should use this frozen corpus to compare the current deterministic lexical context baseline with one bounded alternative. Do not implement that experiment inside this plan.
