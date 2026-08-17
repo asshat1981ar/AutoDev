@@ -151,7 +151,15 @@ fn proposal_session_is_read_only_and_returns_typed_intent() {
         calls[2].1["input"][0]["text"],
         "Propose the smallest safe code change."
     );
-    assert!(calls[2].1["outputSchema"].is_object());
+    let schema = &calls[2].1["outputSchema"];
+    assert!(schema.is_object());
+    assert!(schema["properties"].get("requested_capabilities").is_some());
+    assert!(schema["properties"].get("capabilities").is_none());
+    assert!(schema["required"]
+        .as_array()
+        .expect("required fields")
+        .iter()
+        .any(|field| field == "requested_capabilities"));
 }
 
 #[test]
