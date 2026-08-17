@@ -1,0 +1,378 @@
+[1m[92m    Updating[0m crates.io index
+[1m[92m     Locking[0m 61 packages to latest compatible versions
+[1m[92m      Adding[0m async-trait v0.1.92
+[1m[92m      Adding[0m atomic-waker v1.1.2
+[1m[92m      Adding[0m axum v0.7.9 [1m[33m(available: v0.8.9)[0m
+[1m[92m      Adding[0m axum-core v0.4.5
+[1m[92m      Adding[0m base64 v0.23.1
+[1m[92m      Adding[0m bytes v1.12.1
+[1m[92m      Adding[0m chacha20 v0.10.1
+[1m[92m      Adding[0m cpufeatures v0.3.0
+[1m[92m      Adding[0m darling v0.24.0
+[1m[92m      Adding[0m darling_core v0.24.0
+[1m[92m      Adding[0m darling_macro v0.24.0
+[1m[92m      Adding[0m dyn-clone v1.0.20
+[1m[92m      Adding[0m futures v0.3.33 [1m[33m(available: v0.3.34)[0m
+[1m[92m      Adding[0m futures-channel v0.3.33 [1m[33m(available: v0.3.34)[0m
+[1m[92m      Adding[0m futures-executor v0.3.33 [1m[33m(available: v0.3.34)[0m
+[1m[92m      Adding[0m futures-io v0.3.34
+[1m[92m      Adding[0m futures-macro v0.3.33 [1m[33m(available: v0.3.34)[0m
+[1m[92m      Adding[0m futures-sink v0.3.34
+[1m[92m      Adding[0m hex v0.4.3
+[1m[92m      Adding[0m hmac v0.12.1 [1m[33m(available: v0.13.0)[0m
+[1m[92m      Adding[0m http v1.5.0
+[1m[92m      Adding[0m http-body v1.1.0
+[1m[92m      Adding[0m http-body-util v0.1.5
+[1m[92m      Adding[0m httparse v1.10.1
+[1m[92m      Adding[0m httpdate v1.0.3
+[1m[92m      Adding[0m hyper v1.11.0
+[1m[92m      Adding[0m hyper-util v0.1.20
+[1m[92m      Adding[0m ident_case v1.0.1
+[1m[92m      Adding[0m matchit v0.7.3
+[1m[92m      Adding[0m mime v0.3.17
+[1m[92m      Adding[0m mio v1.2.2
+[1m[92m      Adding[0m pastey v0.2.3
+[1m[92m      Adding[0m rand v0.10.2
+[1m[92m      Adding[0m rand_core v0.10.1
+[1m[92m      Adding[0m ref-cast v1.0.26
+[1m[92m      Adding[0m ref-cast-impl v1.0.26
+[1m[92m      Adding[0m rmcp v3.1.2
+[1m[92m      Adding[0m rmcp-macros v3.1.2
+[1m[92m      Adding[0m ryu v1.0.23
+[1m[92m      Adding[0m schemars v1.2.2
+[1m[92m      Adding[0m schemars_derive v1.2.2
+[1m[92m      Adding[0m serde_derive_internals v0.30.0
+[1m[92m      Adding[0m serde_path_to_error v0.1.20
+[1m[92m      Adding[0m serde_urlencoded v0.7.1
+[1m[92m      Adding[0m socket2 v0.6.5
+[1m[92m      Adding[0m sse-stream v0.2.5
+[1m[92m      Adding[0m strsim v0.11.1
+[1m[92m      Adding[0m subtle v2.6.1
+[1m[92m      Adding[0m sync_wrapper v1.0.2
+[1m[92m      Adding[0m tokio v1.53.1
+[1m[92m      Adding[0m tokio-macros v2.7.2
+[1m[92m      Adding[0m tokio-stream v0.1.19
+[1m[92m      Adding[0m tokio-util v0.7.19
+[1m[92m      Adding[0m tower v0.5.3
+[1m[92m      Adding[0m tower-layer v0.3.3
+[1m[92m      Adding[0m tower-service v0.3.3
+[1m[92m      Adding[0m tracing v0.1.44
+[1m[92m      Adding[0m tracing-attributes v0.1.31
+[1m[92m      Adding[0m tracing-core v0.1.36
+[1m[92m      Adding[0m uuid v1.24.1
+[1m[92m      Adding[0m wasi v0.11.1+wasi-snapshot-preview1
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m futures-sink v0.3.34
+[1m[92m  Downloaded[0m cpufeatures v0.3.0
+[1m[92m  Downloaded[0m atomic-waker v1.1.2
+[1m[92m  Downloaded[0m errno v0.3.14
+[1m[92m  Downloaded[0m potential_utf v0.1.5
+[1m[92m  Downloaded[0m ref-cast-impl v1.0.26
+[1m[92m  Downloaded[0m httpdate v1.0.3
+[1m[92m  Downloaded[0m rmcp-macros v3.1.2
+[1m[92m  Downloaded[0m async-trait v0.1.92
+[1m[92m  Downloaded[0m futures-executor v0.3.33
+[1m[92m  Downloaded[0m pastey v0.2.3
+[1m[92m  Downloaded[0m serde_derive_internals v0.30.0
+[1m[92m  Downloaded[0m futures v0.3.33
+[1m[92m  Downloaded[0m generic-array v0.14.7
+[1m[92m  Downloaded[0m hmac v0.12.1
+[1m[92m  Downloaded[0m http-body v1.1.0
+[1m[92m  Downloaded[0m bytes v1.12.1
+[1m[92m  Downloaded[0m darling_core v0.24.0
+[1m[92m  Downloaded[0m ryu v1.0.23
+[1m[92m  Downloaded[0m tower-layer v0.3.3
+[1m[92m  Downloaded[0m base64 v0.23.1
+[1m[92m  Downloaded[0m icu_normalizer v2.2.0
+[1m[92m  Downloaded[0m mio v1.2.2
+[1m[92m  Downloaded[0m tinystr v0.8.3
+[1m[92m  Downloaded[0m version_check v0.9.5
+[1m[92m  Downloaded[0m axum v0.7.9
+[1m[92m  Downloaded[0m futures-core v0.3.33
+[1m[92m  Downloaded[0m icu_properties_data v2.2.0
+[1m[92m  Downloaded[0m idna v1.1.0
+[1m[92m  Downloaded[0m futures-io v0.3.34
+[1m[92m  Downloaded[0m form_urlencoded v1.2.2
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m tempfile v3.27.0
+[1m[92m  Downloaded[0m dyn-clone v1.0.20
+[1m[92m  Downloaded[0m futures-task v0.3.33
+[1m[92m  Downloaded[0m crypto-common v0.1.7
+[1m[92m  Downloaded[0m libc v0.2.189
+[1m[92m  Downloaded[0m displaydoc v0.2.7
+[1m[92m  Downloaded[0m futures-util v0.3.33
+[1m[92m  Downloaded[0m cfg-if v1.0.4
+[1m[92m  Downloaded[0m futures-macro v0.3.33
+[1m[92m  Downloaded[0m syn v3.0.3
+[1m[92m  Downloaded[0m chrono v0.4.45
+[1m[92m  Downloaded[0m tokio-macros v2.7.2
+[1m[92m  Downloaded[0m axum-core v0.4.5
+[1m[92m  Downloaded[0m base64 v0.22.1
+[1m[92m  Downloaded[0m digest v0.10.7
+[1m[92m  Downloaded[0m tower-service v0.3.3
+[1m[92m  Downloaded[0m thiserror-impl v2.0.20
+[1m[92m  Downloaded[0m tower v0.5.3
+[1m[92m  Downloaded[0m unicode-ident v1.0.24
+[1m[92m  Downloaded[0m icu_properties v2.2.0
+[1m[92m  Downloaded[0m http v1.5.0
+[1m[92m  Downloaded[0m yoke-derive v0.8.2
+[1m[92m  Downloaded[0m getrandom v0.4.3
+[1m[92m  Downloaded[0m utf8_iter v1.0.4
+[1m[92m  Downloaded[0m zerofrom v0.1.8
+[1m[92m  Downloaded[0m typenum v1.20.1
+[1m[92m  Downloaded[0m zerofrom-derive v0.1.7
+[1m[92m  Downloaded[0m ureq v2.12.1
+[1m[92m  Downloaded[0m rustversion v1.0.23
+[1m[92m  Downloaded[0m tokio-stream v0.1.19
+[1m[92m  Downloaded[0m zerotrie v0.2.4
+[1m[92m  Downloaded[0m bitflags v2.13.1
+[1m[92m  Downloaded[0m cpufeatures v0.2.17
+[1m[92m  Downloaded[0m darling_macro v0.24.0
+[1m[92m  Downloaded[0m icu_provider v2.2.0
+[1m[92m  Downloaded[0m thiserror v2.0.20
+[1m[92m  Downloaded[0m chacha20 v0.10.1
+[1m[92m  Downloaded[0m icu_collections v2.2.0
+[1m[92m  Downloaded[0m hyper v1.11.0
+[1m[92m  Downloaded[0m writeable v0.6.3
+[1m[92m  Downloaded[0m zmij v1.0.23
+[1m[92m  Downloaded[0m http-body-util v0.1.5
+[1m[92m  Downloaded[0m hyper-util v0.1.20
+[1m[92m  Downloaded[0m iana-time-zone v0.1.65
+[1m[92m  Downloaded[0m itoa v1.0.18
+[1m[92m  Downloaded[0m memchr v2.8.3
+[1m[92m  Downloaded[0m ident_case v1.0.1
+[1m[92m  Downloaded[0m icu_normalizer_data v2.2.0
+[1m[92m  Downloaded[0m matchit v0.7.3
+[1m[92m  Downloaded[0m rand v0.10.2
+[1m[92m  Downloaded[0m once_cell v1.21.4
+[1m[92m  Downloaded[0m sync_wrapper v1.0.2
+[1m[92m  Downloaded[0m proc-macro2 v1.0.107
+[1m[92m  Downloaded[0m serde_core v1.0.229
+[1m[92m  Downloaded[0m tracing-attributes v0.1.31
+[1m[92m  Downloaded[0m pin-project-lite v0.2.17
+[1m[92m  Downloaded[0m schemars v1.2.2
+[1m[92m  Downloaded[0m darling v0.24.0
+[1m[92m  Downloaded[0m num-traits v0.2.19
+[1m[92m  Downloaded[0m percent-encoding v2.3.2
+[1m[92m  Downloaded[0m rustix v1.1.4
+[1m[92m  Downloaded[0m tokio-util v0.7.19
+[1m[92m  Downloaded[0m sse-stream v0.2.5
+[1m[92m  Downloaded[0m serde_path_to_error v0.1.20
+[1m[92m  Downloaded[0m serde v1.0.229
+[1m[92m  Downloaded[0m slab v0.4.12
+[1m[92m  Downloaded[0m socket2 v0.6.5
+[1m[92m  Downloaded[0m strsim v0.11.1
+[1m[92m  Downloaded[0m smallvec v1.15.2
+[1m[92m  Downloaded[0m log v0.4.33
+[1m[92m  Downloaded[0m stable_deref_trait v1.2.1
+[1m[92m  Downloaded[0m syn v2.0.119
+[1m[92m  Downloaded[0m fastrand v2.5.0
+[1m[92m  Downloaded[0m ref-cast v1.0.26
+[1m[92m  Downloaded[0m futures-channel v0.3.33
+[1m[92m  Downloaded[0m tracing-core v0.1.36
+[1m[92m  Downloaded[0m rand_core v0.10.1
+[1m[92m  Downloaded[0m block-buffer v0.10.4
+[1m[92m  Downloaded[0m zerovec v0.11.6
+[1m[92m  Downloaded[0m litemap v0.8.2
+[1m[92m  Downloaded[0m synstructure v0.13.2
+[1m[92m  Downloaded[0m sha2 v0.10.9
+[1m[92m  Downloaded[0m mime v0.3.17
+[1m[92m  Downloaded[0m schemars_derive v1.2.2
+[1m[92m  Downloaded[0m httparse v1.10.1
+[1m[92m  Downloaded[0m idna_adapter v1.2.2
+[1m[92m  Downloaded[0m yoke v0.8.3
+[1m[92m  Downloaded[0m quote v1.0.47
+[1m[92m  Downloaded[0m tracing v0.1.44
+[1m[92m  Downloaded[0m subtle v2.6.1
+[1m[92m  Downloaded[0m zerovec-derive v0.11.3
+[1m[92m  Downloaded[0m hex v0.4.3
+[1m[92m  Downloaded[0m icu_locale_core v2.2.0
+[1m[92m  Downloaded[0m uuid v1.24.1
+[1m[92m  Downloaded[0m serde_derive v1.0.229
+[1m[92m  Downloaded[0m url v2.5.8
+[1m[92m  Downloaded[0m tokio v1.53.1
+[1m[92m  Downloaded[0m rmcp v3.1.2
+[1m[92m  Downloaded[0m serde_urlencoded v0.7.1
+[1m[92m  Downloaded[0m serde_json v1.0.151
+[1m[92m  Downloaded[0m linux-raw-sys v0.12.1
+[1m[92m   Compiling[0m proc-macro2 v1.0.107
+[1m[92m   Compiling[0m quote v1.0.47
+[1m[92m   Compiling[0m unicode-ident v1.0.24
+[1m[92m   Compiling[0m libc v0.2.189
+[1m[92m    Checking[0m itoa v1.0.18
+[1m[92m    Checking[0m stable_deref_trait v1.2.1
+[1m[92m   Compiling[0m serde_core v1.0.229
+[1m[92m    Checking[0m memchr v2.8.3
+[1m[92m   Compiling[0m zmij v1.0.23
+[1m[92m    Checking[0m smallvec v1.15.2
+[1m[92m    Checking[0m litemap v0.8.2
+[1m[92m   Compiling[0m version_check v0.9.5
+[1m[92m   Compiling[0m serde v1.0.229
+[1m[92m    Checking[0m writeable v0.6.3
+[1m[92m   Compiling[0m syn v3.0.3
+[1m[92m   Compiling[0m syn v2.0.119
+[1m[92m    Checking[0m once_cell v1.21.4
+[1m[92m   Compiling[0m generic-array v0.14.7
+[1m[92m    Checking[0m utf8_iter v1.0.4
+[1m[92m   Compiling[0m icu_properties_data v2.2.0
+[1m[92m    Checking[0m cfg-if v1.0.4
+[1m[92m   Compiling[0m icu_normalizer_data v2.2.0
+[1m[92m    Checking[0m typenum v1.20.1
+[1m[92m   Compiling[0m autocfg v1.5.1
+[1m[92m   Compiling[0m serde_json v1.0.151
+[1m[92m    Checking[0m log v0.4.33
+[1m[92m   Compiling[0m num-traits v0.2.19
+[1m[92m    Checking[0m rand_core v0.10.1
+[1m[92m   Compiling[0m getrandom v0.4.3
+[1m[92m    Checking[0m percent-encoding v2.3.2
+[1m[92m    Checking[0m form_urlencoded v1.2.2
+[1m[92m    Checking[0m crypto-common v0.1.7
+[1m[92m    Checking[0m block-buffer v0.10.4
+[1m[92m    Checking[0m iana-time-zone v0.1.65
+[1m[92m    Checking[0m subtle v2.6.1
+[1m[92m   Compiling[0m thiserror v2.0.20
+[1m[92m    Checking[0m digest v0.10.7
+[1m[92m    Checking[0m base64 v0.22.1
+[1m[92m    Checking[0m cpufeatures v0.2.17
+[1m[92m    Checking[0m sha2 v0.10.9
+[1m[92m    Checking[0m pin-project-lite v0.2.17
+[1m[92m   Compiling[0m synstructure v0.13.2
+[1m[92m    Checking[0m futures-core v0.3.33
+[1m[92m    Checking[0m bytes v1.12.1
+[1m[92m   Compiling[0m rustix v1.1.4
+[1m[92m    Checking[0m futures-sink v0.3.34
+[1m[92m    Checking[0m linux-raw-sys v0.12.1
+[1m[92m    Checking[0m bitflags v2.13.1
+[1m[92m    Checking[0m fastrand v2.5.0
+[1m[92m    Checking[0m futures-channel v0.3.33
+[1m[92m   Compiling[0m displaydoc v0.2.7
+[1m[92m   Compiling[0m serde_derive v1.0.229
+[1m[92m   Compiling[0m zerofrom-derive v0.1.7
+[1m[92m   Compiling[0m yoke-derive v0.8.2
+[1m[92m   Compiling[0m zerovec-derive v0.11.3
+[1m[92m   Compiling[0m thiserror-impl v2.0.20
+[1m[92m    Checking[0m zerofrom v0.1.8
+[1m[92m    Checking[0m yoke v0.8.3
+[1m[92m    Checking[0m zerotrie v0.2.4
+[1m[92m    Checking[0m tempfile v3.27.0
+[1m[92m   Compiling[0m futures-macro v0.3.33
+[1m[92m    Checking[0m zerovec v0.11.6
+[1m[92m    Checking[0m tinystr v0.8.3
+[1m[92m    Checking[0m potential_utf v0.1.5
+[1m[92m    Checking[0m icu_collections v2.2.0
+[1m[92m    Checking[0m icu_locale_core v2.2.0
+[1m[92m   Compiling[0m tokio-macros v2.7.2
+[1m[92m    Checking[0m http v1.5.0
+[1m[92m    Checking[0m mio v1.2.2
+[1m[92m    Checking[0m chrono v0.4.45
+[1m[92m    Checking[0m icu_provider v2.2.0
+[1m[92m    Checking[0m socket2 v0.6.5
+[1m[92m    Checking[0m slab v0.4.12
+[1m[92m    Checking[0m icu_normalizer v2.2.0
+[1m[92m    Checking[0m icu_properties v2.2.0
+[1m[92m    Checking[0m futures-io v0.3.34
+[1m[92m    Checking[0m futures-task v0.3.33
+[1m[92m    Checking[0m tokio v1.53.1
+[1m[92m    Checking[0m futures-util v0.3.33
+[1m[92m    Checking[0m http-body v1.1.0
+[1m[92m   Compiling[0m tracing-attributes v0.1.31
+[1m[92m    Checking[0m idna_adapter v1.2.2
+[1m[92m    Checking[0m idna v1.1.0
+[1m[92m    Checking[0m url v2.5.8
+[1m[92m    Checking[0m ureq v2.12.1
+[1m[92m    Checking[0m tracing-core v0.1.36
+[1m[92m    Checking[0m forge-core v0.1.0 (/home/runner/work/AutoDev/AutoDev/crates/forge-core)
+[1m[92m    Checking[0m tower-service v0.3.3
+[1m[92m   Compiling[0m ident_case v1.0.1
+[1m[92m   Compiling[0m httparse v1.10.1
+[1m[92m   Compiling[0m strsim v0.11.1
+[1m[92m    Checking[0m tracing v0.1.44
+[1m[92m   Compiling[0m darling_core v0.24.0
+[1m[92m    Checking[0m http-body-util v0.1.5
+[1m[92m   Compiling[0m ref-cast v1.0.26
+[1m[92m   Compiling[0m rustversion v1.0.23
+[1m[92m   Compiling[0m ref-cast-impl v1.0.26
+[1m[92m   Compiling[0m async-trait v0.1.92
+[1m[92m   Compiling[0m serde_derive_internals v0.30.0
+[1m[92m    Checking[0m sync_wrapper v1.0.2
+[1m[92m    Checking[0m atomic-waker v1.1.2
+[1m[92m    Checking[0m cpufeatures v0.3.0
+[1m[92m   Compiling[0m darling_macro v0.24.0
+[1m[92m    Checking[0m tower-layer v0.3.3
+[1m[92m    Checking[0m httpdate v1.0.3
+[1m[92m    Checking[0m hyper v1.11.0
+[1m[92m   Compiling[0m darling v0.24.0
+[1m[92m    Checking[0m chacha20 v0.10.1
+[1m[92m   Compiling[0m schemars_derive v1.2.2
+[1m[92m    Checking[0m tokio-util v0.7.19
+[1m[92m    Checking[0m futures-executor v0.3.33
+[1m[92m    Checking[0m ryu v1.0.23
+[1m[92m   Compiling[0m rmcp v3.1.2
+[1m[92m    Checking[0m mime v0.3.17
+[1m[92m    Checking[0m dyn-clone v1.0.20
+[1m[92m    Checking[0m axum-core v0.4.5
+[1m[92m    Checking[0m serde_urlencoded v0.7.1
+[1m[92m   Compiling[0m rmcp-macros v3.1.2
+[1m[92m    Checking[0m tokio-stream v0.1.19
+[1m[92m    Checking[0m schemars v1.2.2
+[1m[92m    Checking[0m futures v0.3.33
+[1m[92m    Checking[0m hyper-util v0.1.20
+[1m[92m    Checking[0m rand v0.10.2
+[1m[92m    Checking[0m tower v0.5.3
+[1m[92m    Checking[0m sse-stream v0.2.5
+[1m[92m    Checking[0m uuid v1.24.1
+[1m[92m    Checking[0m serde_path_to_error v0.1.20
+[1m[92m    Checking[0m matchit v0.7.3
+[1m[92m    Checking[0m base64 v0.23.1
+[1m[92m   Compiling[0m pastey v0.2.3
+[1m[92m    Checking[0m hmac v0.12.1
+[1m[92m    Checking[0m hex v0.4.3
+[1m[92m    Checking[0m axum v0.7.9
+[1m[92m    Checking[0m autodev-server v0.1.0 (/home/runner/work/AutoDev/AutoDev/crates/autodev-server)
+[1m[91merror[E0433][0m[1m: cannot find module or crate `schemars` in this scope[0m
+  [1m[94m--> [0mautodev-server/src/mcp.rs:32:30
+   [1m[94m|[0m
+[1m[94m32[0m [1m[94m|[0m #[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+   [1m[94m|[0m                              [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91muse of unresolved module or unlinked crate `schemars`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: this error originates in the derive macro `rmcp::schemars::JsonSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[91merror[E0433][0m[1m: cannot find module or crate `schemars` in this scope[0m
+  [1m[94m--> [0mautodev-server/src/mcp.rs:32:30
+   [1m[94m|[0m
+[1m[94m32[0m [1m[94m|[0m #[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+   [1m[94m|[0m                              [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91muse of unresolved module or unlinked crate `schemars`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mhelp[0m: if you wanted to use a crate named `schemars`, use `cargo add schemars` to add it to your `Cargo.toml`
+   [1m[94m= [0m[1mnote[0m: this error originates in the derive macro `rmcp::schemars::JsonSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[91merror[E0433][0m[1m: cannot find module or crate `schemars` in this scope[0m
+  [1m[94m--> [0mautodev-server/src/mcp.rs:32:30
+   [1m[94m|[0m
+[1m[94m32[0m [1m[94m|[0m #[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+   [1m[94m|[0m                              [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91muse of unresolved module or unlinked crate `schemars`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mhelp[0m: if you wanted to use a crate named `schemars`, use `cargo add schemars` to add it to your `Cargo.toml`
+   [1m[94m= [0m[1mnote[0m: this error originates in the derive macro `rmcp::schemars::JsonSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+[1m[96mhelp[0m: consider importing this module
+   [1m[94m|[0m
+[1m[94m 1[0m [92m+ use std::borrow;[0m
+   [1m[94m|[0m
+
+[1m[91merror[E0433][0m[1m: cannot find module or crate `schemars` in this scope[0m
+  [1m[94m--> [0mautodev-server/src/mcp.rs:32:30
+   [1m[94m|[0m
+[1m[94m32[0m [1m[94m|[0m #[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+   [1m[94m|[0m                              [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91muse of unresolved module or unlinked crate `schemars`[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mhelp[0m: if you wanted to use a crate named `schemars`, use `cargo add schemars` to add it to your `Cargo.toml`
+   [1m[94m= [0m[1mnote[0m: this error originates in the derive macro `rmcp::schemars::JsonSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+[1m[96mhelp[0m: consider importing this enum
+   [1m[94m|[0m
+[1m[94m 1[0m [92m+ use std::borrow::Cow;[0m
+   [1m[94m|[0m
+
+[1mFor more information about this error, try `rustc --explain E0433`.[0m
+[1m[91merror[0m: could not compile `autodev-server` (lib test) due to 4 previous errors
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
+[1m[91merror[0m: could not compile `autodev-server` (lib) due to 4 previous errors
