@@ -225,7 +225,14 @@ fn rate_limits_map_only_safe_usage_metadata() {
 
     assert_eq!(limits.default.limit_id.as_deref(), Some("codex"));
     assert_eq!(limits.default.plan_type.as_deref(), Some("plus"));
-    assert_eq!(limits.default.primary.as_ref().map(|window| window.used_percent), Some(42));
+    assert_eq!(
+        limits
+            .default
+            .primary
+            .as_ref()
+            .map(|window| window.used_percent),
+        Some(42)
+    );
     assert_eq!(limits.reset_credits_available, Some(2));
     assert!(limits.by_limit_id.contains_key("codex"));
 
