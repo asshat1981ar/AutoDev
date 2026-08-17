@@ -18,6 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(8080);
     let secret = std::env::var("GITHUB_WEBHOOK_SECRET").ok();
+    let mcp_bearer_token = std::env::var("AUTODEV_MCP_BEARER_TOKEN").ok();
     let model_base_url = std::env::var("AUTODEV_MODEL_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:11434".to_string());
     let workspace_root = std::env::var("AUTODEV_WORKSPACE").unwrap_or_else(|_| ".".to_string());
@@ -32,7 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| default_state_dir(&workspace));
     let state_dir = validate_control_plane_paths(&workspace, requested_state_dir)?;
     let store = Arc::new(FileObjectiveStore::open(state_dir)?);
-    let state = AppState::with_store(secret, store.clone());
+    let mut state = AppState::with_store(secret, store.clone());
+    if let Some(token) = mcp_bearer_token {
+        state = state.with_mcp_bearer_token(token);
+    }
+
     let developer = default_profiles()
         .into_iter()
         .find(|profile| profile.role == AgentRole::Developer)
