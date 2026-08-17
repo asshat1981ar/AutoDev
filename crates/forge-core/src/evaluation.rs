@@ -540,7 +540,7 @@ fn median_milli(mut values: Vec<u32>) -> u32 {
     }
 }
 
-fn sum_optional_u32(values: impl Iterator<Item = Option<u32>>) -> Option<u32> {
+fn sum_optional_u32(mut values: impl Iterator<Item = Option<u32>>) -> Option<u32> {
     values.try_fold(0u32, |total, value| {
         value.map(|current| total.saturating_add(current))
     })
