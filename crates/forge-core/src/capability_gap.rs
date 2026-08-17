@@ -251,7 +251,7 @@ fn candidate_artifact(
 ) -> Result<CandidateArtifact, CapabilityGapError> {
     let artifact = match kind {
         CandidateKind::Skill => CandidateArtifact {
-            path: format!(".cline/skills/{}/SKILL.md", gap.id),
+            path: format!(".cline/candidates/skills/{}/SKILL.md", gap.id),
             content: render_skill_candidate(gap),
         },
         CandidateKind::McpServer => CandidateArtifact {
@@ -345,7 +345,7 @@ fn validate_candidate_id(id: &str) -> Result<(), CapabilityGapError> {
 }
 
 fn validate_artifact_path(path: &str) -> Result<(), CapabilityGapError> {
-    let allowed_root = path.starts_with(".cline/skills/")
+    let allowed_root = path.starts_with(".cline/candidates/skills/")
         || path.starts_with(".cline/mcp/generated/")
         || path.starts_with(".cline/hooks/generated/")
         || path.starts_with("docs/autodev/candidates/");
