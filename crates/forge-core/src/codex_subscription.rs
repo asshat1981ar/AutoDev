@@ -16,11 +16,7 @@ pub enum CodexSubscriptionError {
 }
 
 pub trait CodexRpcTransport {
-    fn request(
-        &mut self,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, CodexSubscriptionError>;
+    fn request(&mut self, method: &str, params: Value) -> Result<Value, CodexSubscriptionError>;
 
     fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexSubscriptionError>;
 }
@@ -83,10 +79,9 @@ impl<T: CodexRpcTransport> CodexSubscriptionClient<T> {
 
     pub fn start_device_code_login(&mut self) -> Result<CodexLoginStart, CodexSubscriptionError> {
         self.ensure_initialized()?;
-        let value = self.transport.request(
-            "account/login/start",
-            json!({"type": "chatgptDeviceCode"}),
-        )?;
+        let value = self
+            .transport
+            .request("account/login/start", json!({"type": "chatgptDeviceCode"}))?;
         parse_device_code_login(value)
     }
 
