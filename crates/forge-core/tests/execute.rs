@@ -22,18 +22,13 @@ fn action(path: &str) -> AgentAction {
 }
 
 #[test]
-fn execute_reads_a_file_end_to_end() {
+fn public_execute_does_not_promote_requested_read_capability() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     std::fs::write(dir.path().join("hello.txt"), b"hello world").unwrap();
 
-    let exec = ExecutableAction::new(action("hello.txt"), ws);
-    let result = forge_core::execute(&exec).unwrap();
-    assert_eq!(result.action_id, "action-1");
-    assert_eq!(result.stdout, "hello world");
-    assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
-    let v = result.verification.unwrap();
-    assert_eq!(v["size"], 11);
+    let err = forge_core::execute(&ExecutableAction::new(action("hello.txt"), ws)).unwrap_err();
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
 }
 
 #[test]
@@ -61,15 +56,16 @@ fn execute_process_is_fail_closed_by_default() {
 }
 
 #[test]
-fn execution_is_deterministic() {
+fn public_read_denial_is_deterministic() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     std::fs::write(dir.path().join("d.txt"), b"deterministic").unwrap();
 
-    let e1 = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws.clone())).unwrap();
-    let e2 = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws)).unwrap();
-    assert_eq!(e1.verification, e2.verification);
-    assert_eq!(e1.stdout, e2.stdout);
+    let first = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws.clone()))
+        .unwrap_err();
+    let second = forge_core::execute(&ExecutableAction::new(action("d.txt"), ws)).unwrap_err();
+    assert!(matches!(first, ExecutionError::CapabilityDenied));
+    assert!(matches!(second, ExecutionError::CapabilityDenied));
 }
 
 #[test]

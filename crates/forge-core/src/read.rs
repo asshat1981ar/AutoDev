@@ -5,29 +5,40 @@ use chrono::Utc;
 use crate::action::AgentAction;
 use crate::error::ExecutionError;
 use crate::evidence::{sha256_hex, ExecutionResult, ExecutionStatus, ReadMetadata};
-use crate::policy::{enforce_policy, has_required_capability, AuthorizationGrant};
+use crate::policy::{
+    enforce_policy, has_required_execution_authority, AuthorizationGrant, ExecutionAuthority,
+};
 use crate::workspace::{PathResolution, Workspace};
 
 const PATH_FIELD: &str = "path";
 
-/// Backward-compatible read entry point. No approval grant is implied.
+/// Safe public read entry point.
+///
+/// Model-supplied requested capabilities are intent, never effective authority.
+/// Without an independently minted kernel authority this entry point fails closed.
 pub fn read_file(
     action: &AgentAction,
     workspace: &Workspace,
 ) -> Result<ExecutionResult, ExecutionError> {
-    read_file_authorized(action, workspace, &AuthorizationGrant::none())
+    read_file_authorized(
+        action,
+        workspace,
+        &ExecutionAuthority::deny_all(),
+        &AuthorizationGrant::none(),
+    )
 }
 
-/// Trusted read entry point used by the execution-envelope path.
+/// Trusted read entry point used by ForgeCore execution paths.
 pub(crate) fn read_file_authorized(
     action: &AgentAction,
     workspace: &Workspace,
+    authority: &ExecutionAuthority,
     grant: &AuthorizationGrant,
 ) -> Result<ExecutionResult, ExecutionError> {
     let started_at = Utc::now();
 
     enforce_policy(action, grant)?;
-    if !has_required_capability(action) {
+    if !has_required_execution_authority(action, authority) {
         return Err(ExecutionError::CapabilityDenied);
     }
 
@@ -139,12 +150,34 @@ mod tests {
         action
     }
 
+    fn read_with_authority(
+        action: &AgentAction,
+        workspace: &Workspace,
+    ) -> Result<ExecutionResult, ExecutionError> {
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::ReadFile]);
+        read_file_authorized(
+            action,
+            workspace,
+            &authority,
+            &AuthorizationGrant::none(),
+        )
+    }
+
     #[test]
-    fn successful_read_returns_content_and_hash() {
+    fn public_read_fails_closed_without_kernel_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
-        let result = read_file(&action_with_path("a.txt"), &ws).unwrap();
+        let err = read_file(&action_with_path("a.txt"), &ws).unwrap_err();
+        assert!(matches!(err, ExecutionError::CapabilityDenied));
+    }
+
+    #[test]
+    fn successful_read_returns_content_and_hash_with_kernel_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path(), 4096).unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
+        let result = read_with_authority(&action_with_path("a.txt"), &ws).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(result.stdout, "hello");
         let verification = result.verification.unwrap();
@@ -156,7 +189,7 @@ mod tests {
     fn missing_file_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = read_file(&action_with_path("missing.txt"), &ws).unwrap_err();
+        let err = read_with_authority(&action_with_path("missing.txt"), &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::FileNotFound(_)));
     }
 
@@ -165,7 +198,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::create_dir_all(dir.path().join("sub")).unwrap();
-        let err = read_file(&action_with_path("sub"), &ws).unwrap_err();
+        let err = read_with_authority(&action_with_path("sub"), &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::IsDirectory(_)));
     }
 
@@ -174,7 +207,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4).unwrap();
         std::fs::write(dir.path().join("big.txt"), b"hello").unwrap();
-        let err = read_file(&action_with_path("big.txt"), &ws).unwrap_err();
+        let err = read_with_authority(&action_with_path("big.txt"), &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::OversizedFile(_, 4)));
     }
 
@@ -182,7 +215,7 @@ mod tests {
     fn traversal_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = read_file(&action_with_path("../outside.txt"), &ws).unwrap_err();
+        let err = read_with_authority(&action_with_path("../outside.txt"), &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::PathTraversal(_)));
     }
 
@@ -194,7 +227,8 @@ mod tests {
         let ws = Workspace::new(&root, 4096).unwrap();
         let outside = dir.path().join("secret.txt");
         std::fs::write(&outside, b"secret").unwrap();
-        let err = read_file(&action_with_path(&outside.display().to_string()), &ws).unwrap_err();
+        let err = read_with_authority(&action_with_path(&outside.display().to_string()), &ws)
+            .unwrap_err();
         assert!(matches!(err, ExecutionError::PathOutsideWorkspace(_)));
     }
 
@@ -209,29 +243,28 @@ mod tests {
             std::fs::write(&outside, b"secret").unwrap();
             std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
             let ws = Workspace::new(&root, 4096).unwrap();
-            let err = read_file(&action_with_path("link.txt"), &ws).unwrap_err();
+            let err = read_with_authority(&action_with_path("link.txt"), &ws).unwrap_err();
             assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
         }
     }
 
     #[test]
-    fn denied_capability_is_rejected() {
+    fn denied_authority_is_rejected_even_when_requested() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
-        let mut action = action_with_path("a.txt");
-        action.capabilities.clear();
+        let action = action_with_path("a.txt");
         let err = read_file(&action, &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
 
     #[test]
-    fn missing_path_field_is_rejected() {
+    fn missing_path_field_is_rejected_with_kernel_authority() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let mut action = base_action();
         action.payload = json!({});
-        let err = read_file(&action, &ws).unwrap_err();
+        let err = read_with_authority(&action, &ws).unwrap_err();
         assert!(matches!(err, ExecutionError::MissingPayloadField("path")));
     }
 
@@ -242,13 +275,19 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
         let mut action = action_with_path("a.txt");
         action.risk = RiskLevel::High;
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::ReadFile]);
         assert!(matches!(
-            read_file(&action, &ws).unwrap_err(),
+            read_file_authorized(&action, &ws, &authority, &AuthorizationGrant::none())
+                .unwrap_err(),
             ExecutionError::RequiresApproval
         ));
-        let result =
-            read_file_authorized(&action, &ws, &AuthorizationGrant::approved("approval-1"))
-                .unwrap();
+        let result = read_file_authorized(
+            &action,
+            &ws,
+            &authority,
+            &AuthorizationGrant::approved("approval-1"),
+        )
+        .unwrap();
         assert_eq!(result.stdout, "hello");
     }
 }
