@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "source_id": "provider-openai",
+  "kind": "provider",
+  "state": "connecting",
+  "protocol": "https",
+  "latency_ms": null,
+  "observed_at": "2026-08-17T12:15:00Z",
+  "detail": "connection attempt in progress"
+}
