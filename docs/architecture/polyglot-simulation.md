@@ -45,9 +45,19 @@ The Pareto frontier contains `rust_kmp`, `rust_go_gateway`, and `rust_bounded_go
 
 The Rust test suite pins the 30-seed selected result so parameter or algorithm drift becomes explicit.
 
+## Sensitivity analysis
+
+The model intentionally tests alternative objective weights rather than treating the default utility as ground truth.
+
+- Default weights select `rust_kmp`.
+- An efficiency-heavy policy that doubles cost/latency/complexity penalties also selects `rust_kmp`.
+- A success-heavy policy that doubles success weight while halving cost/latency/complexity penalties selects `rust_bounded_go_worker`.
+
+This is an important negative result: the simulator does **not** establish a universal topology winner. It establishes that Rust + KMP is the current default candidate under AutoDev's present simplicity/efficiency bias, while a bounded Go worker remains a credible experiment if production measurements show that incremental success or concurrency capability is worth the extra runtime boundary.
+
 ## Decision
 
-**Current experimental candidate: Rust + KMP.**
+**Current default experimental candidate: Rust + KMP.**
 
 This does not reject Go or Flutter permanently. It means they have not yet earned production integration from the current evidence. A Go gateway or worker should enter a real prototype only when repository traces identify a networking/concurrency bottleneck that can be measured against Rust. A Flutter client should enter a real prototype only when target coverage or UI iteration evidence demonstrates value beyond the existing Android/KMP path.
 
