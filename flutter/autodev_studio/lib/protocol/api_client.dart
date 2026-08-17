@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'ports.dart';
 
 final class AutoDevHttpException implements Exception {
   const AutoDevHttpException(this.statusCode, this.message);
@@ -14,7 +15,7 @@ final class AutoDevHttpException implements Exception {
   String toString() => 'AutoDevHttpException($statusCode, $message)';
 }
 
-final class AutoDevApi {
+final class AutoDevApi implements ObjectiveRepository {
   AutoDevApi({required Uri baseUri, http.Client? client})
     : _baseUri = baseUri,
       _client = client ?? http.Client(),
@@ -25,6 +26,7 @@ final class AutoDevApi {
   final bool _ownsClient;
   bool _closed = false;
 
+  @override
   Future<List<ObjectiveSummary>> listObjectives() async {
     _ensureOpen();
     final response = await _client.get(_endpoint('/api/v1/objectives'));
@@ -40,6 +42,7 @@ final class AutoDevApi {
     );
   }
 
+  @override
   Future<ObjectiveSummary> createObjective({
     required String repository,
     required String description,
@@ -61,6 +64,7 @@ final class AutoDevApi {
     return ObjectiveSummary.fromJson(_objectMap(decoded, 'objective'));
   }
 
+  @override
   Future<void> close() async {
     if (_closed) {
       return;
