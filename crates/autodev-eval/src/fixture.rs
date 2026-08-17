@@ -72,10 +72,12 @@ pub fn load_corpus(dir: impl AsRef<Path>) -> Result<Vec<EvalFixture>, FixtureErr
             source,
         })?
         .map(|entry| {
-            entry.map(|value| value.path()).map_err(|source| FixtureError::Read {
-                path: dir.display().to_string(),
-                source,
-            })
+            entry
+                .map(|value| value.path())
+                .map_err(|source| FixtureError::Read {
+                    path: dir.display().to_string(),
+                    source,
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     paths.retain(|path| path.extension() == Some(OsStr::new("json")));
@@ -100,9 +102,7 @@ fn validate_fixture(fixture: &EvalFixture) -> Result<(), FixtureError> {
     let mut overlay_digests = Vec::with_capacity(fixture.verifier_overlay.len());
     for overlay in &fixture.verifier_overlay {
         if !safe_relative_file(&overlay.source_path) {
-            return Err(FixtureError::UnsafeOverlayPath(
-                overlay.source_path.clone(),
-            ));
+            return Err(FixtureError::UnsafeOverlayPath(overlay.source_path.clone()));
         }
         if !safe_relative_file(&overlay.destination_path) {
             return Err(FixtureError::UnsafeOverlayPath(
