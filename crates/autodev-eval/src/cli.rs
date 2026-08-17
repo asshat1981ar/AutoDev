@@ -97,7 +97,8 @@ fn smoke_command(args: &[String]) -> Result<i32, CliError> {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut results = Vec::with_capacity(corpus.len());
     for fixture in corpus {
-        let result = smoke_fixture(&fixture, Path::new(source_repo), &crate_root).map_err(runtime)?;
+        let result =
+            smoke_fixture(&fixture, Path::new(source_repo), &crate_root).map_err(runtime)?;
         results.push(SmokeTask {
             task_id: result.task_id,
             base_passed: result.base_passed,
