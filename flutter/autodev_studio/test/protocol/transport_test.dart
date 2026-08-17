@@ -77,6 +77,7 @@ void main() {
     final release = Completer<void>();
     final local = await server((request) async {
       expect(request.uri.path, '/events');
+      request.response.bufferOutput = false;
       request.response.headers.contentType = ContentType('text', 'event-stream');
       request.response.write(
         'data: ${jsonEncode(fixture('objective-event.queued.json'))}\n\n',
