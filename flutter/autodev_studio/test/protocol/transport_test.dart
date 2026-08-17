@@ -72,7 +72,7 @@ void main() {
     expect(request.containsKey('capabilities'), isFalse);
   });
 
-  test('decodes a typed SSE event and can abort the stream', () async {
+  test('emits a typed SSE event before the server closes', () async {
     final connected = Completer<void>();
     final release = Completer<void>();
     final local = await server((request) async {
@@ -82,20 +82,63 @@ void main() {
         'data: ${jsonEncode(fixture('objective-event.queued.json'))}\n\n',
       );
       await request.response.flush();
-      if (!connected.isCompleted) connected.complete();
+      connected.complete();
       await release.future;
       await request.response.close();
     });
-    addTearDown(() async {
+    final events = AutoDevEventStream();
+
+    try {
+      final first = events.connect(baseUri(local).replace(path: '/events')).first;
+      await connected.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('server never observed SSE connection'),
+      );
+      final event = await first.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('SSE frame was not emitted before connection close'),
+      );
+      expect(event.type, 'objective_queued');
+    } finally {
       if (!release.isCompleted) release.complete();
       await local.close(force: true);
-    });
+      await events.close().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('event stream did not close after server shutdown'),
+      );
+    }
+  });
 
+  test('close aborts a connected SSE request', () async {
+    final connected = Completer<void>();
+    final release = Completer<void>();
+    final local = await server((request) async {
+      expect(request.uri.path, '/events');
+      request.response.headers.contentType = ContentType('text', 'event-stream');
+      await request.response.flush();
+      connected.complete();
+      await release.future;
+      await request.response.close();
+    });
     final events = AutoDevEventStream();
-    final first = events.connect(baseUri(local).replace(path: '/events')).first;
-    await connected.future;
-    expect((await first).type, 'objective_queued');
-    await events.close().timeout(const Duration(seconds: 1));
+    final subscription = events
+        .connect(baseUri(local).replace(path: '/events'))
+        .listen((_) {});
+
+    try {
+      await connected.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('server never observed SSE connection'),
+      );
+      await events.close().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('abort did not terminate the SSE request'),
+      );
+    } finally {
+      await subscription.cancel();
+      if (!release.isCompleted) release.complete();
+      await local.close(force: true);
+    }
   });
 
   test('retries a recoverable SSE failure using bounded backoff', () async {
