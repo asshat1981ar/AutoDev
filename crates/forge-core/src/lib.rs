@@ -235,22 +235,35 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
         }
     }
 
+    // Git's legacy tier gates consume `AgentAction.capabilities`. Rewrite that
+    // diagnostic/request field from kernel-owned authority before entering the
+    // adapter so model-requested capabilities can never become effective rights.
+    action.capabilities = [
+        Capability::Git,
+        Capability::GitWrite,
+        Capability::GitDestructive,
+        Capability::ApprovalCritical,
+    ]
+    .into_iter()
+    .filter(|capability| exec.authority.allows(capability))
+    .collect();
+
     let operation = action
         .payload
         .get("operation")
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    let capabilities = action.capabilities.clone();
     match operation {
-        "repository_info" | "status" | "diff" | "branch" | "log" => {
-            git::run_read(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        "checkpoint" | "prepare_commit" => {
-            git::run_mutate(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        "rollback" => {
-            git::run_destructive(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
+        "repository_info" | "status" | "diff" | "branch" | "log" => git::run_read(
+            &action.capabilities,
+            || git::execute_git(&action, &exec.workspace),
+        ),
+        "checkpoint" | "prepare_commit" => git::run_mutate(&action.capabilities, || {
+            git::execute_git(&action, &exec.workspace)
+        }),
+        "rollback" => git::run_destructive(&action.capabilities, || {
+            git::execute_git(&action, &exec.workspace)
+        }),
         _ => git::execute_git(&action, &exec.workspace),
     }
 }
