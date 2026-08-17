@@ -1,0 +1,42 @@
+{
+  "task": {
+    "id": "android-command-center",
+    "source": {
+      "kind": "merged_pull_request",
+      "repository": "asshat1981ar/AutoDev",
+      "source_ref": "c4b13fb66b427ea6b7c6c57f823962b4def818b7",
+      "source_url": "https://github.com/asshat1981ar/AutoDev/pull/7"
+    },
+    "base_sha": "16a13c492e3992e0288f1638d46d79d021cc2fc2",
+    "specification": "Add an observer-only Android Compose command center with SSE consumption and deterministic debug APK assembly while keeping privileged execution authority in ForgeCore.",
+    "acceptance_criteria": [
+      "The android-command-center module is part of the Kotlin build",
+      "The Android debug APK assembles successfully",
+      "The Android UI does not become an execution authority"
+    ],
+    "verifier": {
+      "steps": [
+        {
+          "id": "android-debug-apk",
+          "program": "./gradlew",
+          "args": [":android-command-center:assembleDebug", "--no-daemon"],
+          "working_directory": "kotlin",
+          "timeout_seconds": 1200,
+          "required": true
+        }
+      ],
+      "asset_fingerprints": []
+    },
+    "protected": {
+      "paths": [".autodev-eval/"]
+    },
+    "expected_change_scope": [
+      "kotlin/android-command-center/",
+      "kotlin/settings.gradle.kts",
+      "kotlin/build.gradle.kts",
+      "scripts/",
+      ".github/workflows/"
+    ]
+  },
+  "verifier_overlay": []
+}
