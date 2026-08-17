@@ -6,15 +6,34 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+const TEST_TOKEN: &str = "test-mcp-token";
+
+fn secured_state() -> AppState {
+    AppState::new(None).with_mcp_bearer_token(TEST_TOKEN)
+}
+
 fn modern_request(id: &str, method: &str, params: Value) -> Request<Body> {
-    Request::builder()
+    modern_request_with_token(id, method, params, Some(TEST_TOKEN))
+}
+
+fn modern_request_with_token(
+    id: &str,
+    method: &str,
+    params: Value,
+    token: Option<&str>,
+) -> Request<Body> {
+    let mut builder = Request::builder()
         .method("POST")
         .uri("/mcp")
         .header(header::HOST, "localhost")
         .header(header::ACCEPT, "application/json, text/event-stream")
         .header(header::CONTENT_TYPE, "application/json")
         .header("MCP-Protocol-Version", "2026-07-28")
-        .header("Mcp-Method", method)
+        .header("Mcp-Method", method);
+    if let Some(token) = token {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    builder
         .body(Body::from(
             json!({
                 "jsonrpc": "2.0",
@@ -59,8 +78,33 @@ async fn json_body(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
-async fn server_discover_uses_modern_stateless_transport() {
+async fn mcp_fails_closed_when_bearer_secret_is_not_configured() {
     let response = router(AppState::new(None))
+        .oneshot(modern_request("discover-no-secret", "server/discover", json!({})))
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn mcp_rejects_an_invalid_bearer_token() {
+    let response = router(secured_state())
+        .oneshot(modern_request_with_token(
+            "discover-bad-token",
+            "server/discover",
+            json!({}),
+            Some("wrong-token"),
+        ))
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn server_discover_uses_modern_stateless_transport() {
+    let response = router(secured_state())
         .oneshot(modern_request("discover-1", "server/discover", json!({})))
         .await
         .expect("router response");
@@ -86,7 +130,7 @@ async fn server_discover_uses_modern_stateless_transport() {
 
 #[tokio::test]
 async fn tools_list_works_without_a_prior_discover_request() {
-    let response = router(AppState::new(None))
+    let response = router(secured_state())
         .oneshot(modern_request("tools-1", "tools/list", json!({})))
         .await
         .expect("router response");
@@ -109,7 +153,7 @@ async fn tools_list_works_without_a_prior_discover_request() {
 
 #[tokio::test]
 async fn repeated_requests_do_not_create_protocol_sessions() {
-    let app = router(AppState::new(None));
+    let app = router(secured_state());
 
     for id in ["discover-a", "discover-b"] {
         let response = app
