@@ -76,10 +76,7 @@ impl<T: CodexRpcTransport> CodexSubscriptionClient<T> {
         &self.transport
     }
 
-    pub fn initialize(
-        &mut self,
-        version: &str,
-    ) -> Result<CodexServerInfo, CodexSubscriptionError> {
+    pub fn initialize(&mut self, version: &str) -> Result<CodexServerInfo, CodexSubscriptionError> {
         if self.initialized {
             return Err(CodexSubscriptionError::Protocol(
                 "client is already initialized".into(),
