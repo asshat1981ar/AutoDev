@@ -1,7 +1,9 @@
 mod objective;
+mod runner;
 mod store;
 
 pub use objective::{ObjectiveEvent, ObjectiveStatus, ObjectiveView};
+pub use runner::{ActionProposer, ObjectiveRunner, RunnerError};
 pub use store::{FileObjectiveStore, ObjectiveSnapshot, ObjectiveStore, StoreError};
 
 use std::{
