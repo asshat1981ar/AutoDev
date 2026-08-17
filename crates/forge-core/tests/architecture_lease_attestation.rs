@@ -91,10 +91,16 @@ fn attestation_binds_exact_evidence_policy_source_time_and_risk_state() {
 
     assert_eq!(attestation.evidence_id, evaluation.evidence_id);
     assert_eq!(attestation.objective_id, evaluation.objective_id);
-    assert_eq!(attestation.evidence_fingerprint, evaluation.evidence_fingerprint);
+    assert_eq!(
+        attestation.evidence_fingerprint,
+        evaluation.evidence_fingerprint
+    );
     assert_eq!(attestation.policy_id, evaluation.policy_id);
     assert_eq!(attestation.policy_version, evaluation.policy_version);
-    assert_eq!(attestation.policy_fingerprint, evaluation.policy_fingerprint);
+    assert_eq!(
+        attestation.policy_fingerprint,
+        evaluation.policy_fingerprint
+    );
     assert_eq!(attestation.source_version, "source-v1");
     assert_eq!(attestation.evaluated_at, evaluation.evaluated_at);
     assert_eq!(attestation.valid_until, evaluation.valid_until.unwrap());
