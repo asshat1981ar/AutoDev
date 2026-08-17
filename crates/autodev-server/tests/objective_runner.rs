@@ -1,10 +1,18 @@
-use std::fs;
+use std::{
+    fs,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use autodev_server::{
-    FileObjectiveStore, ObjectiveSnapshot, ObjectiveStatus, ObjectiveStore, ObjectiveView,
+    ActionProposer, FileObjectiveStore, ObjectiveRunner, ObjectiveSnapshot, ObjectiveStatus,
+    ObjectiveStore, ObjectiveView, RunnerError,
 };
-use forge_core::{TaskGraph, VerifiedOrchestratorState};
+use forge_core::{ActionProposal, TaskGraph, TaskNode, TaskStatus, VerifiedOrchestratorState};
 use tempfile::tempdir;
+use tokio::sync::broadcast;
 
 fn snapshot(id: &str) -> ObjectiveSnapshot {
     ObjectiveSnapshot {
@@ -21,6 +29,46 @@ fn snapshot(id: &str) -> ObjectiveSnapshot {
         },
         graph: TaskGraph::single("Persist objective state", "round-trip durable task state"),
         orchestrator: VerifiedOrchestratorState::default(),
+    }
+}
+
+fn queued_snapshot(id: &str) -> ObjectiveSnapshot {
+    ObjectiveSnapshot {
+        view: ObjectiveView {
+            id: id.to_string(),
+            repository: "asshat1981ar/AutoDev".to_string(),
+            description: "Plan one durable objective step".to_string(),
+            branch: "autodev/plan-objective".to_string(),
+            status: ObjectiveStatus::Queued,
+            current_task_id: Some("t-root".to_string()),
+            current_phase: None,
+            latest_evidence_ref: None,
+            blocked_reason: None,
+        },
+        graph: TaskGraph::single(
+            "Plan objective",
+            "advance the persisted graph exactly one planning step",
+        ),
+        orchestrator: VerifiedOrchestratorState::default(),
+    }
+}
+
+struct CountingProposer {
+    calls: AtomicUsize,
+}
+
+impl CountingProposer {
+    fn new() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl ActionProposer for CountingProposer {
+    fn propose(&self, _task: &TaskNode) -> Result<ActionProposal, RunnerError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        panic!("queued -> planning must not request an action proposal")
     }
 }
 
@@ -56,4 +104,41 @@ fn file_store_ignores_stray_temporary_files() {
     let store = FileObjectiveStore::new(directory.path());
     assert!(store.load_all().expect("load snapshots").is_empty());
     assert_eq!(store.get("orphan").expect("load orphan"), None);
+}
+
+#[test]
+fn runner_advances_queued_objective_to_persisted_planning_without_proposal() {
+    let directory = tempdir().expect("temp directory");
+    let store = Arc::new(FileObjectiveStore::new(directory.path()));
+    store
+        .put(&queued_snapshot("objective-plan-1"))
+        .expect("persist queued objective");
+
+    let proposer = Arc::new(CountingProposer::new());
+    let (events, mut receiver) = broadcast::channel(8);
+    let runner = ObjectiveRunner::new(Arc::clone(&store), Arc::clone(&proposer), events);
+
+    let view = runner
+        .advance_once("objective-plan-1")
+        .expect("advance queued objective");
+
+    assert_eq!(view.status, ObjectiveStatus::Planning);
+    assert_eq!(view.current_task_id.as_deref(), Some("t-root"));
+    assert_eq!(view.current_phase.as_deref(), Some("plan"));
+    assert_eq!(proposer.calls.load(Ordering::SeqCst), 0);
+
+    let persisted = store
+        .get("objective-plan-1")
+        .expect("load planned objective")
+        .expect("planned objective exists");
+    assert_eq!(persisted.view, view);
+    assert_eq!(persisted.graph.root().status, TaskStatus::Planning);
+    assert_eq!(persisted.graph.log.len(), 1);
+    assert_eq!(persisted.graph.log[0].phase, "PLAN");
+
+    let event = receiver.try_recv().expect("planning event");
+    assert_eq!(event.event_type, "objective_planning");
+    assert_eq!(event.objective_id, "objective-plan-1");
+    assert_eq!(event.status, ObjectiveStatus::Planning);
+    assert!(receiver.try_recv().is_err());
 }
