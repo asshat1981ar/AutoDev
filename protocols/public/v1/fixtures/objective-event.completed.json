@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "event_id": "evt-0005",
+  "type": "objective_completed",
+  "timestamp": "2026-08-17T12:14:00Z",
+  "objective_id": "obj-0004",
+  "run_id": "run-0004",
+  "task_id": "task-0004",
+  "data": {
+    "status": "completed"
+  }
+}
