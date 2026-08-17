@@ -322,11 +322,19 @@ where
 {
     let ids = runner.pending_ids()?;
     let mut advanced = 0;
+    let mut first_error = None;
     for id in ids {
-        runner.advance_once(&id)?;
-        advanced += 1;
+        match runner.advance_once(&id) {
+            Ok(_) => advanced += 1,
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            Err(_) => {}
+        }
     }
-    Ok(advanced)
+    if let Some(error) = first_error {
+        Err(error)
+    } else {
+        Ok(advanced)
+    }
 }
 
 pub fn run_objective_loop<S, P>(runner: ObjectiveRunner<S, P>, poll_interval: Duration)
