@@ -57,7 +57,9 @@ pub fn propose_action(
     }
     let decision = match action.risk {
         RiskLevel::Low => PolicyDecision::Allow,
-        RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => PolicyDecision::RequireApproval,
+        RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
+            PolicyDecision::RequireApproval
+        }
     };
 
     Ok(ActionProposal {
