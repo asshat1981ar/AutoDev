@@ -1,8 +1,13 @@
-use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
+mod events;
+mod objective;
+mod runner;
+mod store;
+
+use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -11,14 +16,24 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use forge_core::TaskGraph;
+use forge_core::{TaskGraph, VerifiedOrchestratorState};
 use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
+
+pub use events::ObjectiveEvent;
+pub use objective::{ObjectiveStatus, ObjectiveView};
+pub use runner::{
+    run_objective_cycle, run_objective_loop, ActionProposer, ModelActionProposer, ObjectiveRunner,
+    RunnerError, RunnerExecution, VerificationFactory,
+};
+pub use store::{
+    FileObjectiveStore, InMemoryObjectiveStore, ObjectiveSnapshot, ObjectiveStore, StoreError,
+};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -30,39 +45,55 @@ pub struct ObjectiveRequest {
     pub branch: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ObjectiveRecord {
-    pub id: String,
-    pub repository: String,
-    pub description: String,
-    pub branch: String,
-    pub status: String,
-    pub graph: TaskGraph,
-}
-
-#[derive(Clone)]
-pub struct AppState {
-    objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
-    events: broadcast::Sender<String>,
+pub struct AppState<S: ObjectiveStore = InMemoryObjectiveStore> {
+    store: Arc<S>,
+    events: broadcast::Sender<ObjectiveEvent>,
     github_webhook_secret: Option<String>,
 }
 
-impl AppState {
+impl<S: ObjectiveStore> Clone for AppState<S> {
+    fn clone(&self) -> Self {
+        Self {
+            store: self.store.clone(),
+            events: self.events.clone(),
+            github_webhook_secret: self.github_webhook_secret.clone(),
+        }
+    }
+}
+
+impl AppState<InMemoryObjectiveStore> {
     pub fn new(github_webhook_secret: Option<String>) -> Self {
+        Self::with_store(
+            github_webhook_secret,
+            Arc::new(InMemoryObjectiveStore::default()),
+        )
+    }
+}
+
+impl<S: ObjectiveStore> AppState<S> {
+    pub fn with_store(github_webhook_secret: Option<String>, store: Arc<S>) -> Self {
         let (events, _) = broadcast::channel(256);
         Self {
-            objectives: Arc::new(RwLock::new(BTreeMap::new())),
+            store,
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
         }
     }
 
-    async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveRecord, &'static str> {
+    pub fn store(&self) -> Arc<S> {
+        self.store.clone()
+    }
+
+    pub fn event_sender(&self) -> broadcast::Sender<ObjectiveEvent> {
+        self.events.clone()
+    }
+
+    fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveView, EnqueueError> {
         if request.repository.trim().is_empty() {
-            return Err("repository is required");
+            return Err(EnqueueError::Validation("repository is required"));
         }
         if request.description.trim().is_empty() {
-            return Err("description is required");
+            return Err(EnqueueError::Validation("description is required"));
         }
 
         let id = Uuid::new_v4().to_string();
@@ -71,45 +102,41 @@ impl AppState {
             .filter(|branch| !branch.trim().is_empty())
             .unwrap_or_else(|| format!("autodev/objective-{}", &id[..8]));
         let graph = TaskGraph::single(&format!("Objective {id}"), request.description.trim());
-        let record = ObjectiveRecord {
+        let view = ObjectiveView {
             id: id.clone(),
             repository: request.repository.trim().to_string(),
             description: request.description.trim().to_string(),
             branch,
-            status: "queued".to_string(),
-            graph,
+            status: ObjectiveStatus::Queued,
+            current_task_id: Some(graph.root.clone()),
+            current_phase: None,
+            latest_evidence_ref: None,
+            blocked_reason: None,
         };
-
-        self.objectives
-            .write()
-            .await
-            .insert(id.clone(), record.clone());
-        let _ = self.events.send(
-            json!({
-                "type": "objective_queued",
-                "data": {
-                    "objective_id": id,
-                    "repository": record.repository,
-                    "branch": record.branch,
-                    "status": record.status,
-                }
-            })
-            .to_string(),
-        );
-        Ok(record)
+        let snapshot = ObjectiveSnapshot {
+            view: view.clone(),
+            graph,
+            orchestrator: VerifiedOrchestratorState::default(),
+        };
+        self.store.put(&snapshot)?;
+        let _ = self
+            .events
+            .send(ObjectiveEvent::from_view(&view, "objective accepted"));
+        Ok(view)
     }
 }
 
-pub fn router(state: AppState) -> Router {
+pub fn router<S: ObjectiveStore>(state: AppState<S>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route(
             "/api/v1/objectives",
-            get(list_objectives).post(create_objective),
+            get(list_objectives::<S>).post(create_objective::<S>),
         )
-        .route("/api/v1/events/stream", get(event_stream))
-        .route("/events", get(event_stream))
-        .route("/webhooks/github", post(github_webhook))
+        .route("/api/v1/objectives/:id", get(get_objective::<S>))
+        .route("/api/v1/events/stream", get(event_stream::<S>))
+        .route("/events", get(event_stream::<S>))
+        .route("/webhooks/github", post(github_webhook::<S>))
         .with_state(state)
 }
 
@@ -117,34 +144,66 @@ async fn health() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
-async fn list_objectives(State(state): State<AppState>) -> Json<Vec<ObjectiveRecord>> {
-    let objectives = state.objectives.read().await;
-    Json(objectives.values().cloned().collect())
-}
-
-async fn create_objective(
-    State(state): State<AppState>,
-    Json(request): Json<ObjectiveRequest>,
-) -> Response {
-    match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
-        Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
+async fn list_objectives<S: ObjectiveStore>(State(state): State<AppState<S>>) -> Response {
+    match state.store.load_all() {
+        Ok(snapshots) => Json(
+            snapshots
+                .into_iter()
+                .map(|snapshot| snapshot.view)
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
+        Err(error) => store_error(error),
     }
 }
 
-async fn event_stream(
-    State(state): State<AppState>,
+async fn get_objective<S: ObjectiveStore>(
+    State(state): State<AppState<S>>,
+    Path(id): Path<String>,
+) -> Response {
+    match state.store.get(&id) {
+        Ok(Some(snapshot)) => Json(snapshot.view).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "objective_not_found"})),
+        )
+            .into_response(),
+        Err(StoreError::InvalidId(_)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "invalid_objective_id"})),
+        )
+            .into_response(),
+        Err(error) => store_error(error),
+    }
+}
+
+async fn create_objective<S: ObjectiveStore>(
+    State(state): State<AppState<S>>,
+    Json(request): Json<ObjectiveRequest>,
+) -> Response {
+    match state.enqueue(request) {
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
+        Err(EnqueueError::Validation(message)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response()
+        }
+        Err(EnqueueError::Store(error)) => store_error(error),
+    }
+}
+
+async fn event_stream<S: ObjectiveStore>(
+    State(state): State<AppState<S>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let stream =
-        BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
-            Ok(data) => Some(Ok(Event::default().data(data))),
-            Err(_) => None,
-        });
+    let stream = BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
+        Ok(event) => serde_json::to_string(&event)
+            .ok()
+            .map(|data| Ok(Event::default().data(data))),
+        Err(_) => None,
+    });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-async fn github_webhook(
-    State(state): State<AppState>,
+async fn github_webhook<S: ObjectiveStore>(
+    State(state): State<AppState<S>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -211,10 +270,21 @@ async fn github_webhook(
         description: format!("Issue #{issue_number}: {title}"),
         branch: Some(format!("autodev/issue-{issue_number}")),
     };
-    match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
-        Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
+    match state.enqueue(request) {
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
+        Err(EnqueueError::Validation(message)) => {
+            (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response()
+        }
+        Err(EnqueueError::Store(error)) => store_error(error),
     }
+}
+
+fn store_error(error: StoreError) -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "objective_store_error", "detail": error.to_string()})),
+    )
+        .into_response()
 }
 
 fn verify_github_signature(secret: &[u8], signature_header: Option<&str>, body: &[u8]) -> bool {
@@ -230,6 +300,14 @@ fn verify_github_signature(secret: &[u8], signature_header: Option<&str>, body: 
     };
     mac.update(body);
     mac.verify_slice(&signature).is_ok()
+}
+
+#[derive(Debug, thiserror::Error)]
+enum EnqueueError {
+    #[error("{0}")]
+    Validation(&'static str),
+    #[error(transparent)]
+    Store(#[from] StoreError),
 }
 
 #[cfg(test)]
@@ -255,7 +333,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn objective_intake_creates_a_forgecore_task_graph() {
+    async fn objective_intake_creates_internal_forgecore_task_graph() {
         let state = AppState::new(Some("secret".to_string()));
         let app = router(state.clone());
         let response = app
@@ -273,10 +351,10 @@ mod tests {
             .expect("response");
         assert_eq!(response.status(), StatusCode::ACCEPTED);
 
-        let objectives = state.objectives.read().await;
-        let record = objectives.values().next().expect("queued objective");
-        assert_eq!(record.graph.root().description, "Implement health endpoint");
-        assert_eq!(record.status, "queued");
+        let snapshots = state.store.load_all().expect("stored objectives");
+        let snapshot = snapshots.first().expect("queued objective");
+        assert_eq!(snapshot.graph.root().description, "Implement health endpoint");
+        assert_eq!(snapshot.view.status, ObjectiveStatus::Queued);
     }
 
     #[tokio::test]
