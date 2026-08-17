@@ -19,7 +19,11 @@ pub struct ContextRefs {
     pub feature_contract_ref: Option<String>,
 }
 
-/// Authorization state bound to an execution request.
+/// Trusted authorization state bound by policy/orchestration to an execution request.
+///
+/// `capabilities` here are provisioned policy inputs, not values copied from
+/// `AgentAction.capabilities`. They are converted to kernel-owned
+/// `ExecutionAuthority` immediately before execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyBinding {
