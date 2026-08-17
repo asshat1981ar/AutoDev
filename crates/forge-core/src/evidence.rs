@@ -119,6 +119,28 @@ pub enum PolicyOutcome {
     Deny,
 }
 
+/// Trusted execution authority captured for provenance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthorityEvidence {
+    /// Stable names of capabilities granted by trusted policy/orchestration.
+    pub granted_capabilities: Vec<String>,
+    /// Approval record/reference used for this execution, when present.
+    pub approval_ref: Option<String>,
+}
+
+impl AuthorityEvidence {
+    pub fn from_authority(authority: &crate::authority::ExecutionAuthority) -> Self {
+        Self {
+            granted_capabilities: authority
+                .granted_capabilities()
+                .iter()
+                .map(|capability| capability.as_str().to_string())
+                .collect(),
+            approval_ref: authority.approval_ref().map(str::to_string),
+        }
+    }
+}
+
 /// The complete, traceable record of one executed action.
 ///
 /// This is the unit of provenance: it captures the full chain
@@ -137,6 +159,9 @@ pub struct ExecutionRecord {
     pub action: serde_json::Value,
     /// The policy decision that governed this execution.
     pub policy: PolicyOutcome,
+    /// Effective trusted authority actually used for execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<AuthorityEvidence>,
     /// The final execution status.
     pub status: ExecutionStatus,
     /// When execution started.
@@ -269,6 +294,36 @@ pub fn record_from(
     result: &ExecutionResult,
     artifacts: Vec<Artifact>,
 ) -> ExecutionRecord {
+    record_from_inner(id, action, policy, None, result, artifacts)
+}
+
+/// Build an execution record that includes the trusted authority used.
+pub fn record_from_authorized(
+    id: &str,
+    action: &crate::action::AgentAction,
+    policy: PolicyOutcome,
+    authority: &crate::authority::ExecutionAuthority,
+    result: &ExecutionResult,
+    artifacts: Vec<Artifact>,
+) -> ExecutionRecord {
+    record_from_inner(
+        id,
+        action,
+        policy,
+        Some(AuthorityEvidence::from_authority(authority)),
+        result,
+        artifacts,
+    )
+}
+
+fn record_from_inner(
+    id: &str,
+    action: &crate::action::AgentAction,
+    policy: PolicyOutcome,
+    authority: Option<AuthorityEvidence>,
+    result: &ExecutionResult,
+    artifacts: Vec<Artifact>,
+) -> ExecutionRecord {
     ExecutionRecord {
         id: id.to_string(),
         task_id: action.task_id.clone(),
@@ -276,6 +331,7 @@ pub fn record_from(
         action_id: action.id.clone(),
         action: serde_json::to_value(action).expect("action serializes"),
         policy,
+        authority,
         status: result.status,
         started_at: result.started_at,
         completed_at: result.completed_at,
@@ -381,7 +437,6 @@ mod tests {
         let evidence = Evidence::from_record(record);
         assert!(evidence.verify());
 
-        // Tamper with the record -> fingerprint no longer matches.
         let mut tampered = evidence.clone();
         tampered.record.status = ExecutionStatus::Failed;
         assert_ne!(tampered.record, evidence.record);
@@ -459,8 +514,6 @@ mod tests {
         );
         store.insert(record);
 
-        // Reconstruct the action from evidence: look up by action id, load the
-        // snapshot, and deserialize back to an AgentAction.
         let evidence = store.by_action_id("a7").unwrap();
         let reconstructed: crate::action::AgentAction =
             serde_json::from_value(evidence.record.action.clone()).unwrap();
