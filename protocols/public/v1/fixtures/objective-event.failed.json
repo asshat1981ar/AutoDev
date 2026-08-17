@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "event_id": "evt-0002",
+  "type": "objective_failed",
+  "timestamp": "2026-08-17T12:09:00Z",
+  "objective_id": "obj-0002",
+  "run_id": "run-0002",
+  "task_id": "task-0002",
+  "data": {
+    "status": "failed",
+    "reason": "verification failed"
+  }
+}
