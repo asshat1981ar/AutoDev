@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 import sys
@@ -5,10 +6,21 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/autodev-cli.py"
 WEB_DIR = ROOT / "web/command-center"
+
+
+def load_cli_module():
+    spec = importlib.util.spec_from_file_location("autodev_cli", CLI)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("unable to load AutoDev CLI module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class FakeAutoDevHandler(BaseHTTPRequestHandler):
@@ -56,6 +68,19 @@ class FakeAutoDevHandler(BaseHTTPRequestHandler):
             "graph": {"root": {"description": request["description"]}},
         }
         self._json(202, created)
+
+
+class FakeSseResponse:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def __iter__(self):
+        return iter([b"data: {\"type\":\"objective_queued\"}\n"])
 
 
 class CommandCenterClientTests(unittest.TestCase):
@@ -115,6 +140,17 @@ class CommandCenterClientTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("http:// or https://", result.stderr)
+
+    def test_cli_event_stream_has_no_read_timeout(self):
+        module = load_cli_module()
+        client = module.Client("http://127.0.0.1:8080", timeout=0.1)
+        with patch.object(module, "urlopen", return_value=FakeSseResponse()) as opener:
+            lines = list(client.event_lines("/events"))
+
+        self.assertEqual(lines, ['{"type":"objective_queued"}'])
+        self.assertEqual(opener.call_count, 1)
+        _, kwargs = opener.call_args
+        self.assertIsNone(kwargs.get("timeout"))
 
     def test_web_client_is_framework_free_and_uses_existing_http_sse_contract(self):
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
