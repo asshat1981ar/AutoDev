@@ -177,6 +177,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
+    val codexState by viewModel.codexState.collectAsState()
     var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
 
     Column(
@@ -185,7 +186,7 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
     ) {
         Text("AutoDev Command Center", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Observer-only Android control plane. Agent authority remains inside ForgeCore.",
+            "Android intent and observation client. Execution authority remains inside ForgeCore.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -208,6 +209,15 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
                 Text(state.status)
             }
         }
+
+        codexProviderPanel(
+            state = codexState,
+            onRefreshAccount = { viewModel.refreshCodexAccount(endpoint) },
+            onStartBrowserLogin = { viewModel.startCodexBrowserLogin(endpoint) },
+            onStartDeviceCodeLogin = { viewModel.startCodexDeviceCodeLogin(endpoint) },
+            onRefreshUsage = { viewModel.refreshCodexRateLimits(endpoint) },
+            onLogout = { viewModel.logoutCodex(endpoint) },
+        )
 
         Text("Live events", style = MaterialTheme.typography.titleMedium)
         LazyColumn(

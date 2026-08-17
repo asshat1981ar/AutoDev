@@ -3,6 +3,7 @@ package dev.autodev.commandcenter
 import java.net.URI
 
 data class CodexPanelUiModel(
+    val authenticated: Boolean?,
     val authStatus: String,
     val planType: String?,
     val usedPercent: Int?,
@@ -16,10 +17,20 @@ data class CodexPanelUiModel(
     val errorCode: String?,
 )
 
+data class CodexPanelControls(
+    val canRefreshAccount: Boolean,
+    val canStartBrowserLogin: Boolean,
+    val canStartDeviceCodeLogin: Boolean,
+    val canRefreshUsage: Boolean,
+    val canOpenBrowser: Boolean,
+    val canLogout: Boolean,
+)
+
 fun codexPanelUiModel(state: CodexPanelState): CodexPanelUiModel {
     val browserPrompt = state.loginPrompt as? CodexLoginPrompt.Browser
     val devicePrompt = state.loginPrompt as? CodexLoginPrompt.DeviceCode
     return CodexPanelUiModel(
+        authenticated = state.account?.authenticated,
         authStatus =
             when (state.account?.authenticated) {
                 true -> "Authenticated"
@@ -39,6 +50,18 @@ fun codexPanelUiModel(state: CodexPanelState): CodexPanelUiModel {
     )
 }
 
+fun codexPanelControls(model: CodexPanelUiModel): CodexPanelControls {
+    val enabled = !model.busy
+    return CodexPanelControls(
+        canRefreshAccount = enabled,
+        canStartBrowserLogin = enabled,
+        canStartDeviceCodeLogin = enabled,
+        canRefreshUsage = enabled,
+        canOpenBrowser = enabled && isSafeCodexUrl(model.browserAuthUrl),
+        canLogout = enabled && model.authenticated == true,
+    )
+}
+
 fun interface CodexUrlLauncher {
     fun open(url: String)
 }
@@ -50,9 +73,14 @@ class CodexBrowserAction(
 
     fun openUrl(url: String?): Boolean {
         val candidate = url ?: return false
-        val uri = runCatching { URI(candidate) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank()) return false
+        if (!isSafeCodexUrl(candidate)) return false
         launcher.open(candidate)
         return true
     }
+}
+
+private fun isSafeCodexUrl(url: String?): Boolean {
+    val candidate = url ?: return false
+    val uri = runCatching { URI(candidate) }.getOrNull() ?: return false
+    return uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
 }
