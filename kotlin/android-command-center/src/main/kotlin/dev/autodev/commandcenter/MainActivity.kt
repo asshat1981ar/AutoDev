@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +38,7 @@ import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 private const val DEFAULT_SERVER = "http://10.0.2.2:8080"
 private const val MAX_EVENTS = 200
@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    CommandCenterScreen()
+                    commandCenterScreen()
                 }
             }
         }
@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CommandCenterScreen(viewModel: CommandCenterViewModel = viewModel()) {
+private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
 
