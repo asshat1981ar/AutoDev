@@ -3,12 +3,14 @@
 //! This crate remains outside ForgeCore's trusted authorization/execution
 //! boundary. It owns experiment orchestration and local evaluation adapters.
 
+mod cli;
 mod error;
 mod fixture;
 mod runner;
 mod verifier;
 mod workspace;
 
+pub use cli::run_cli;
 pub use error::RunnerError;
 pub use fixture::{load_corpus, load_fixture, EvalFixture, FixtureError, VerifierOverlay};
 pub use runner::{
