@@ -114,25 +114,41 @@ final class AutoDevEventStream {
     Stream<List<int>> bytes,
     StreamController<ObjectiveEvent> controller,
   ) async {
-    final dataLines = <String>[];
-    await for (final line in bytes
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    var pending = '';
+    await for (final text in bytes.transform(utf8.decoder)) {
       if (_closed) {
         return;
       }
-      if (line.isEmpty) {
-        if (dataLines.isNotEmpty) {
-          _emitData(dataLines.join('\n'), controller);
-          dataLines.clear();
+      pending += text;
+      while (true) {
+        final boundary = _frameBoundary(pending);
+        if (boundary == null) {
+          break;
         }
-        continue;
+        final frame = pending.substring(0, boundary.index);
+        pending = pending.substring(boundary.index + boundary.length);
+        _emitFrame(frame, controller);
       }
+    }
+    if (!_closed && pending.trim().isNotEmpty) {
+      _emitFrame(pending, controller);
+    }
+  }
+
+  void _emitFrame(
+    String frame,
+    StreamController<ObjectiveEvent> controller,
+  ) {
+    final dataLines = <String>[];
+    for (final rawLine in const LineSplitter().convert(frame)) {
+      final line = rawLine.endsWith('\r')
+          ? rawLine.substring(0, rawLine.length - 1)
+          : rawLine;
       if (line.startsWith('data:')) {
         dataLines.add(line.substring(5).trimLeft());
       }
     }
-    if (!_closed && dataLines.isNotEmpty) {
+    if (dataLines.isNotEmpty) {
       _emitData(dataLines.join('\n'), controller);
     }
   }
@@ -164,4 +180,23 @@ final class AutoDevEventStream {
       _closeSignal.future,
     ]);
   }
+}
+
+final class _FrameBoundary {
+  const _FrameBoundary(this.index, this.length);
+
+  final int index;
+  final int length;
+}
+
+_FrameBoundary? _frameBoundary(String value) {
+  final lf = value.indexOf('\n\n');
+  final crlf = value.indexOf('\r\n\r\n');
+  if (lf < 0 && crlf < 0) {
+    return null;
+  }
+  if (lf >= 0 && (crlf < 0 || lf < crlf)) {
+    return _FrameBoundary(lf, 2);
+  }
+  return _FrameBoundary(crlf, 4);
 }
