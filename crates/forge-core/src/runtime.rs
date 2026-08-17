@@ -10,30 +10,20 @@
 //!
 //! Failure states: FAILED, BLOCKED, CANCELLED
 //! ```
-//!
-//! The runtime loop, per step:
-//!
-//! 1. receive task context
-//! 2. assemble agent context (task + profile + capabilities)
-//! 3. select model (provider routing or the agent's preferred model)
-//! 4. invoke model (via the provider-neutral [`ModelProvider`])
-//! 5. validate structured output (parse into an [`AgentAction`])
-//! 6. produce AgentAction
-//! 7. submit action to policy (validate + capability + risk)
-//! 8. consume ExecutionResult (execute, record evidence, feed back)
-//!
-//! The runtime is in-process (no processes are spawned) and is testable with a
-//! [`MockProvider`] and a mock executor, so orchestration can be exercised
-//! without a real model.
 
-use crate::action::{AgentAction, Capability, RiskLevel};
+use crate::action::{AgentAction, Capability};
+use crate::action_proposal::{
+    assemble_context as proposal_context, invoke_model as proposal_invoke_model,
+    propose_action_with_model, select_model as proposal_select_model,
+    submit_to_policy as proposal_submit_to_policy, validate_output as proposal_validate_output,
+};
 use crate::agent::{AgentProfile, AgentRole};
 use crate::error::ExecutionError;
 use crate::evidence::{
     record_from, EvidenceStore, ExecutionResult, ExecutionStatus, PolicyOutcome,
 };
-use crate::model::{ModelProvider, ModelRequest, ModelResponse};
-use crate::policy::{evaluate_policy, has_required_capability, PolicyDecision};
+use crate::model::{ModelProvider, ModelResponse};
+use crate::policy::PolicyDecision;
 use serde::{Deserialize, Serialize};
 
 /// The lifecycle state of an agent runtime.
@@ -106,17 +96,9 @@ pub enum RuntimeError {
 }
 
 /// A function that executes an [`AgentAction`] and returns a result.
-///
-/// This indirection lets the runtime be tested with a mock executor (no real
-/// filesystem/git) and lets orchestration inject the real `execute()` bound to
-/// a workspace. It is a boxed closure so it can capture a [`crate::Workspace`].
 pub type Executor = Box<dyn Fn(&AgentAction) -> Result<ExecutionResult, ExecutionError>>;
 
 /// An agent runtime instance.
-///
-/// Holds the agent profile, the model provider, the evidence store, and the
-/// in-flight task. All heavy work (model calls, execution) is delegated to the
-/// injected provider/executor so the runtime is testable without a real model.
 pub struct AgentRuntime {
     /// The agent's stable id.
     pub id: String,
@@ -141,6 +123,7 @@ pub struct AgentRuntime {
     /// The model selected for the current step.
     pub selected_model: Option<String>,
 }
+
 impl AgentRuntime {
     /// Create a runtime bound to `profile` using `provider` for model calls and
     /// `executor` for action execution.
@@ -151,7 +134,7 @@ impl AgentRuntime {
         executor: Executor,
     ) -> Self {
         let role = profile.role;
-        AgentRuntime {
+        Self {
             id: id.into(),
             role,
             profile,
@@ -178,11 +161,7 @@ impl AgentRuntime {
     }
 
     /// Transition to a new lifecycle state, applying the allowed transitions.
-    ///
-    /// Returns `false` (without changing state) if the transition is not
-    /// allowed, so the runtime maintains a well-formed state machine.
     pub fn transition(&mut self, next: AgentRuntimeState) -> bool {
-        // Identity transitions are always allowed (no-op).
         if self.state == next {
             return true;
         }
@@ -216,106 +195,39 @@ impl AgentRuntime {
 
     /// Assemble the agent context (task + role + capabilities) into a prompt.
     pub fn assemble_context(&self) -> String {
-        let task = self
-            .current_task
-            .as_ref()
-            .map(|t| format!("Task: {} — {}", t.title, t.context))
-            .unwrap_or_else(|| "No task".to_string());
-        let caps: Vec<&str> = self
-            .profile
-            .capabilities
-            .iter()
-            .map(|c| match c {
-                Capability::Unknown(s) => s.as_str(),
-                _ => c.as_str(),
-            })
-            .collect();
-        format!(
-            "You are the {role} agent.\n{caps:?}\n{task}\nReturn one structured action.",
-            role = self.profile.role.as_str()
-        )
+        proposal_context(&self.profile, self.current_task.as_ref())
     }
 
     /// Select a model: prefer the agent's preferred model; fall back to the
     /// first provider model that supports chat.
     pub fn select_model(&mut self) -> Result<String, RuntimeError> {
-        let preferred = self.profile.model.preferred.clone();
-        let models = self
-            .provider
-            .list_models()
-            .map_err(|e| RuntimeError::NoModel(e.to_string()))?;
-        if models.iter().any(|m| m.id == preferred) {
-            self.selected_model = Some(preferred.clone());
-            return Ok(preferred);
-        }
-        let first_chat = models
-            .iter()
-            .find(|m| m.capabilities.chat)
-            .map(|m| m.id.clone());
-        match first_chat {
-            Some(id) => {
-                self.selected_model = Some(id.clone());
-                Ok(id)
-            }
-            None => Err(RuntimeError::NoModel(self.id.clone())),
-        }
+        let model = proposal_select_model(&self.id, &self.profile, self.provider.as_ref())?;
+        self.selected_model = Some(model.clone());
+        Ok(model)
     }
 
     /// Invoke the model and return the raw response.
     pub fn invoke_model(&self, model: &str) -> Result<ModelResponse, RuntimeError> {
-        let context = self.assemble_context();
-        let req = ModelRequest {
-            model: model.to_string(),
-            messages: Some(vec![crate::model::Message {
-                role: "user".to_string(),
-                content: context,
-            }]),
-            prompt: None,
-            options: None,
-        };
-        self.provider
-            .chat(&req)
-            .map_err(|e| RuntimeError::ExecutionFailed(e.to_string()))
+        proposal_invoke_model(
+            self.provider.as_ref(),
+            &self.profile,
+            self.current_task.as_ref(),
+            model,
+        )
     }
-}
-impl AgentRuntime {
+
     /// Validate the model's structured output into an [`AgentAction`].
     pub fn validate_output(&self, response: &ModelResponse) -> Result<AgentAction, RuntimeError> {
-        let parsed: StructuredOutput = serde_json::from_str(&response.content)
-            .map_err(|e| RuntimeError::InvalidOutput(e.to_string()))?;
-        let action_type = parse_action_type(&parsed.action)
-            .ok_or_else(|| RuntimeError::InvalidOutput("unknown action type".into()))?;
-        let risk = parse_risk(&parsed.risk)
-            .ok_or_else(|| RuntimeError::InvalidOutput("unknown risk".into()))?;
         let task = self
             .current_task
             .as_ref()
             .ok_or_else(|| RuntimeError::InvalidOutput("no task".into()))?;
-        Ok(AgentAction {
-            id: format!("{}-{}", self.id, task.id),
-            task_id: task.id.clone(),
-            agent_id: self.id.clone(),
-            action_type,
-            reason: parsed.reason,
-            risk,
-            capabilities: self.profile.capabilities.clone(),
-            payload: parsed.payload,
-            expected: serde_json::json!({}),
-        })
+        proposal_validate_output(&self.id, &self.profile, task, response)
     }
 
     /// Submit an action to policy. Returns the decision.
     pub fn submit_to_policy(&self, action: &AgentAction) -> Result<PolicyDecision, RuntimeError> {
-        evaluate_policy(action).map_err(|e| RuntimeError::PolicyDenied(e.to_string()))?;
-        if !has_required_capability(action) {
-            return Err(RuntimeError::PolicyDenied("missing capability".into()));
-        }
-        Ok(match action.risk {
-            RiskLevel::Low => PolicyDecision::Allow,
-            RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
-                PolicyDecision::RequireApproval
-            }
-        })
+        proposal_submit_to_policy(action)
     }
 
     /// Consume an [`ExecutionResult`]: record it as evidence and store it back.
@@ -332,28 +244,25 @@ impl AgentRuntime {
     }
 
     /// Run a single step: receive context, plan, act, verify.
-    ///
-    /// This is the core loop, exercised by the tests. It invokes the model,
-    /// validates the output into an action, submits it to policy, executes it
-    /// (via the injected executor), and records evidence.
     pub fn run_step(&mut self) -> Result<StepOutcome, RuntimeError> {
-        if self.current_task.is_none() {
-            return Err(RuntimeError::NoAction);
-        }
+        let task = self.current_task.clone().ok_or(RuntimeError::NoAction)?;
         self.transition(AgentRuntimeState::Planning);
 
-        // Select + invoke model.
+        // Keep the existing lifecycle timing: model selection happens in
+        // PLANNING; model invocation and proposal validation happen in ACTING.
         let model = self.select_model()?;
         self.transition(AgentRuntimeState::Acting);
-        let response = self.invoke_model(&model)?;
-
-        // Validate output -> AgentAction.
-        let action = self.validate_output(&response)?;
+        let proposal = propose_action_with_model(
+            &self.id,
+            &self.profile,
+            self.provider.as_ref(),
+            &task,
+            &model,
+        )?;
+        let action = proposal.action;
         self.last_action = Some(action.clone());
 
-        // Submit to policy.
-        let decision = self.submit_to_policy(&action)?;
-        if decision == PolicyDecision::RequireApproval {
+        if proposal.decision == PolicyDecision::RequireApproval {
             self.transition(AgentRuntimeState::Blocked);
             return Ok(StepOutcome {
                 state: self.state,
@@ -363,10 +272,9 @@ impl AgentRuntime {
             });
         }
 
-        // Execute, then move through WAITING to VERIFYING.
         self.transition(AgentRuntimeState::Waiting);
         let result =
-            (self.executor)(&action).map_err(|e| RuntimeError::ExecutionFailed(e.to_string()))?;
+            (self.executor)(&action).map_err(|error| RuntimeError::ExecutionFailed(error.to_string()))?;
         self.consume_result(&action, &result);
         self.transition(AgentRuntimeState::Verifying);
 
@@ -389,33 +297,6 @@ impl AgentRuntime {
     }
 }
 
-/// Parse an [`ActionType`] from its wire name.
-fn parse_action_type(s: &str) -> Option<crate::action::ActionType> {
-    use crate::action::ActionType;
-    Some(match s {
-        "read_file" => ActionType::ReadFile,
-        "write_file" => ActionType::WriteFile,
-        "patch_file" => ActionType::PatchFile,
-        "execute" => ActionType::Execute,
-        "git" => ActionType::Git,
-        "mcp" => ActionType::Mcp,
-        "run_test" => ActionType::RunTest,
-        "request_approval" => ActionType::RequestApproval,
-        _ => return None,
-    })
-}
-
-/// Parse a [`RiskLevel`] from its wire name.
-fn parse_risk(s: &str) -> Option<RiskLevel> {
-    Some(match s {
-        "low" => RiskLevel::Low,
-        "medium" => RiskLevel::Medium,
-        "high" => RiskLevel::High,
-        "critical" => RiskLevel::Critical,
-        _ => return None,
-    })
-}
-
 /// Map an [`ExecutionStatus`] to a [`PolicyOutcome`].
 fn outcome_from_status(status: ExecutionStatus) -> PolicyOutcome {
     match status {
@@ -432,7 +313,6 @@ mod tests {
     use crate::agent::default_profiles;
     use crate::model::{MockProvider, ModelHealth};
 
-    /// A mock executor that always succeeds with a canned result.
     fn mock_executor(action: &AgentAction) -> Result<ExecutionResult, ExecutionError> {
         let now = chrono::Utc::now();
         Ok(ExecutionResult {
@@ -452,7 +332,7 @@ mod tests {
     fn runtime_with(provider: Box<dyn ModelProvider>) -> AgentRuntime {
         let profile = default_profiles()
             .into_iter()
-            .find(|p| p.role == AgentRole::Developer)
+            .find(|profile| profile.role == AgentRole::Developer)
             .unwrap();
         AgentRuntime::new("dev-rt", profile, provider, Box::new(mock_executor))
     }
@@ -467,33 +347,34 @@ mod tests {
 
     #[test]
     fn lifecycle_starts_ready_and_assigns_task() {
-        let mut rt = runtime_with(Box::new(MockProvider::default()));
-        assert_eq!(rt.state, AgentRuntimeState::Ready);
-        rt.assign_task(task());
-        assert_eq!(rt.state, AgentRuntimeState::Planning);
+        let mut runtime = runtime_with(Box::new(MockProvider::default()));
+        assert_eq!(runtime.state, AgentRuntimeState::Ready);
+        runtime.assign_task(task());
+        assert_eq!(runtime.state, AgentRuntimeState::Planning);
     }
 
     #[test]
     fn assemble_context_includes_role_and_task() {
-        let mut rt = runtime_with(Box::new(MockProvider::default()));
-        rt.assign_task(task());
-        let ctx = rt.assemble_context();
-        assert!(ctx.contains("developer"));
-        assert!(ctx.contains("fix the bug"));
+        let mut runtime = runtime_with(Box::new(MockProvider::default()));
+        runtime.assign_task(task());
+        let context = runtime.assemble_context();
+        assert!(context.contains("developer"));
+        assert!(context.contains("fix the bug"));
     }
 
     #[test]
     fn selects_model_from_provider() {
-        let mut rt = runtime_with(Box::new(MockProvider::new("{}")));
-        rt.assign_task(task());
-        let model = rt.select_model().unwrap();
+        let mut runtime = runtime_with(Box::new(MockProvider::new("{}")));
+        runtime.assign_task(task());
+        let model = runtime.select_model().unwrap();
         assert_eq!(model, "mock-model");
-        assert_eq!(rt.selected_model.as_deref(), Some("mock-model"));
+        assert_eq!(runtime.selected_model.as_deref(), Some("mock-model"));
     }
+
     #[test]
     fn validates_structured_output_into_action() {
-        let mut rt = runtime_with(Box::new(MockProvider::default()));
-        rt.assign_task(task());
+        let mut runtime = runtime_with(Box::new(MockProvider::default()));
+        runtime.assign_task(task());
         let response = ModelResponse {
             model: "mock-model".to_string(),
             content: serde_json::json!({
@@ -508,20 +389,20 @@ mod tests {
             eval_ns: 0,
             provider: "mock".to_string(),
         };
-        let action = rt.validate_output(&response).unwrap();
+        let action = runtime.validate_output(&response).unwrap();
         assert_eq!(action.action_type, crate::action::ActionType::ReadFile);
         assert_eq!(action.task_id, "t1");
         assert_eq!(action.agent_id, "dev-rt");
         assert!(action
             .capabilities
             .iter()
-            .any(|c| c == &Capability::ReadFile));
+            .any(|capability| capability == &Capability::ReadFile));
     }
 
     #[test]
     fn rejects_malformed_output() {
-        let mut rt = runtime_with(Box::new(MockProvider::default()));
-        rt.assign_task(task());
+        let mut runtime = runtime_with(Box::new(MockProvider::default()));
+        runtime.assign_task(task());
         let response = ModelResponse {
             model: "m".to_string(),
             content: "not json".to_string(),
@@ -530,8 +411,8 @@ mod tests {
             eval_ns: 0,
             provider: "mock".to_string(),
         };
-        let err = rt.validate_output(&response).unwrap_err();
-        assert!(matches!(err, RuntimeError::InvalidOutput(_)));
+        let error = runtime.validate_output(&response).unwrap_err();
+        assert!(matches!(error, RuntimeError::InvalidOutput(_)));
     }
 
     #[test]
@@ -545,14 +426,14 @@ mod tests {
             })
             .to_string(),
         );
-        let mut rt = runtime_with(Box::new(provider));
-        rt.assign_task(task());
-        let outcome = rt.run_step().unwrap();
+        let mut runtime = runtime_with(Box::new(provider));
+        runtime.assign_task(task());
+        let outcome = runtime.run_step().unwrap();
         assert_eq!(outcome.state, AgentRuntimeState::Completed);
         assert!(outcome.action.is_some());
         assert!(outcome.result.is_some());
-        assert_eq!(rt.evidence.len(), 1);
-        assert!(rt.evidence.records()[0].verify());
+        assert_eq!(runtime.evidence.len(), 1);
+        assert!(runtime.evidence.records()[0].verify());
     }
 
     #[test]
@@ -566,12 +447,12 @@ mod tests {
             })
             .to_string(),
         );
-        let mut rt = runtime_with(Box::new(provider));
-        rt.assign_task(task());
-        let outcome = rt.run_step().unwrap();
+        let mut runtime = runtime_with(Box::new(provider));
+        runtime.assign_task(task());
+        let outcome = runtime.run_step().unwrap();
         assert_eq!(outcome.state, AgentRuntimeState::Blocked);
         assert!(outcome.result.is_none());
-        assert_eq!(rt.evidence.len(), 0);
+        assert_eq!(runtime.evidence.len(), 0);
     }
 
     #[test]
@@ -582,13 +463,11 @@ mod tests {
 
     #[test]
     fn state_transitions_are_validated() {
-        let mut rt = runtime_with(Box::new(MockProvider::default()));
-        // Ready -> Planning is allowed.
-        assert!(rt.transition(AgentRuntimeState::Planning));
-        assert_eq!(rt.state(), AgentRuntimeState::Planning);
-        // Planning -> Completed is NOT a valid transition.
-        assert!(!rt.transition(AgentRuntimeState::Completed));
-        assert_eq!(rt.state(), AgentRuntimeState::Planning);
+        let mut runtime = runtime_with(Box::new(MockProvider::default()));
+        assert!(runtime.transition(AgentRuntimeState::Planning));
+        assert_eq!(runtime.state(), AgentRuntimeState::Planning);
+        assert!(!runtime.transition(AgentRuntimeState::Completed));
+        assert_eq!(runtime.state(), AgentRuntimeState::Planning);
     }
 
     #[test]
@@ -602,16 +481,15 @@ mod tests {
             })
             .to_string(),
         );
-        let mut rt = runtime_with(Box::new(provider));
-        rt.assign_task(task());
-        let outcome = rt.run_step().unwrap();
+        let mut runtime = runtime_with(Box::new(provider));
+        runtime.assign_task(task());
+        let outcome = runtime.run_step().unwrap();
         assert_eq!(outcome.state, AgentRuntimeState::Completed);
-        assert_eq!(rt.state(), AgentRuntimeState::Completed);
+        assert_eq!(runtime.state(), AgentRuntimeState::Completed);
     }
 
     #[test]
     fn agents_never_directly_access_privileged_execution() {
-        // Count how many times the executor is invoked.
         let executions = std::rc::Rc::new(std::cell::Cell::new(0usize));
         let counter = std::rc::Rc::clone(&executions);
         let executor: Executor = Box::new(move |_action| {
@@ -631,7 +509,6 @@ mod tests {
             })
         });
 
-        // A high-risk action is blocked before execution -> executor never runs.
         let provider = MockProvider::new(
             serde_json::json!({
                 "action": "write_file",
@@ -643,13 +520,12 @@ mod tests {
         );
         let profile = default_profiles()
             .into_iter()
-            .find(|p| p.role == AgentRole::Developer)
+            .find(|profile| profile.role == AgentRole::Developer)
             .unwrap();
-        let mut rt = AgentRuntime::new("dev-rt", profile, Box::new(provider), executor);
-        rt.assign_task(task());
-        let outcome = rt.run_step().unwrap();
+        let mut runtime = AgentRuntime::new("dev-rt", profile, Box::new(provider), executor);
+        runtime.assign_task(task());
+        let outcome = runtime.run_step().unwrap();
         assert_eq!(outcome.state, AgentRuntimeState::Blocked);
-        // The agent (model output) never reached the privileged executor.
         assert_eq!(executions.get(), 0);
     }
 }

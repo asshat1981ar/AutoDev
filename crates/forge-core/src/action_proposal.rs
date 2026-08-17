@@ -1,6 +1,7 @@
 use crate::{
     evaluate_policy, has_required_capability, ActionType, AgentAction, AgentProfile, Capability,
-    ModelProvider, ModelRequest, PolicyDecision, RiskLevel, RuntimeError, StructuredOutput, Task,
+    ModelProvider, ModelRequest, ModelResponse, PolicyDecision, RiskLevel, RuntimeError,
+    StructuredOutput, Task,
 };
 
 /// A model-generated action that has been structurally validated and evaluated
@@ -21,55 +22,30 @@ pub fn propose_action(
     task: &Task,
 ) -> Result<ActionProposal, RuntimeError> {
     let model = select_model(agent_id, profile, provider)?;
-    let request = ModelRequest {
-        model: model.clone(),
-        messages: Some(vec![crate::model::Message {
-            role: "user".to_string(),
-            content: assemble_context(profile, task),
-        }]),
-        prompt: None,
-        options: None,
-    };
-    let response = provider
-        .chat(&request)
-        .map_err(|error| RuntimeError::ExecutionFailed(error.to_string()))?;
-    let parsed: StructuredOutput = serde_json::from_str(&response.content)
-        .map_err(|error| RuntimeError::InvalidOutput(error.to_string()))?;
-    let action_type = parse_action_type(&parsed.action)
-        .ok_or_else(|| RuntimeError::InvalidOutput("unknown action type".into()))?;
-    let risk = parse_risk(&parsed.risk)
-        .ok_or_else(|| RuntimeError::InvalidOutput("unknown risk".into()))?;
-    let action = AgentAction {
-        id: format!("{agent_id}-{}", task.id),
-        task_id: task.id.clone(),
-        agent_id: agent_id.to_string(),
-        action_type,
-        reason: parsed.reason,
-        risk,
-        capabilities: profile.capabilities.clone(),
-        payload: parsed.payload,
-        expected: serde_json::json!({}),
-    };
+    propose_action_with_model(agent_id, profile, provider, task, &model)
+}
 
-    evaluate_policy(&action).map_err(|error| RuntimeError::PolicyDenied(error.to_string()))?;
-    if !has_required_capability(&action) {
-        return Err(RuntimeError::PolicyDenied("missing capability".into()));
-    }
-    let decision = match action.risk {
-        RiskLevel::Low => PolicyDecision::Allow,
-        RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
-            PolicyDecision::RequireApproval
-        }
-    };
-
+pub(crate) fn propose_action_with_model(
+    agent_id: &str,
+    profile: &AgentProfile,
+    provider: &dyn ModelProvider,
+    task: &Task,
+    model: &str,
+) -> Result<ActionProposal, RuntimeError> {
+    let response = invoke_model(provider, profile, Some(task), model)?;
+    let action = validate_output(agent_id, profile, task, &response)?;
+    let decision = submit_to_policy(&action)?;
     Ok(ActionProposal {
         action,
         decision,
-        model,
+        model: model.to_string(),
     })
 }
 
-fn assemble_context(profile: &AgentProfile, task: &Task) -> String {
+pub(crate) fn assemble_context(profile: &AgentProfile, task: Option<&Task>) -> String {
+    let task = task
+        .map(|task| format!("Task: {} — {}", task.title, task.context))
+        .unwrap_or_else(|| "No task".to_string());
     let capabilities: Vec<&str> = profile
         .capabilities
         .iter()
@@ -79,14 +55,12 @@ fn assemble_context(profile: &AgentProfile, task: &Task) -> String {
         })
         .collect();
     format!(
-        "You are the {role} agent.\n{capabilities:?}\nTask: {} — {}\nReturn one structured action.",
-        task.title,
-        task.context,
+        "You are the {role} agent.\n{capabilities:?}\n{task}\nReturn one structured action.",
         role = profile.role.as_str()
     )
 }
 
-fn select_model(
+pub(crate) fn select_model(
     agent_id: &str,
     profile: &AgentProfile,
     provider: &dyn ModelProvider,
@@ -103,6 +77,64 @@ fn select_model(
         .find(|model| model.capabilities.chat)
         .map(|model| model.id.clone())
         .ok_or_else(|| RuntimeError::NoModel(agent_id.to_string()))
+}
+
+pub(crate) fn invoke_model(
+    provider: &dyn ModelProvider,
+    profile: &AgentProfile,
+    task: Option<&Task>,
+    model: &str,
+) -> Result<ModelResponse, RuntimeError> {
+    let request = ModelRequest {
+        model: model.to_string(),
+        messages: Some(vec![crate::model::Message {
+            role: "user".to_string(),
+            content: assemble_context(profile, task),
+        }]),
+        prompt: None,
+        options: None,
+    };
+    provider
+        .chat(&request)
+        .map_err(|error| RuntimeError::ExecutionFailed(error.to_string()))
+}
+
+pub(crate) fn validate_output(
+    agent_id: &str,
+    profile: &AgentProfile,
+    task: &Task,
+    response: &ModelResponse,
+) -> Result<AgentAction, RuntimeError> {
+    let parsed: StructuredOutput = serde_json::from_str(&response.content)
+        .map_err(|error| RuntimeError::InvalidOutput(error.to_string()))?;
+    let action_type = parse_action_type(&parsed.action)
+        .ok_or_else(|| RuntimeError::InvalidOutput("unknown action type".into()))?;
+    let risk = parse_risk(&parsed.risk)
+        .ok_or_else(|| RuntimeError::InvalidOutput("unknown risk".into()))?;
+    Ok(AgentAction {
+        id: format!("{agent_id}-{}", task.id),
+        task_id: task.id.clone(),
+        agent_id: agent_id.to_string(),
+        action_type,
+        reason: parsed.reason,
+        risk,
+        capabilities: profile.capabilities.clone(),
+        payload: parsed.payload,
+        expected: serde_json::json!({}),
+    })
+}
+
+pub(crate) fn submit_to_policy(action: &AgentAction) -> Result<PolicyDecision, RuntimeError> {
+    evaluate_policy(action).map_err(|error| RuntimeError::PolicyDenied(error.to_string()))?;
+    if !has_required_capability(action) {
+        return Err(RuntimeError::PolicyDenied("missing capability".into()));
+    }
+    Ok(match action.risk {
+        RiskLevel::Low => PolicyDecision::Allow,
+        RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
+            PolicyDecision::RequireApproval
+        }
+    })
 }
 
 fn parse_action_type(value: &str) -> Option<ActionType> {
