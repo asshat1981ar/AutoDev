@@ -8,6 +8,7 @@
 pub mod action;
 pub mod agent;
 pub mod architecture_evidence;
+pub mod authority;
 pub mod capability_gap;
 pub mod context;
 pub mod development_loop;
@@ -43,6 +44,7 @@ pub use architecture_evidence::{
     ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
+pub use authority::{ExecutionAuthority, GrantedCapability};
 pub use capability_gap::{
     discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
     CandidateEvaluation, CandidateKind, CapabilityCandidate, CapabilityGapError, GapKind,
@@ -59,9 +61,9 @@ pub use envelope::{
 };
 pub use error::{ExecutionError, ExecutionErrorKind};
 pub use evidence::{
-    action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
-    ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
-    ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
+    action_id_from_record, action_type_from_record, record_from, record_from_authorized, Artifact,
+    ArtifactHash, ArtifactHashAlgo, AuthorityEvidence, Evidence, EvidenceStore, ExecutionErrorInfo,
+    ExecutionRecord, ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
@@ -94,8 +96,8 @@ pub use plugin::{
     PluginUsage,
 };
 pub use policy::{
-    enforce_policy, evaluate_policy, has_required_capability, validate_action, AuthorizationGrant,
-    PolicyDecision,
+    enforce_policy, evaluate_policy, has_required_capability, required_grant,
+    trusted_execution_grants, validate_action, PolicyDecision,
 };
 pub use read::read_file;
 pub use runtime::{
@@ -118,56 +120,83 @@ pub use write::{write_file, WriteMode};
 
 use chrono::Utc;
 
-/// A validated action ready for execution, bound to a workspace and a
-/// kernel-owned authorization grant.
+/// A validated action ready for execution, bound to a workspace and kernel-owned authority.
 #[derive(Debug, Clone)]
 pub struct ExecutableAction {
     pub action: AgentAction,
     pub workspace: Workspace,
-    pub authorization: AuthorizationGrant,
+    pub authority: ExecutionAuthority,
 }
 
 impl ExecutableAction {
-    /// Construct an executable action without an approval grant.
+    /// Construct an executable action with no granted capability or approval.
     pub fn new(action: AgentAction, workspace: Workspace) -> Self {
-        ExecutableAction {
+        Self {
             action,
             workspace,
-            authorization: AuthorizationGrant::none(),
+            authority: ExecutionAuthority::none(),
         }
     }
 
-    /// Bind a trusted approval reference to this execution request.
+    /// Bind authority that was derived by trusted policy/orchestration code.
+    pub fn with_authority(
+        action: AgentAction,
+        workspace: Workspace,
+        authority: ExecutionAuthority,
+    ) -> Self {
+        Self {
+            action,
+            workspace,
+            authority,
+        }
+    }
+
+    /// Bind an explicit trusted capability set without approval.
+    pub fn with_capabilities(
+        action: AgentAction,
+        workspace: Workspace,
+        capabilities: Vec<GrantedCapability>,
+    ) -> Self {
+        Self::with_authority(action, workspace, ExecutionAuthority::granted(capabilities))
+    }
+
+    /// Bind an explicit trusted capability set and approval reference.
     pub fn with_approval(
         action: AgentAction,
         workspace: Workspace,
+        capabilities: Vec<GrantedCapability>,
         approval_ref: impl Into<String>,
     ) -> Self {
-        ExecutableAction {
+        Self::with_authority(
             action,
             workspace,
-            authorization: AuthorizationGrant::approved(approval_ref),
-        }
+            ExecutionAuthority::with_approval(capabilities, approval_ref),
+        )
     }
 }
 
 /// The top-level execution entry point.
 pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
+    enforce_policy(&exec.action, &exec.authority)?;
+    if !has_required_capability(&exec.action, &exec.authority) {
+        return Err(ExecutionError::CapabilityDenied);
+    }
+
     let mut result = match exec.action.action_type {
         ActionType::ReadFile => {
-            read::read_file_authorized(&exec.action, &exec.workspace, &exec.authorization)?
+            read::read_file_authorized(&exec.action, &exec.workspace, &exec.authority)?
         }
         ActionType::WriteFile => write::write_file_authorized(
             &exec.action,
             &exec.workspace,
             WriteMode::Atomic,
-            &exec.authorization,
+            &exec.authority,
         )?,
         ActionType::PatchFile => patch_exec::patch_file_authorized(
             &exec.action,
             &exec.workspace,
             PatchMode::Apply,
-            &exec.authorization,
+            &exec.authority,
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => execute_git_authorized(exec)?,
@@ -192,43 +221,12 @@ pub fn execute_git(
 }
 
 fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionError> {
-    let mut action = exec.action.clone();
-    if let Some(payload) = action.payload.as_object_mut() {
-        // Never trust an approval bit supplied by an agent/model payload.
-        payload.remove("approved");
-        // The legacy Git adapter currently expects an internal marker. Only the
-        // trusted kernel grant can recreate it after sanitization.
-        if exec.authorization.is_approved() {
-            payload.insert("approved".to_string(), serde_json::Value::Bool(true));
-        }
-    }
-
-    let operation = action
-        .payload
-        .get("operation")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default();
-    let capabilities = action.capabilities.clone();
-    match operation {
-        "repository_info" | "status" | "diff" | "branch" | "log" => {
-            git::run_read(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        "checkpoint" | "prepare_commit" => {
-            git::run_mutate(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        "rollback" => {
-            git::run_destructive(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        _ => git::execute_git(&action, &exec.workspace),
-    }
+    git::execute_git_authorized(&exec.action, &exec.workspace, &exec.authority)
 }
 
 /// Dry-run preview: evaluates policy without touching the filesystem.
 pub fn dry_run(action: &AgentAction) -> Result<ExecutionResult, ExecutionError> {
     evaluate_policy(action)?;
-    if !has_required_capability(action) {
-        return Err(ExecutionError::CapabilityDenied);
-    }
     let now = Utc::now();
     Ok(ExecutionResult {
         action_id: action.id.clone(),
