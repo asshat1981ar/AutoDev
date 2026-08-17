@@ -1,0 +1,10 @@
+# refactor-function.devins
+
+# DevIns: refactor function
+
+- name: refactor-function
+- description: Given a function, propose a refactor and return a patch in unified-diff format.
+- inputs:
+  - file_path: path
+  - function_selector: AST selector
+  - transformation: description

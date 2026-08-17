@@ -121,4 +121,55 @@ It also validates the Cline/Termux fabric. A development slice is not considered
 
 > Agents propose intent. Policy authorizes capabilities. Trusted components execute. Independent verifiers produce evidence. Orchestrators advance or replan from that evidence.
 
+This separation is the foundation for safe autonomous software development.
 The intent is not maximum autonomy. AutoDev favors bounded, observable, recoverable development loops whose claims can be independently verified.
+
+## Kotlin Multiplatform modules
+
+The `kotlin/` workspace contains the KMP 2.x control-plane modules. Build and
+test from the `kotlin/` directory with the Gradle wrapper (no system Gradle
+required; the wrapper auto-provisions the distribution):
+
+```bash
+cd kotlin
+./gradlew clean assemble test
+./gradlew ktlintCheck
+```
+
+| Module | Source set | Responsibility |
+| --- | --- | --- |
+| `mpp-core` | `commonMain` + `jvmMain`/`iosMain` | Code-graph extraction, platform filesystem (`expect`/`actual`), MCP tool dispatcher, AST patch review |
+| `mpp-codegraph` | `commonMain` | Symbol-graph query engine (declarations, scope membership, offset resolution) |
+| `mpp-server` | `jvmMain` | Ktor Netty server with Server-Sent Events streaming (`/health`, `/events`) |
+| `mpp-ui` | `commonMain` | Dependency-free diff/preview rendering (Nano DSL) |
+
+`commonMain` is pure: no JVM or Darwin types leak across the boundary. OS
+primitives live behind `expect`/`actual` contracts resolved per target.
+
+## Status
+
+Early architecture and foundation phase. The trusted execution, agent registry, model fabric, orchestration, verification, provenance, and first deterministic repository-context primitives are now established. APIs and module boundaries are expected to evolve while the execution protocol is integrated.
+
+## Cline Development Fabric
+
+The repository includes a Cline-native development fabric under `.cline/`. Install it into
+another repository with `python install.py --project /path/to/repo`, or inspect changes first
+with `python install.py --project /path/to/repo --dry-run`. Existing project files are skipped
+by default; `--force` creates backups before replacement. The package provides routing rules,
+progressive Skills, specialist agents, safety/context hooks, local plugin tools, and scoped
+external MCP profiles. See [.cline/README.md](.cline/README.md).
+
+## Termux Cline Kanban compatibility
+
+On Android ARM64, Cline Kanban can fail when upstream `node-pty` has no usable Android native binding. AutoDev includes a self-healing compatibility launcher that probes the installed PTY, repairs it only when needed with a pinned Android ARM64 prebuilt, verifies the native binary checksum, and then launches Kanban.
+
+```bash
+node scripts/termux-kanban.mjs --repair-only
+node scripts/termux-kanban.mjs
+```
+
+See [docs/termux-kanban.md](docs/termux-kanban.md) for diagnostics, force-repair, and shell-alias usage.
+
+## License
+
+AutoDev is released under the MIT License. See [LICENSE](LICENSE).
