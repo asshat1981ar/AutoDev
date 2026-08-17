@@ -64,10 +64,13 @@ impl RiskLevel {
     }
 }
 
-/// A capability that may be granted to an agent.
+/// A capability declared by the agent protocol or trusted profile metadata.
 ///
-/// Capabilities are declared, never inferred. Known variants map to the
-/// platform's action types plus the special `approval:critical` capability.
+/// Values carried by [`AgentAction`] are untrusted requests/declarations and
+/// never grant execution authority. Trusted policy/orchestration explicitly
+/// converts provisioned profile capabilities into [`crate::ExecutionAuthority`].
+/// Known variants map to the platform's action types plus the legacy
+/// `approval:critical` declaration.
 /// Unknown capability strings are preserved via [`Capability::Unknown`] so the
 /// protocol remains forward-compatible while still being strongly typed for
 /// the capabilities the kernel understands.
@@ -173,6 +176,8 @@ pub struct AgentAction {
     pub action_type: ActionType,
     pub reason: String,
     pub risk: RiskLevel,
+    /// Untrusted capability requests/declarations from the action producer.
+    /// Execution adapters must never use this field as authorization.
     #[serde(default)]
     pub capabilities: Vec<Capability>,
     pub payload: serde_json::Value,
