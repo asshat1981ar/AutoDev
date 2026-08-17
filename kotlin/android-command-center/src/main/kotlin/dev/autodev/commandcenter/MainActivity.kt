@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -59,12 +61,13 @@ class CommandCenterViewModel : ViewModel() {
     val state: StateFlow<CommandCenterState> = mutableState.asStateFlow()
 
     private var streamJob: Job? = null
+    private var activeCall: Call? = null
 
     fun connect(rawEndpoint: String) {
         val endpoint = rawEndpoint.trim().trimEnd('/')
         if (endpoint.isEmpty()) return
 
-        streamJob?.cancel()
+        cancelStream()
         mutableState.update {
             it.copy(endpoint = endpoint, connected = false, status = "Connecting…", events = emptyList())
         }
@@ -72,11 +75,11 @@ class CommandCenterViewModel : ViewModel() {
         streamJob =
             viewModelScope.launch(Dispatchers.IO) {
                 val request = Request.Builder().url("$endpoint/events").get().build()
+                val call = client.newCall(request)
+                activeCall = call
                 try {
-                    client.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            error("HTTP ${response.code}")
-                        }
+                    call.execute().use { response ->
+                        if (!response.isSuccessful) error("HTTP ${response.code}")
                         val source = response.body?.source() ?: error("Empty response body")
                         mutableState.update { it.copy(connected = true, status = "Connected") }
 
@@ -92,22 +95,31 @@ class CommandCenterViewModel : ViewModel() {
                         mutableState.update { it.copy(connected = false, status = "Stream closed") }
                     }
                 } catch (failure: Exception) {
-                    if (streamJob?.isCancelled == true) return@launch
-                    mutableState.update {
-                        it.copy(connected = false, status = failure.message ?: "Connection failed")
+                    if (!call.isCanceled()) {
+                        mutableState.update {
+                            it.copy(connected = false, status = failure.message ?: "Connection failed")
+                        }
                     }
+                } finally {
+                    if (activeCall === call) activeCall = null
                 }
             }
     }
 
     fun disconnect() {
-        streamJob?.cancel()
-        streamJob = null
+        cancelStream()
         mutableState.update { it.copy(connected = false, status = "Disconnected") }
     }
 
+    private fun cancelStream() {
+        activeCall?.cancel()
+        activeCall = null
+        streamJob?.cancel()
+        streamJob = null
+    }
+
     override fun onCleared() {
-        disconnect()
+        cancelStream()
         client.dispatcher.executorService.shutdown()
         super.onCleared()
     }
