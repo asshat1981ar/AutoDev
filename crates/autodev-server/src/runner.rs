@@ -30,11 +30,7 @@ pub struct RunnerExecution {
 }
 
 impl RunnerExecution {
-    pub fn new(
-        workspace: Workspace,
-        role: AgentRole,
-        verification: VerificationFactory,
-    ) -> Self {
+    pub fn new(workspace: Workspace, role: AgentRole, verification: VerificationFactory) -> Self {
         Self {
             workspace,
             role,
@@ -225,8 +221,8 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             TaskStatus::Completed => ObjectiveStatus::Completed,
             TaskStatus::Failed | TaskStatus::Cancelled => ObjectiveStatus::Failed,
         };
-        snapshot.view.blocked_reason = (root.status == TaskStatus::Blocked)
-            .then(|| "waiting for approval".to_string());
+        snapshot.view.blocked_reason =
+            (root.status == TaskStatus::Blocked).then(|| "waiting for approval".to_string());
         snapshot.view.latest_evidence_ref = snapshot
             .orchestrator
             .envelopes
