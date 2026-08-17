@@ -143,10 +143,10 @@ where
 fn join_capture(
     handle: thread::JoinHandle<io::Result<Vec<u8>>>,
 ) -> Result<Vec<u8>, RunnerError> {
-    handle
+    let captured = handle
         .join()
-        .map_err(|_| RunnerError::Io(io::Error::other("verifier capture thread panicked")))??
-        .pipe(Ok)
+        .map_err(|_| RunnerError::Io(io::Error::other("verifier capture thread panicked")))??;
+    Ok(captured)
 }
 
 fn wait_with_timeout(
@@ -196,9 +196,8 @@ fn confined_destination(root: &Path, relative: &str) -> Result<PathBuf, RunnerEr
     while let Some(path) = candidate {
         match fs::symlink_metadata(path) {
             Ok(_) => {
-                let canonical = fs::canonicalize(path).map_err(|_| {
-                    RunnerError::UnsafeOverlayDestination(relative.into())
-                })?;
+                let canonical = fs::canonicalize(path)
+                    .map_err(|_| RunnerError::UnsafeOverlayDestination(relative.into()))?;
                 if !canonical.starts_with(root) {
                     return Err(RunnerError::UnsafeOverlayDestination(relative.into()));
                 }
@@ -247,11 +246,3 @@ fn sha256(bytes: &[u8]) -> String {
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
 }
-
-trait Pipe: Sized {
-    fn pipe<T>(self, function: impl FnOnce(Self) -> T) -> T {
-        function(self)
-    }
-}
-
-impl<T> Pipe for T {}
