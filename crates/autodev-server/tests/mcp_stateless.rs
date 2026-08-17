@@ -1,8 +1,8 @@
+use autodev_server::{router, AppState};
 use axum::{
     body::{to_bytes, Body},
     http::{header, Request, StatusCode},
 };
-use autodev_server::{router, AppState};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -60,11 +60,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn server_discover_uses_modern_stateless_transport() {
     let response = router(AppState::new(None))
-        .oneshot(modern_request(
-            "discover-1",
-            "server/discover",
-            json!({}),
-        ))
+        .oneshot(modern_request("discover-1", "server/discover", json!({})))
         .await
         .expect("router response");
 
