@@ -289,3 +289,106 @@ pub fn dry_run(action: &AgentAction) -> Result<ExecutionResult, ExecutionError> 
         error: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::process::Command;
+
+    fn init_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for args in [
+            ["init", "-q"].as_slice(),
+            ["config", "user.email", "test@example.com"].as_slice(),
+            ["config", "user.name", "Test"].as_slice(),
+        ] {
+            assert!(Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success());
+        }
+        std::fs::write(dir.path().join("base.txt"), b"base").unwrap();
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["add", "-A"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap()
+            .success());
+        dir
+    }
+
+    fn git_action(operation: &str, risk: RiskLevel) -> AgentAction {
+        AgentAction {
+            id: "trusted-git".into(),
+            task_id: "task-git".into(),
+            agent_id: "release".into(),
+            action_type: ActionType::Git,
+            reason: "trusted git bridge".into(),
+            risk,
+            capabilities: vec![Capability::Git, Capability::GitDestructive],
+            payload: json!({ "operation": operation }),
+            expected: json!({}),
+        }
+    }
+
+    #[test]
+    fn trusted_git_read_authority_reaches_adapter() {
+        let dir = init_repo();
+        let workspace = Workspace::new(dir.path(), 4096).unwrap();
+        let exec = ExecutableAction::with_authority(
+            git_action("status", RiskLevel::Low),
+            workspace,
+            [Capability::Git],
+        );
+
+        let result = execute(&exec).unwrap();
+        assert_eq!(result.status, ExecutionStatus::Succeeded);
+        assert!(result.verification.unwrap()["branch"].is_string());
+    }
+
+    #[test]
+    fn trusted_git_destructive_authority_still_requires_kernel_approval() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("base.txt"), b"changed").unwrap();
+        let workspace = Workspace::new(dir.path(), 4096).unwrap();
+        let mut action = git_action("rollback", RiskLevel::High);
+        action.payload = json!({ "operation": "rollback", "command": "checkout" });
+
+        let without_approval = ExecutableAction::with_authority(
+            action.clone(),
+            workspace.clone(),
+            [Capability::GitDestructive],
+        );
+        let error = execute(&without_approval).unwrap_err();
+        assert!(matches!(error, ExecutionError::RequiresApproval));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("base.txt")).unwrap(),
+            "changed"
+        );
+
+        let approved = ExecutableAction::with_authority_and_approval(
+            action,
+            workspace,
+            [Capability::GitDestructive],
+            "approval-1",
+        );
+        let result = execute(&approved).unwrap();
+        assert_eq!(result.verification.unwrap()["rolled_back"], "checkout");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("base.txt")).unwrap(),
+            "base"
+        );
+    }
+}
