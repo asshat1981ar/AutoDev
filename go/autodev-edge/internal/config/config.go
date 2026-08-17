@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -18,6 +20,10 @@ type Config struct {
 	ObservationCapacity int
 	MaxSessions         int
 	UpstreamName        string
+	UpstreamKind        string
+	UpstreamEndpoint    string
+	UpstreamCommand     string
+	UpstreamArgs        []string
 	HTTPControl         bool
 	LocalToken          string
 }
@@ -48,6 +54,19 @@ func Load(getenv func(string) string) (Config, error) {
 	if upstreamName == "" {
 		return Config{}, fmt.Errorf("AUTODEV_EDGE_UPSTREAM_NAME is required")
 	}
+	upstreamKind := strings.TrimSpace(getenv("AUTODEV_EDGE_UPSTREAM_KIND"))
+	if upstreamKind == "" {
+		upstreamKind = "streamable_http"
+	}
+	upstreamEndpoint := strings.TrimSpace(getenv("AUTODEV_EDGE_UPSTREAM_ENDPOINT"))
+	upstreamCommand := strings.TrimSpace(getenv("AUTODEV_EDGE_UPSTREAM_COMMAND"))
+	upstreamArgs, err := parseArguments(getenv("AUTODEV_EDGE_UPSTREAM_ARGS"))
+	if err != nil {
+		return Config{}, err
+	}
+	if err := validateUpstream(upstreamKind, upstreamEndpoint, upstreamCommand); err != nil {
+		return Config{}, err
+	}
 
 	httpControl, err := boolean(getenv("AUTODEV_EDGE_HTTP_CONTROL"))
 	if err != nil {
@@ -63,6 +82,10 @@ func Load(getenv func(string) string) (Config, error) {
 		ObservationCapacity: observationCapacity,
 		MaxSessions:         maxSessions,
 		UpstreamName:        upstreamName,
+		UpstreamKind:        upstreamKind,
+		UpstreamEndpoint:    upstreamEndpoint,
+		UpstreamCommand:     upstreamCommand,
+		UpstreamArgs:        upstreamArgs,
 		HTTPControl:         httpControl,
 		LocalToken:          localToken,
 	}, nil
@@ -84,6 +107,44 @@ func validateLoopbackBind(address string) error {
 		return fmt.Errorf("AUTODEV_EDGE_BIND must use a loopback address")
 	}
 	return nil
+}
+
+func validateUpstream(kind, endpoint, command string) error {
+	switch kind {
+	case "streamable_http":
+		if endpoint == "" {
+			return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_ENDPOINT is required for streamable_http")
+		}
+		parsed, err := url.Parse(endpoint)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_ENDPOINT must be an http or https URL")
+		}
+		if command != "" {
+			return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_COMMAND must be empty for streamable_http")
+		}
+	case "command":
+		if command == "" {
+			return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_COMMAND is required for command transport")
+		}
+		if endpoint != "" {
+			return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_ENDPOINT must be empty for command transport")
+		}
+	default:
+		return fmt.Errorf("AUTODEV_EDGE_UPSTREAM_KIND must be streamable_http or command")
+	}
+	return nil
+}
+
+func parseArguments(raw string) ([]string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(value), &args); err != nil {
+		return nil, fmt.Errorf("AUTODEV_EDGE_UPSTREAM_ARGS must be a JSON string array: %w", err)
+	}
+	return args, nil
 }
 
 func positiveInt(raw string, fallback int, name string) (int, error) {
