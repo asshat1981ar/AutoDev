@@ -2,9 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use forge_core::{
-    EvalReport, EvalTaskKey,
-};
+use forge_core::{EvalReport, EvalTaskKey};
 use serde_json::{json, Value};
 
 fn bin() -> PathBuf {
@@ -22,8 +20,15 @@ fn git(repo: &Path, args: &[&str]) -> String {
         .args(args)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .to_string()
 }
 
 fn synthetic_repo() -> (tempfile::TempDir, String, String) {
@@ -36,7 +41,10 @@ fn synthetic_repo() -> (tempfile::TempDir, String, String) {
         .unwrap()
         .success());
     git(repo.path(), &["config", "user.name", "AutoDev Eval"]);
-    git(repo.path(), &["config", "user.email", "eval@autodev.invalid"]);
+    git(
+        repo.path(),
+        &["config", "user.email", "eval@autodev.invalid"],
+    );
     fs::write(repo.path().join("README.md"), "base\n").unwrap();
     git(repo.path(), &["add", "."]);
     git(repo.path(), &["commit", "-q", "-m", "base"]);
@@ -122,12 +130,12 @@ fn unknown_command_prints_usage_and_exits_two() {
 #[test]
 fn validate_prints_deterministic_five_task_summary() {
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
-    let output = run(&[
-        "validate",
-        "--fixtures",
-        fixtures.to_str().unwrap(),
-    ]);
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let output = run(&["validate", "--fixtures", fixtures.to_str().unwrap()]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["task_count"], 5);
     let ids: Vec<&str> = value["tasks"]
@@ -153,7 +161,11 @@ fn compare_prints_typed_improved_decision_and_exits_zero() {
     let dir = tempfile::tempdir().unwrap();
     let baseline = dir.path().join("baseline.json");
     let candidate = dir.path().join("candidate.json");
-    fs::write(&baseline, serde_json::to_vec_pretty(&report("baseline", 0)).unwrap()).unwrap();
+    fs::write(
+        &baseline,
+        serde_json::to_vec_pretty(&report("baseline", 0)).unwrap(),
+    )
+    .unwrap();
     fs::write(
         &candidate,
         serde_json::to_vec_pretty(&report("candidate", 10_000)).unwrap(),
@@ -167,7 +179,11 @@ fn compare_prints_typed_improved_decision_and_exits_zero() {
         "--candidate",
         candidate.to_str().unwrap(),
     ]);
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["decision"], "improved");
     assert_eq!(value["success_delta_bps"], 10_000);
@@ -186,7 +202,11 @@ fn smoke_exits_zero_only_when_base_fails_and_reference_passes() {
         "--source-repo",
         repo.path().to_str().unwrap(),
     ]);
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["results"][0]["base_passed"], false);
     assert_eq!(value["results"][0]["reference_passed"], true);
