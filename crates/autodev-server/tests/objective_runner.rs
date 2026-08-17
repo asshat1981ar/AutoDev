@@ -8,11 +8,12 @@ use std::{
 
 use autodev_server::{
     ActionProposer, FileObjectiveStore, ObjectiveRunner, ObjectiveSnapshot, ObjectiveStatus,
-    ObjectiveStore, ObjectiveView, RunnerError,
+    ObjectiveStore, ObjectiveView, RunnerError, RunnerExecution,
 };
 use forge_core::{
-    ActionProposal, ActionType, AgentAction, Capability, PolicyDecision, RiskLevel, TaskGraph,
-    TaskNode, TaskStatus, VerifiedOrchestratorState,
+    mock_verifier, ActionProposal, ActionType, AgentAction, AgentRole, Capability, PolicyDecision,
+    RiskLevel, TaskGraph, TaskNode, TaskStatus, VerificationFabric, VerificationKind,
+    VerifiedOrchestratorState, Workspace,
 };
 use tempfile::tempdir;
 use tokio::sync::broadcast;
@@ -269,5 +270,84 @@ fn runner_persists_typed_action_proposal_for_ready_task() {
     assert!(planned_action.get("approval_ref").is_none());
     assert!(planned_action["payload"].get("approved").is_none());
     assert_eq!(persisted.graph.root().status, TaskStatus::Ready);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn runner_executes_persisted_low_risk_intent_through_verified_orchestrator() {
+    let directory = tempdir().expect("temp directory");
+    let workspace_root = directory.path().join("workspace");
+    fs::create_dir_all(&workspace_root).expect("workspace directory");
+    fs::write(workspace_root.join("README.md"), b"trusted execution fixture\n")
+        .expect("workspace fixture");
+
+    let store = Arc::new(FileObjectiveStore::new(directory.path().join("state")));
+    store
+        .put(&queued_snapshot("objective-execute-1"))
+        .expect("persist queued objective");
+
+    let proposer = Arc::new(ReadFileProposer::new());
+    let (events, mut receiver) = broadcast::channel(8);
+    let workspace = Workspace::new(&workspace_root, 1024 * 1024).expect("workspace");
+    let execution = RunnerExecution::new(
+        workspace,
+        AgentRole::Developer,
+        Arc::new(|| {
+            VerificationFabric::new().with(
+                VerificationKind::UnitTests,
+                mock_verifier(VerificationKind::UnitTests, true),
+            )
+        }),
+    );
+    let runner = ObjectiveRunner::new(Arc::clone(&store), Arc::clone(&proposer), events)
+        .with_execution(execution);
+
+    runner
+        .advance_once("objective-execute-1")
+        .expect("advance to planning");
+    receiver.try_recv().expect("planning event");
+    runner
+        .advance_once("objective-execute-1")
+        .expect("advance to ready");
+    receiver.try_recv().expect("decomposition event");
+    runner
+        .advance_once("objective-execute-1")
+        .expect("persist proposal");
+    assert!(receiver.try_recv().is_err());
+
+    let view = runner
+        .advance_once("objective-execute-1")
+        .expect("execute verified attempt");
+
+    assert_eq!(proposer.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(view.status, ObjectiveStatus::Completed);
+    assert_eq!(view.current_task_id.as_deref(), Some("t-root"));
+    assert_eq!(view.current_phase.as_deref(), Some("verify"));
+    assert!(view.latest_evidence_ref.is_some());
+    assert_eq!(view.blocked_reason, None);
+
+    let persisted = store
+        .get("objective-execute-1")
+        .expect("load executed objective")
+        .expect("executed objective exists");
+    assert_eq!(persisted.view, view);
+    assert_eq!(persisted.graph.root().status, TaskStatus::Completed);
+    let envelope = persisted
+        .orchestrator
+        .envelopes
+        .get("t-root")
+        .expect("persisted execution envelope");
+    assert_eq!(envelope.policy.capabilities, vec![Capability::ReadFile]);
+    assert_eq!(envelope.evidence.produced.len(), 1);
+    assert_eq!(
+        view.latest_evidence_ref.as_deref(),
+        envelope.evidence.produced.last().map(String::as_str)
+    );
+
+    let event = receiver.try_recv().expect("completed lifecycle event");
+    assert_eq!(event.event_type, "objective_completed");
+    assert_eq!(event.status, ObjectiveStatus::Completed);
+    assert_eq!(event.phase.as_deref(), Some("verify"));
+    assert_eq!(event.evidence_ref, view.latest_evidence_ref);
     assert!(receiver.try_recv().is_err());
 }
