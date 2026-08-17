@@ -189,7 +189,8 @@ impl EvalTask {
         self.validate()?;
         let mut normalized = self.verifier.clone();
         sort_dedup(&mut normalized.asset_fingerprints);
-        let bytes = serde_json::to_vec(&normalized).expect("validated VerificationRecipe serializes");
+        let bytes =
+            serde_json::to_vec(&normalized).expect("validated VerificationRecipe serializes");
         Ok(sha256_hex(&bytes))
     }
 
@@ -225,9 +226,9 @@ fn safe_relative(value: &str) -> bool {
     let path = Path::new(value);
     !path.as_os_str().is_empty()
         && !path.is_absolute()
-        && path.components().all(|component| {
-            matches!(component, Component::Normal(_) | Component::CurDir)
-        })
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
 fn opaque_shell(step: &VerifierStep) -> bool {
@@ -241,12 +242,10 @@ fn opaque_shell(step: &VerifierStep) -> bool {
         "sh" | "bash" | "zsh" | "pwsh" | "powershell" | "cmd" | "cmd.exe"
     );
     is_shell
-        && step.args.iter().any(|arg| {
-            matches!(
-                arg.to_ascii_lowercase().as_str(),
-                "-c" | "/c" | "-command"
-            )
-        })
+        && step
+            .args
+            .iter()
+            .any(|arg| matches!(arg.to_ascii_lowercase().as_str(), "-c" | "/c" | "-command"))
 }
 
 fn rules_overlap(left: &str, right: &str) -> bool {
