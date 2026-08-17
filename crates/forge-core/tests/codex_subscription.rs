@@ -35,6 +35,62 @@ impl CodexRpcTransport for FakeTransport {
 }
 
 #[test]
+fn initialization_sends_initialize_then_initialized() {
+    let transport = FakeTransport::with_responses([json!({
+        "serverInfo": {"name": "codex-app-server", "version": "1.0.0"}
+    })]);
+    let mut client = CodexSubscriptionClient::new(transport);
+
+    client.initialize("0.1.0").expect("client initializes");
+
+    assert_eq!(
+        client.transport().calls,
+        vec![
+            (
+                "initialize".into(),
+                json!({
+                    "clientInfo": {
+                        "name": "autodev",
+                        "title": "AutoDev",
+                        "version": "0.1.0"
+                    }
+                })
+            ),
+            ("initialized".into(), json!({})),
+        ]
+    );
+}
+
+#[test]
+fn login_is_rejected_before_initialization_without_transport_io() {
+    let transport = FakeTransport::default();
+    let mut client = CodexSubscriptionClient::new(transport);
+
+    let error = client
+        .start_browser_login()
+        .expect_err("login must require initialization");
+
+    assert!(matches!(error, CodexSubscriptionError::NotInitialized));
+    assert!(client.transport().calls.is_empty());
+}
+
+#[test]
+fn repeated_initialization_is_rejected_locally() {
+    let transport = FakeTransport::with_responses([json!({
+        "serverInfo": {"name": "codex-app-server", "version": "1.0.0"}
+    })]);
+    let mut client = CodexSubscriptionClient::new(transport);
+    client.initialize("0.1.0").expect("first initialization");
+
+    let error = client
+        .initialize("0.1.0")
+        .expect_err("second initialization must fail");
+
+    assert!(matches!(error, CodexSubscriptionError::Protocol(_)));
+    assert_eq!(client.transport().calls.len(), 2);
+}
+
+#[test]
 fn browser_login_uses_managed_chatgpt_mode_only() {
     let transport = FakeTransport::with_responses([json!({
         "type": "chatgpt",
