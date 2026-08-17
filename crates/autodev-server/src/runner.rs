@@ -204,7 +204,6 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
                 Phase::Repair => "repair",
                 Phase::Checkpoint => "checkpoint",
                 Phase::Replan => "replan",
-                Phase::Done => "done",
             }
             .to_string(),
         );
