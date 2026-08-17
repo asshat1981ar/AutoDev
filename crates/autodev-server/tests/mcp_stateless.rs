@@ -10,10 +10,7 @@ fn modern_request(id: &str, method: &str, params: Value) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri("/mcp")
-        .header(
-            header::ACCEPT,
-            "application/json, text/event-stream",
-        )
+        .header(header::ACCEPT, "application/json, text/event-stream")
         .header(header::CONTENT_TYPE, "application/json")
         .header("MCP-Protocol-Version", "2026-07-28")
         .header("Mcp-Method", method)
@@ -36,7 +33,8 @@ fn modern_request(id: &str, method: &str, params: Value) -> Request<Body> {
             .as_object()
             .map(|base| {
                 let mut request = Value::Object(base.clone());
-                if let Some(request_params) = request.get_mut("params").and_then(Value::as_object_mut)
+                if let Some(request_params) =
+                    request.get_mut("params").and_then(Value::as_object_mut)
                 {
                     if let Some(extra) = params.as_object() {
                         for (key, value) in extra {
@@ -62,7 +60,11 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn server_discover_uses_modern_stateless_transport() {
     let response = router(AppState::new(None))
-        .oneshot(modern_request("discover-1", "server/discover", json!({})))
+        .oneshot(modern_request(
+            "discover-1",
+            "server/discover",
+            json!({}),
+        ))
         .await
         .expect("router response");
 
