@@ -108,7 +108,7 @@ fn public_execute_does_not_promote_requested_write_capability() {
 }
 
 #[test]
-fn execute_patches_a_file_end_to_end() {
+fn public_execute_does_not_promote_requested_patch_capability() {
     let dir = tempfile::tempdir().unwrap();
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     std::fs::write(dir.path().join("p.txt"), b"one\ntwo\nthree\n").unwrap();
@@ -121,12 +121,10 @@ fn execute_patches_a_file_end_to_end() {
         "patch": "--- a/p.txt\n+++ b/p.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n"
     });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
-    assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
+    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    assert!(matches!(err, ExecutionError::CapabilityDenied));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("p.txt")).unwrap(),
-        "one\n2nd\nthree\n"
+        "one\ntwo\nthree\n"
     );
-    let v = result.verification.unwrap();
-    assert_eq!(v["applied_hunks"], 1);
 }
