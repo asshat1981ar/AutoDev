@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "evidence_id": "ev-0004",
+  "objective_id": "obj-0004",
+  "run_id": "run-0004",
+  "task_id": "task-0004",
+  "kind": "security",
+  "status": "passed",
+  "observed_at": "2026-08-17T12:16:00Z",
+  "detail": "authority boundary review passed"
+}
