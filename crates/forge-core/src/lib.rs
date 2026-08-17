@@ -198,6 +198,7 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
             &exec.action,
             &exec.workspace,
             PatchMode::Apply,
+            &exec.authority,
             &exec.authorization,
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
