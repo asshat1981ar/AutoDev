@@ -1,0 +1,411 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e8edf2;
+  background: #0a0d12;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(78, 119, 255, 0.15), transparent 34rem),
+    #0a0d12;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.shell {
+  width: min(1440px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  gap: 32px;
+  align-items: end;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #222936;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #7f95b2;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 10px;
+  font-size: clamp(2rem, 5vw, 4.3rem);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  margin-bottom: 16px;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.lede {
+  max-width: 760px;
+  margin-bottom: 0;
+  color: #9aa8ba;
+  line-height: 1.6;
+}
+
+.connection-panel,
+.panel,
+.metric-card {
+  border: 1px solid #222936;
+  background: rgba(15, 19, 26, 0.92);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.connection-panel {
+  padding: 18px;
+}
+
+.server-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.status-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  color: #9aa8ba;
+  font-size: 0.82rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #697384;
+}
+
+.status-dot.connected {
+  background: #60d394;
+  box-shadow: 0 0 18px rgba(96, 211, 148, 0.5);
+}
+
+.status-dot.error {
+  background: #ff7b72;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.metric-card {
+  padding: 18px 20px;
+}
+
+.metric-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: #7f95b2;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.metric-card strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.side-column {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.objective-list {
+  display: grid;
+  gap: 10px;
+}
+
+.objective-card {
+  padding: 18px;
+  border: 1px solid #283141;
+  background: #10151d;
+}
+
+.objective-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.objective-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid #344054;
+  border-radius: 999px;
+  color: #b7c5d8;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.objective-status[data-status="queued"] {
+  border-color: #755f30;
+  color: #e6c76a;
+}
+
+.objective-status[data-status="running"],
+.objective-status[data-status="active"] {
+  border-color: #315d7d;
+  color: #74c0ed;
+}
+
+.objective-status[data-status="completed"],
+.objective-status[data-status="done"] {
+  border-color: #326a50;
+  color: #76d6a7;
+}
+
+.objective-id {
+  overflow: hidden;
+  color: #77869a;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.objective-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.objective-card dl div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.objective-card dt {
+  color: #718096;
+  font-size: 0.76rem;
+}
+
+.objective-card dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #bac6d4;
+  font-size: 0.84rem;
+}
+
+label {
+  display: block;
+  margin: 13px 0 6px;
+  color: #afbdcc;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.optional {
+  color: #687689;
+  font-weight: 400;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #2d3746;
+  border-radius: 0;
+  outline: none;
+  background: #0b1017;
+  color: #e7edf5;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+textarea {
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.5;
+}
+
+input:focus,
+textarea:focus {
+  border-color: #5f7fd1;
+  box-shadow: 0 0 0 3px rgba(95, 127, 209, 0.13);
+}
+
+button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  font-weight: 700;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary {
+  width: 100%;
+  margin-top: 16px;
+  background: #dce6f6;
+  color: #0c1118;
+}
+
+.primary:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.secondary {
+  border-color: #344052;
+  background: #131a24;
+  color: #c3cfdd;
+}
+
+.secondary:hover:not(:disabled) {
+  background: #1a2431;
+}
+
+.form-status,
+.empty-state {
+  margin: 12px 0 0;
+  color: #8290a2;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.form-status.error {
+  color: #ff938b;
+}
+
+.event-list {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid #222936;
+  color: #b7c3d1;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.event-list li:first-child {
+  border-top: 0;
+}
+
+.event-time {
+  color: #66768c;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-data {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .masthead,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .shell {
+    width: min(100% - 20px, 1440px);
+    padding-top: 18px;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .server-row {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-card dl div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
