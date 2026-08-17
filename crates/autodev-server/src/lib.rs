@@ -2,8 +2,9 @@ use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, State},
-    http::{HeaderMap, StatusCode},
+    extract::{DefaultBodyLimit, Request, State},
+    http::{header, HeaderMap, StatusCode},
+    middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -23,6 +24,7 @@ use uuid::Uuid;
 mod mcp;
 
 type HmacSha256 = Hmac<Sha256>;
+const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectiveRequest {
@@ -47,6 +49,7 @@ pub struct AppState {
     objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
     events: broadcast::Sender<String>,
     github_webhook_secret: Option<String>,
+    mcp_bearer_tag: Option<Arc<Vec<u8>>>,
 }
 
 impl AppState {
@@ -56,7 +59,23 @@ impl AppState {
             objectives: Arc::new(RwLock::new(BTreeMap::new())),
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
+            mcp_bearer_tag: None,
         }
+    }
+
+    /// Configure the bearer token required for the public MCP route.
+    ///
+    /// The state stores only a deterministic HMAC tag of the configured token.
+    /// An empty token keeps MCP authentication unconfigured, which makes the
+    /// `/mcp` route fail closed with `503 Service Unavailable`.
+    pub fn with_mcp_bearer_token(mut self, token: impl Into<String>) -> Self {
+        let token = token.into();
+        self.mcp_bearer_tag = if token.trim().is_empty() {
+            None
+        } else {
+            Some(Arc::new(mcp_bearer_tag(&token)))
+        };
+        self
     }
 
     async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveRecord, &'static str> {
@@ -115,10 +134,57 @@ pub fn router(state: AppState) -> Router {
         .with_state(state.clone());
 
     let mcp = Router::new()
-        .nest_service("/mcp", mcp::service(state))
-        .layer(DefaultBodyLimit::max(mcp::MCP_MAX_BODY_BYTES));
+        .nest_service("/mcp", mcp::service(state.clone()))
+        .layer(DefaultBodyLimit::max(mcp::MCP_MAX_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(state, require_mcp_bearer));
 
     api.merge(mcp)
+}
+
+async fn require_mcp_bearer(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(expected_tag) = state.mcp_bearer_tag.as_deref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "AUTODEV_MCP_BEARER_TOKEN is not configured"})),
+        )
+            .into_response();
+    };
+
+    let presented = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty());
+
+    if !presented.is_some_and(|token| verify_mcp_bearer(expected_tag, token)) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "invalid MCP bearer token"})),
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
+
+fn mcp_bearer_tag(token: &str) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY)
+        .expect("constant MCP bearer comparison key is valid");
+    mac.update(token.as_bytes());
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn verify_mcp_bearer(expected_tag: &[u8], presented: &str) -> bool {
+    let Ok(mut mac) = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY) else {
+        return false;
+    };
+    mac.update(presented.as_bytes());
+    mac.verify_slice(expected_tag).is_ok()
 }
 
 async fn health() -> Json<Value> {
@@ -260,6 +326,13 @@ mod tests {
         assert!(verify_github_signature(b"secret", Some(&signature), body));
         assert!(!verify_github_signature(b"wrong", Some(&signature), body));
         assert!(!verify_github_signature(b"secret", None, body));
+    }
+
+    #[test]
+    fn mcp_bearer_verification_is_constant_time_over_tags() {
+        let expected = mcp_bearer_tag("secret-token");
+        assert!(verify_mcp_bearer(&expected, "secret-token"));
+        assert!(!verify_mcp_bearer(&expected, "wrong-token"));
     }
 
     #[tokio::test]
