@@ -39,20 +39,19 @@ fn objective_status_serializes_as_closed_snake_case_values() {
 #[tokio::test]
 async fn created_objective_can_be_fetched_by_id_without_internal_graph_state() {
     let app = router(AppState::new(None));
-    let create =
-        Request::builder()
-            .method("POST")
-            .uri("/api/v1/objectives")
-            .header(CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                json!({
-                    "repository": "asshat1981ar/AutoDev",
-                    "description": "Implement the Working APK bridge",
-                    "branch": "autodev/test-objective"
-                })
-                .to_string(),
-            ))
-            .expect("create request");
+    let create = Request::builder()
+        .method("POST")
+        .uri("/api/v1/objectives")
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "repository": "asshat1981ar/AutoDev",
+                "description": "Implement the Working APK bridge",
+                "branch": "autodev/test-objective"
+            })
+            .to_string(),
+        ))
+        .expect("create request");
 
     let created = call(app.clone(), create).await;
     assert_eq!(created.status(), StatusCode::ACCEPTED);
@@ -65,23 +64,24 @@ async fn created_objective_can_be_fetched_by_id_without_internal_graph_state() {
     assert!(created_json.get("latest_evidence_ref").is_some());
     assert!(created_json.get("blocked_reason").is_some());
 
-    let get =
-        Request::builder()
-            .method("GET")
-            .uri(format!("/api/v1/objectives/{id}"))
-            .body(Body::empty())
-            .expect("get request");
+    let get = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/objectives/{id}"))
+        .body(Body::empty())
+        .expect("get request");
     let fetched = call(app.clone(), get).await;
     assert_eq!(fetched.status(), StatusCode::OK);
     assert_eq!(body_json(fetched).await, created_json);
 
-    let missing =
-        Request::builder()
-            .method("GET")
-            .uri("/api/v1/objectives/missing")
-            .body(Body::empty())
-            .expect("missing request");
+    let missing = Request::builder()
+        .method("GET")
+        .uri("/api/v1/objectives/missing")
+        .body(Body::empty())
+        .expect("missing request");
     let missing = call(app, missing).await;
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
-    assert_eq!(body_json(missing).await, json!({"error": "objective_not_found"}));
+    assert_eq!(
+        body_json(missing).await,
+        json!({"error": "objective_not_found"})
+    );
 }
