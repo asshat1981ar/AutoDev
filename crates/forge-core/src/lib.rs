@@ -7,6 +7,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod codex_subscription;
 pub mod context;
 pub mod development_loop;
 pub mod dispatch;
@@ -34,6 +35,10 @@ pub use action::{ActionType, AgentAction, Capability, RiskLevel};
 pub use agent::{
     default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
+};
+pub use codex_subscription::{
+    CodexAccount, CodexLoginStart, CodexRpcTransport, CodexSubscriptionClient,
+    CodexSubscriptionError,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
 pub use development_loop::{
