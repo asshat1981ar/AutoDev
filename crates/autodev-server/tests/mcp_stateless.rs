@@ -30,6 +30,11 @@ fn modern_request_with_token(
         .header(header::CONTENT_TYPE, "application/json")
         .header("MCP-Protocol-Version", "2026-07-28")
         .header("Mcp-Method", method);
+    if method == "tools/call" {
+        if let Some(name) = params.get("name").and_then(Value::as_str) {
+            builder = builder.header("Mcp-Name", name);
+        }
+    }
     if let Some(token) = token {
         builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -153,6 +158,70 @@ async fn tools_list_works_without_a_prior_discover_request() {
     assert!(names.contains(&"autodev.objectives.list"));
     assert!(names.contains(&"autodev.gaps.scan"));
     assert!(names.contains(&"autodev.action.propose"));
+}
+
+#[tokio::test]
+async fn action_proposal_is_untrusted_and_never_authorizes_execution() {
+    let response = router(secured_state())
+        .oneshot(modern_request(
+            "proposal-1",
+            "tools/call",
+            json!({
+                "name": "autodev.action.propose",
+                "arguments": {
+                    "task_id": "task-1",
+                    "agent_id": "mcp-client",
+                    "reason": "stage evaluated candidate",
+                    "path": ".cline/candidates/skills/example/SKILL.md",
+                    "content": "candidate"
+                }
+            }),
+        ))
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let text = body["result"]["content"][0]["text"]
+        .as_str()
+        .expect("proposal tool should return text content");
+    let proposal: Value = serde_json::from_str(text).expect("proposal should be AgentAction JSON");
+
+    assert_eq!(proposal["action_type"], "write_file");
+    assert_eq!(proposal["payload"]["operation"], "write_file");
+    assert_eq!(
+        proposal["payload"]["path"],
+        ".cline/candidates/skills/example/SKILL.md"
+    );
+    assert_eq!(proposal["expected"]["status"], "candidate_only");
+    assert_eq!(proposal["expected"]["execution_authorized"], false);
+    assert_eq!(proposal["payload"]["approved"], Value::Null);
+}
+
+#[tokio::test]
+async fn action_proposal_rejects_path_traversal_before_forgecore() {
+    let response = router(secured_state())
+        .oneshot(modern_request(
+            "proposal-traversal",
+            "tools/call",
+            json!({
+                "name": "autodev.action.propose",
+                "arguments": {
+                    "task_id": "task-1",
+                    "agent_id": "mcp-client",
+                    "reason": "invalid candidate",
+                    "path": "../escape",
+                    "content": "candidate"
+                }
+            }),
+        ))
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+    assert!(body["result"].is_null());
 }
 
 #[tokio::test]
