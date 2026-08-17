@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/protocols/public/v1/evidence-summary.schema.json",
+  "title": "AutoDev Evidence Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evidence_id", "objective_id", "kind", "status", "observed_at", "detail"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "evidence_id": { "type": "string", "minLength": 1 },
+    "objective_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": ["string", "null"] },
+    "kind": {
+      "type": "string",
+      "enum": ["unit_tests", "build", "lint", "static_analysis", "security", "benchmark", "device"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed", "error", "skipped"]
+    },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "detail": { "type": "string" }
+  }
+}
