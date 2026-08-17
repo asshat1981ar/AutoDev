@@ -71,6 +71,8 @@ pub struct EvalTaskKey {
 pub enum EvaluationError {
     #[error("field `{0}` must not be empty")]
     EmptyField(&'static str),
+    #[error("task id `{0}` must be a lowercase slug")]
+    InvalidTaskId(String),
     #[error("task `{0}` must contain at least one verifier step")]
     EmptyVerifier(String),
     #[error("field `{field}` contains invalid full git SHA `{value}`")]
@@ -98,6 +100,9 @@ pub enum EvaluationError {
 impl EvalTask {
     pub fn validate(&self) -> Result<(), EvaluationError> {
         required(&self.id, "id")?;
+        if !stable_slug(&self.id) {
+            return Err(EvaluationError::InvalidTaskId(self.id.clone()));
+        }
         required(&self.source.repository, "source.repository")?;
         required(&self.specification, "specification")?;
 
@@ -209,6 +214,22 @@ fn required(value: &str, field: &'static str) -> Result<(), EvaluationError> {
     } else {
         Ok(())
     }
+}
+
+fn stable_slug(value: &str) -> bool {
+    let mut segments = value.split('-');
+    let mut saw_segment = false;
+    for segment in &mut segments {
+        if segment.is_empty()
+            || !segment
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        {
+            return false;
+        }
+        saw_segment = true;
+    }
+    saw_segment
 }
 
 fn full_git_sha(value: &str) -> bool {
