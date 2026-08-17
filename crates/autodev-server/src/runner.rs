@@ -1,11 +1,11 @@
 use std::{sync::Arc, thread, time::Duration};
 
 use forge_core::{
-    default_profiles, propose_action, ActionProposal, ActionProposalError, AgentAction, AgentProfile,
-    AgentRole, Assigner, Capability, ContextRefs, Decomposer, DevelopmentLoop, EnvelopeError,
-    EvidenceBinding, ExecutionEnvelope, Lifecycle, ModelProvider, Phase, Planner, PolicyBinding,
-    PolicyDecision, Task, TaskNode, TaskStatus, VerificationContext, VerificationFabric,
-    VerifiedOrchestrator, VerifiedOrchestratorError, Workspace,
+    default_profiles, propose_action, ActionProposal, ActionProposalError, AgentAction,
+    AgentProfile, AgentRole, Assigner, Capability, ContextRefs, Decomposer, DevelopmentLoop,
+    EnvelopeError, EvidenceBinding, ExecutionEnvelope, Lifecycle, ModelProvider, Phase, Planner,
+    PolicyBinding, PolicyDecision, Task, TaskNode, TaskStatus, VerificationContext,
+    VerificationFabric, VerifiedOrchestrator, VerifiedOrchestratorError, Workspace,
 };
 use tokio::sync::broadcast;
 
@@ -76,11 +76,7 @@ pub struct ObjectiveRunner<S: ObjectiveStore, P: ActionProposer> {
 }
 
 impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
-    pub fn new(
-        store: Arc<S>,
-        proposer: Arc<P>,
-        events: broadcast::Sender<ObjectiveEvent>,
-    ) -> Self {
+    pub fn new(store: Arc<S>, proposer: Arc<P>, events: broadcast::Sender<ObjectiveEvent>) -> Self {
         Self {
             store,
             proposer,
@@ -224,7 +220,8 @@ impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
             snapshot.view.status = ObjectiveStatus::Failed;
             snapshot.view.current_task_id = Some(task.id);
             snapshot.view.current_phase = Some("policy".to_string());
-            snapshot.view.blocked_reason = Some("proposed action denied by agent policy".to_string());
+            snapshot.view.blocked_reason =
+                Some("proposed action denied by agent policy".to_string());
             return self.persist_and_emit(snapshot, "objective action denied");
         }
 
