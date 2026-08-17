@@ -254,8 +254,7 @@ mod tests {
         workspace: &Workspace,
         mode: WriteMode,
     ) -> Result<ExecutionResult, ExecutionError> {
-        let authority =
-            ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
         write_file_authorized(
             action,
             workspace,
@@ -333,12 +332,8 @@ mod tests {
     fn oversized_content_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4).unwrap();
-        let err = write_with_authority(
-            &action("a.txt", "toolongcontent"),
-            &ws,
-            WriteMode::Atomic,
-        )
-        .unwrap_err();
+        let err = write_with_authority(&action("a.txt", "toolongcontent"), &ws, WriteMode::Atomic)
+            .unwrap_err();
         assert!(matches!(err, ExecutionError::OversizedFile(_, 4)));
     }
 
@@ -366,8 +361,8 @@ mod tests {
             std::fs::write(&outside, b"secret").unwrap();
             std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
             let ws = Workspace::new(&root, 4096).unwrap();
-            let err = write_with_authority(&action("link.txt", "x"), &ws, WriteMode::Atomic)
-                .unwrap_err();
+            let err =
+                write_with_authority(&action("link.txt", "x"), &ws, WriteMode::Atomic).unwrap_err();
             assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
         }
     }
@@ -389,16 +384,8 @@ mod tests {
         let mut a = action("a.txt", "x");
         a.risk = RiskLevel::High;
         let grant = AuthorizationGrant::approved("approval-1");
-        let authority =
-            ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
-        let result = write_file_authorized(
-            &a,
-            &ws,
-            WriteMode::Atomic,
-            &authority,
-            &grant,
-        )
-        .unwrap();
+        let authority = ExecutionAuthority::from_trusted_capabilities([Capability::WriteFile]);
+        let result = write_file_authorized(&a, &ws, WriteMode::Atomic, &authority, &grant).unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
