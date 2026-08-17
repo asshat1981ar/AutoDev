@@ -24,7 +24,7 @@ use uuid::Uuid;
 mod mcp;
 pub mod public_protocol;
 
-use public_protocol::PublicObjectiveEvent;
+use public_protocol::{PublicObjectiveCreate, PublicObjectiveEvent, PublicObjectiveSummary};
 
 type HmacSha256 = Hmac<Sha256>;
 const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
@@ -183,17 +183,26 @@ async fn health() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
-async fn list_objectives(State(state): State<AppState>) -> Json<Vec<ObjectiveRecord>> {
+async fn list_objectives(State(state): State<AppState>) -> Json<Vec<PublicObjectiveSummary>> {
     let objectives = state.objectives.read().await;
-    Json(objectives.values().cloned().collect())
+    Json(objectives.values().map(PublicObjectiveSummary::from).collect())
 }
 
 async fn create_objective(
     State(state): State<AppState>,
-    Json(request): Json<ObjectiveRequest>,
+    Json(request): Json<PublicObjectiveCreate>,
 ) -> Response {
+    let request = ObjectiveRequest {
+        repository: request.repository,
+        description: request.description,
+        branch: request.branch,
+    };
     match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
+        Ok(record) => (
+            StatusCode::ACCEPTED,
+            Json(PublicObjectiveSummary::from(&record)),
+        )
+            .into_response(),
         Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
     }
 }
