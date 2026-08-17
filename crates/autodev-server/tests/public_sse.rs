@@ -18,7 +18,7 @@ fn decode_sse_data(frame: Bytes) -> Value {
 
 #[tokio::test]
 async fn objective_queue_event_uses_public_v1_envelope() {
-    let app = router(AppState::new(Some("secret".to_string()), None));
+    let app = router(AppState::new(Some("secret".to_string())));
 
     let stream_response = app
         .clone()
