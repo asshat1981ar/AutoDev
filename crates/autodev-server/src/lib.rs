@@ -362,7 +362,6 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/webhooks/github")
-                    .header("x-hub-signature-256", "sha256=bad")
                     .header("x-github-event", "issues")
                     .body(Body::from("{}"))
                     .expect("request"),
