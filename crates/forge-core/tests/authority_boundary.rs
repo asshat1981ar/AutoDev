@@ -1,7 +1,8 @@
 //! Adversarial tests for the trust boundary between model intent and kernel authority.
 
 use forge_core::{
-    action::AgentAction, read_file, write_file, ExecutionError, Workspace, WriteMode,
+    action::AgentAction, patch_file, read_file, write_file, ExecutionError, PatchMode, Workspace,
+    WriteMode,
 };
 use serde_json::json;
 
@@ -73,4 +74,33 @@ fn requested_capabilities_do_not_authorize_read_execution() {
         .expect_err("requested capability must not authorize read execution");
 
     assert!(matches!(error, ExecutionError::CapabilityDenied));
+}
+
+#[test]
+fn requested_capabilities_do_not_authorize_patch_execution() {
+    let dir = tempfile::tempdir().expect("temporary workspace");
+    let workspace = Workspace::new(dir.path(), 4096).expect("workspace");
+    let target = dir.path().join("target.txt");
+    std::fs::write(&target, b"one\ntwo\n").expect("fixture");
+    let requested = json!({
+        "id": "requested-patch",
+        "task_id": "task-1",
+        "agent_id": "untrusted-agent",
+        "type": "patch_file",
+        "reason": "request patch authority",
+        "risk": "low",
+        "requested_capabilities": ["patch_file"],
+        "payload": {
+            "path": "target.txt",
+            "patch": "--- a/target.txt\n+++ b/target.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+changed\n"
+        },
+        "expected": {}
+    });
+    let action: AgentAction = serde_json::from_value(requested).expect("valid intent");
+
+    let error = patch_file(&action, &workspace, PatchMode::Apply)
+        .expect_err("requested capability must not authorize patch execution");
+
+    assert!(matches!(error, ExecutionError::CapabilityDenied));
+    assert_eq!(std::fs::read_to_string(target).expect("target"), "one\ntwo\n");
 }
