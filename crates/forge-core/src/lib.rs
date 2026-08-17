@@ -43,8 +43,9 @@ pub use architecture_evidence::{
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
 pub use architecture_lease::{
-    ApprovalReference, ApprovalReferenceKind, EffectivePolicy, LeasePolicyDefinition,
-    LeasePolicyError, LeasePolicyRegistry, LeaseRule, PolicyRelaxation, RepositoryApprovalEvidence,
+    evaluate_lease, ApprovalReference, ApprovalReferenceKind, EffectivePolicy, LeaseEvaluation,
+    LeaseEvaluationReason, LeaseEvaluationStatus, LeasePolicyDefinition, LeasePolicyError,
+    LeasePolicyRegistry, LeaseRule, PolicyRelaxation, RefreshProposal, RepositoryApprovalEvidence,
     RepositoryPolicyOverride, RevalidationMode, RiskTier,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
