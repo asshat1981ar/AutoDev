@@ -1,7 +1,7 @@
 use std::{sync::Arc, thread, time::Duration};
 
 use forge_core::{
-    default_profiles, propose_action, ActionProposal, ActionProposalError, AgentAction,
+    default_profiles, propose_action, ActionProposal, ActionProposalError, ActionType, AgentAction,
     AgentProfile, AgentRole, Assigner, Capability, ContextRefs, Decomposer, DevelopmentLoop,
     EnvelopeError, EvidenceBinding, ExecutionEnvelope, Lifecycle, ModelProvider, Phase, Planner,
     PolicyBinding, PolicyDecision, Task, TaskNode, TaskStatus, VerificationContext,
@@ -358,15 +358,43 @@ fn trusted_capabilities_for_task(
         .as_ref()
         .ok_or_else(|| RunnerError::MissingPlannedAction(task.id.clone()))?;
     let action: AgentAction = serde_json::from_value(serialized.clone())?;
-    match Capability::for_action(action.action_type) {
-        Some(required) if profile.may(&required, action.risk) => Ok(vec![required]),
-        Some(required) => Err(RunnerError::AgentCapabilityDenied {
+    let tool = action.action_type.as_str();
+    if !profile.policy.tools.iter().any(|allowed| allowed == tool) {
+        return Err(RunnerError::AgentToolDenied {
             role: profile.role,
-            capability: required,
-            risk: action.risk,
-        }),
-        None => Ok(vec![]),
+            tool: tool.to_string(),
+        });
     }
+
+    let required = required_capabilities_for_action(&action);
+    for capability in &required {
+        if !profile.may(capability, action.risk) {
+            return Err(RunnerError::AgentCapabilityDenied {
+                role: profile.role,
+                capability: capability.clone(),
+                risk: action.risk,
+            });
+        }
+    }
+    Ok(required)
+}
+
+fn required_capabilities_for_action(action: &AgentAction) -> Vec<Capability> {
+    let mut required = Capability::for_action(action.action_type)
+        .into_iter()
+        .collect::<Vec<_>>();
+    if action.action_type == ActionType::Git {
+        match action
+            .payload
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("checkpoint" | "prepare_commit") => required.push(Capability::GitWrite),
+            Some("rollback") => required.push(Capability::GitDestructive),
+            _ => {}
+        }
+    }
+    required
 }
 
 fn execution_envelope_from_task(
@@ -512,6 +540,8 @@ pub enum RunnerError {
     MissingPlannedAction(String),
     #[error("agent profile '{0:?}' was not found")]
     AgentProfileNotFound(AgentRole),
+    #[error("agent profile '{role:?}' does not allow tool '{tool}'")]
+    AgentToolDenied { role: AgentRole, tool: String },
     #[error("agent profile '{role:?}' cannot grant {capability:?} at {risk:?} risk")]
     AgentCapabilityDenied {
         role: AgentRole,
