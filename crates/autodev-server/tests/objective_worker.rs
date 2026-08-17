@@ -43,9 +43,10 @@ async fn worker_cycles_newly_posted_objective_without_second_http_request() {
             mock_verifier(VerificationKind::UnitTests, true),
         )
     });
-    let runner = ObjectiveRunner::new(store.clone(), proposer, state.event_sender()).with_execution(
-        RunnerExecution::new(workspace, AgentRole::Developer, verification),
-    );
+    let runner =
+        ObjectiveRunner::new(store.clone(), proposer, state.event_sender()).with_execution(
+            RunnerExecution::new(workspace, AgentRole::Developer, verification),
+        );
 
     let response = router(state)
         .oneshot(
