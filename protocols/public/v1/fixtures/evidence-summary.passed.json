@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "evidence_id": "ev-0001",
+  "objective_id": "obj-0001",
+  "run_id": "run-0001",
+  "task_id": "task-0001",
+  "kind": "unit_tests",
+  "status": "passed",
+  "observed_at": "2026-08-17T12:05:00Z",
+  "detail": "42 tests passed"
+}
