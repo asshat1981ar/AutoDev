@@ -193,12 +193,13 @@ async fn create_objective<S: ObjectiveStore>(
 async fn event_stream<S: ObjectiveStore>(
     State(state): State<AppState<S>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let stream = BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
-        Ok(event) => serde_json::to_string(&event)
-            .ok()
-            .map(|data| Ok(Event::default().data(data))),
-        Err(_) => None,
-    });
+    let stream =
+        BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
+            Ok(event) => serde_json::to_string(&event)
+                .ok()
+                .map(|data| Ok(Event::default().data(data))),
+            Err(_) => None,
+        });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -353,7 +354,10 @@ mod tests {
 
         let snapshots = state.store.load_all().expect("stored objectives");
         let snapshot = snapshots.first().expect("queued objective");
-        assert_eq!(snapshot.graph.root().description, "Implement health endpoint");
+        assert_eq!(
+            snapshot.graph.root().description,
+            "Implement health endpoint"
+        );
         assert_eq!(snapshot.view.status, ObjectiveStatus::Queued);
     }
 
