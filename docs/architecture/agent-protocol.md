@@ -36,12 +36,14 @@ Orchestrator
 
 1. Agent output is intent, not authority.
 2. Every action has an explicit type, reason, risk level and task identity.
-3. Capabilities are declared rather than inferred from arbitrary shell text.
-4. High-risk operations must be policy-controlled.
-5. Execution produces durable evidence.
-6. Verification is separate from generation.
-7. Actions must be traceable to a task and agent.
-8. The protocol must remain language-neutral so Kotlin, Rust, Go and future clients can interoperate.
+3. Capabilities in `AgentAction` are untrusted requests/declarations, never authority.
+4. Effective execution capabilities are derived by trusted policy/orchestration and carried separately as kernel-owned `ExecutionAuthority`.
+5. Approval is evidence, not a capability or payload flag; model-supplied `approval:critical` / `approved` values cannot authorize execution.
+6. High-risk operations must be policy-controlled.
+7. Execution produces durable evidence, including the trusted authority actually used.
+8. Verification is separate from generation.
+9. Actions must be traceable to a task and agent.
+10. The protocol must remain language-neutral so Kotlin, Rust, Go and future clients can interoperate.
 
 ## Initial action types
 
