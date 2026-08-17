@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "id": "obj-0003",
+  "repository": "owner/repo",
+  "description": "Apply protected change",
+  "branch": "autodev/objective-obj0003",
+  "status": "blocked"
+}
