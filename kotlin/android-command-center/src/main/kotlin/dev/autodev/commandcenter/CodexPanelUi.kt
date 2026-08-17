@@ -46,8 +46,7 @@ fun interface CodexUrlLauncher {
 class CodexBrowserAction(
     private val launcher: CodexUrlLauncher,
 ) {
-    fun open(prompt: CodexLoginPrompt?): Boolean =
-        openUrl((prompt as? CodexLoginPrompt.Browser)?.authUrl)
+    fun open(prompt: CodexLoginPrompt?): Boolean = openUrl((prompt as? CodexLoginPrompt.Browser)?.authUrl)
 
     fun openUrl(url: String?): Boolean {
         val candidate = url ?: return false
