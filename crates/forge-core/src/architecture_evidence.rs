@@ -87,10 +87,8 @@ impl EvidenceRecord {
         let claim = required(claim.into(), "claim")?;
         let source_system = required(source_system.into(), "source_system")?;
         let source_reference = required(source_reference.into(), "source_reference")?;
-        let invalidation_condition = required(
-            invalidation_condition.into(),
-            "invalidation_condition",
-        )?;
+        let invalidation_condition =
+            required(invalidation_condition.into(), "invalidation_condition")?;
         if normalized_content.trim().is_empty() {
             return Err(ArchitectureEvidenceError::EmptyField("normalized_content"));
         }
@@ -194,7 +192,11 @@ impl ArchitectureDecision {
         required_ref(&self.selected_option, "selected_option")?;
         required_ref(&self.rationale, "rationale")?;
 
-        if !self.alternatives.iter().any(|alternative| alternative.rejected) {
+        if !self
+            .alternatives
+            .iter()
+            .any(|alternative| alternative.rejected)
+        {
             return Err(ArchitectureEvidenceError::MissingRejectedAlternative(
                 self.id.clone(),
             ));
@@ -376,8 +378,12 @@ pub fn render_architecture_report(
             .expect("writing to String cannot fail");
         writeln!(report, "- Source reference: `{}`", record.source_reference)
             .expect("writing to String cannot fail");
-        writeln!(report, "- Observed at: `{}`", record.observed_at.to_rfc3339())
-            .expect("writing to String cannot fail");
+        writeln!(
+            report,
+            "- Observed at: `{}`",
+            record.observed_at.to_rfc3339()
+        )
+        .expect("writing to String cannot fail");
         writeln!(report, "- Confidence: {}", record.confidence)
             .expect("writing to String cannot fail");
         writeln!(report, "- Fingerprint: `{}`", record.content_fingerprint)
@@ -408,14 +414,22 @@ pub fn render_architecture_report(
             decision.reversibility.as_str()
         )
         .expect("writing to String cannot fail");
-        writeln!(report, "- Evidence refs: {}", decision.evidence_refs.join(", "))
-            .expect("writing to String cannot fail");
+        writeln!(
+            report,
+            "- Evidence refs: {}",
+            decision.evidence_refs.join(", ")
+        )
+        .expect("writing to String cannot fail");
         for alternative in decision.alternatives {
             writeln!(
                 report,
                 "- Alternative: {} — {} — {}",
                 alternative.name,
-                if alternative.rejected { "rejected" } else { "selected" },
+                if alternative.rejected {
+                    "rejected"
+                } else {
+                    "selected"
+                },
                 alternative.rationale
             )
             .expect("writing to String cannot fail");
