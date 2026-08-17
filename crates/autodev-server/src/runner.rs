@@ -22,11 +22,7 @@ pub struct ObjectiveRunner<S: ObjectiveStore, P: ActionProposer> {
 }
 
 impl<S: ObjectiveStore, P: ActionProposer> ObjectiveRunner<S, P> {
-    pub fn new(
-        store: Arc<S>,
-        proposer: Arc<P>,
-        events: broadcast::Sender<ObjectiveEvent>,
-    ) -> Self {
+    pub fn new(store: Arc<S>, proposer: Arc<P>, events: broadcast::Sender<ObjectiveEvent>) -> Self {
         Self {
             store,
             _proposer: proposer,
