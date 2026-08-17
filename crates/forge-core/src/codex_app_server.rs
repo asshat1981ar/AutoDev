@@ -102,9 +102,10 @@ impl<R: BufRead, W: Write> JsonlCodexTransport<R, W> {
 impl<R: BufRead, W: Write> CodexRpcTransport for JsonlCodexTransport<R, W> {
     fn request(&mut self, method: &str, params: Value) -> Result<Value, CodexSubscriptionError> {
         let id = self.next_id;
-        self.next_id = self.next_id.checked_add(1).ok_or_else(|| {
-            CodexSubscriptionError::Protocol("request id space exhausted".into())
-        })?;
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| CodexSubscriptionError::Protocol("request id space exhausted".into()))?;
 
         self.write_message(&json!({
             "id": id,
