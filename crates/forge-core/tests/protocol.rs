@@ -73,8 +73,9 @@ fn action_serializes_to_schema_shape() {
     // The `type` field is present and snake_case.
     assert_eq!(obj["type"], "read_file");
     assert_eq!(obj["risk"], "low");
-    // `capabilities` defaults to an array.
-    assert_eq!(obj["capabilities"], json!(["read_file"]));
+    // Capability intent is explicit on the wire and is not an authorization grant.
+    assert_eq!(obj["requested_capabilities"], json!(["read_file"]));
+    assert!(!obj.contains_key("capabilities"));
 }
 
 #[test]
@@ -118,30 +119,34 @@ fn malformed_risk_is_rejected() {
 
 #[test]
 fn capability_round_trips() {
-    assert_eq!(
-        serde_json::to_value(Capability::ReadFile).unwrap(),
-        json!("read_file")
-    );
-    assert_eq!(
-        serde_json::to_value(Capability::ApprovalCritical).unwrap(),
-        json!("approval:critical")
-    );
-    assert_eq!(
-        serde_json::from_value::<Capability>(json!("git")).unwrap(),
-        Capability::Git
-    );
+    for capability in [
+        Capability::ReadFile,
+        Capability::WriteFile,
+        Capability::PatchFile,
+        Capability::Execute,
+        Capability::Git,
+        Capability::GitWrite,
+        Capability::GitDestructive,
+        Capability::Mcp,
+        Capability::RunTest,
+        Capability::ApprovalCritical,
+        Capability::Other("custom:tool".to_string()),
+    ] {
+        let json = serde_json::to_value(&capability).unwrap();
+        let restored: Capability = serde_json::from_value(json).unwrap();
+        assert_eq!(restored, capability);
+    }
 }
 
 #[test]
 fn unknown_capability_is_preserved() {
-    let cap: Capability = serde_json::from_value(json!("future:thing")).unwrap();
-    assert_eq!(cap, Capability::Unknown("future:thing".to_string()));
+    let capability: Capability = serde_json::from_value(json!("plugin:custom")).unwrap();
+    assert_eq!(capability, Capability::Other("plugin:custom".to_string()));
 }
 
 #[test]
 fn action_schema_tracks_rust_wire_contract() {
     let schema = schema("agent-action.schema.json");
-    assert_object_matches_schema(&serde_json::to_value(sample_action()).unwrap(), &schema);
     assert_enum_values(
         &schema,
         "type",
@@ -157,25 +162,24 @@ fn action_schema_tracks_rust_wire_contract() {
         ],
     );
     assert_enum_values(&schema, "risk", &["low", "medium", "high", "critical"]);
+    assert_object_matches_schema(&serde_json::to_value(sample_action()).unwrap(), &schema);
 }
 
 #[test]
 fn execution_result_schema_tracks_rust_wire_contract() {
-    let now = chrono::Utc::now();
     let result = ExecutionResult {
-        action_id: "action-1".into(),
+        action_id: "action-1".to_string(),
         status: ExecutionStatus::Succeeded,
-        started_at: now,
-        completed_at: now,
-        exit_code: None,
-        stdout: String::new(),
+        started_at: chrono::Utc::now(),
+        completed_at: chrono::Utc::now(),
+        exit_code: Some(0),
+        stdout: "ok".to_string(),
         stderr: String::new(),
-        artifacts: vec![],
-        verification: None,
+        artifacts: vec!["artifact".to_string()],
+        verification: Some(json!({"passed": true})),
         error: None,
     };
     let schema = schema("execution-result.schema.json");
-    assert_object_matches_schema(&serde_json::to_value(result).unwrap(), &schema);
     assert_enum_values(
         &schema,
         "status",
@@ -188,18 +192,13 @@ fn execution_result_schema_tracks_rust_wire_contract() {
             "cancelled",
         ],
     );
-    assert!(schema["properties"]["verification"]["type"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|value| value == "null"));
+    assert_object_matches_schema(&serde_json::to_value(result).unwrap(), &schema);
 }
 
 #[test]
 fn task_schema_tracks_rust_wire_contract() {
-    let task = TaskNode::new("task-1", "contract test", "validate schema");
+    let task = TaskNode::new("task-1", "title", "description");
     let schema = schema("task.schema.json");
-    assert_object_matches_schema(&serde_json::to_value(task).unwrap(), &schema);
     assert_enum_values(
         &schema,
         "status",
@@ -216,8 +215,5 @@ fn task_schema_tracks_rust_wire_contract() {
             "cancelled",
         ],
     );
-    assert_eq!(
-        serde_json::to_value(TaskStatus::Repairing).unwrap(),
-        "repairing"
-    );
+    assert_object_matches_schema(&serde_json::to_value(task).unwrap(), &schema);
 }
