@@ -265,7 +265,10 @@ impl DelegatedTask {
         hash_component(
             &mut hasher,
             "parent_task_id",
-            self.parent_task_id.as_deref().unwrap_or_default().as_bytes(),
+            self.parent_task_id
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
         );
         hash_component(
             &mut hasher,
@@ -273,11 +276,7 @@ impl DelegatedTask {
             self.assignment.agent_id.as_bytes(),
         );
         for capability in &self.assignment.capabilities {
-            hash_component(
-                &mut hasher,
-                "assignment.capability",
-                capability.as_bytes(),
-            );
+            hash_component(&mut hasher, "assignment.capability", capability.as_bytes());
         }
         hash_component(&mut hasher, "class", self.class.wire_name().as_bytes());
         for capability in &self.required_capabilities {
@@ -318,14 +317,22 @@ pub enum DelegationBlockReason {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum DelegatedOutcome {
-    Completed { output: DelegatedOutput },
+    Completed {
+        output: DelegatedOutput,
+    },
     Blocked {
         reason: DelegationBlockReason,
         detail: String,
     },
-    Failed { detail: String },
-    TimedOut { timeout_ms: u64 },
-    Cancelled { detail: String },
+    Failed {
+        detail: String,
+    },
+    TimedOut {
+        timeout_ms: u64,
+    },
+    Cancelled {
+        detail: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -428,8 +435,9 @@ fn canonical_json(value: &Value) -> String {
         Value::Null => "null".to_owned(),
         Value::Bool(value) => value.to_string(),
         Value::Number(value) => value.to_string(),
-        Value::String(value) => serde_json::to_string(value)
-            .expect("serializing a JSON string to String cannot fail"),
+        Value::String(value) => {
+            serde_json::to_string(value).expect("serializing a JSON string to String cannot fail")
+        }
         Value::Array(values) => {
             let inner = values
                 .iter()
