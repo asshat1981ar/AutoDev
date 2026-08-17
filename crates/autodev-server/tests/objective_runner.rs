@@ -68,7 +68,7 @@ impl CountingProposer {
 impl ActionProposer for CountingProposer {
     fn propose(&self, _task: &TaskNode) -> Result<ActionProposal, RunnerError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        panic!("queued -> planning must not request an action proposal")
+        panic!("planning preparation must not request an action proposal")
     }
 }
 
@@ -139,6 +139,48 @@ fn runner_advances_queued_objective_to_persisted_planning_without_proposal() {
     let event = receiver.try_recv().expect("planning event");
     assert_eq!(event.event_type, "objective_planning");
     assert_eq!(event.objective_id, "objective-plan-1");
+    assert_eq!(event.status, ObjectiveStatus::Planning);
+    assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn runner_decomposes_planning_root_to_ready_without_proposal() {
+    let directory = tempdir().expect("temp directory");
+    let store = Arc::new(FileObjectiveStore::new(directory.path()));
+    store
+        .put(&queued_snapshot("objective-plan-2"))
+        .expect("persist queued objective");
+
+    let proposer = Arc::new(CountingProposer::new());
+    let (events, mut receiver) = broadcast::channel(8);
+    let runner = ObjectiveRunner::new(Arc::clone(&store), Arc::clone(&proposer), events);
+
+    runner
+        .advance_once("objective-plan-2")
+        .expect("advance to planning");
+    receiver.try_recv().expect("planning event");
+
+    let view = runner
+        .advance_once("objective-plan-2")
+        .expect("decompose planning objective");
+
+    assert_eq!(view.status, ObjectiveStatus::Planning);
+    assert_eq!(view.current_task_id.as_deref(), Some("t-root"));
+    assert_eq!(view.current_phase.as_deref(), Some("decompose"));
+    assert_eq!(proposer.calls.load(Ordering::SeqCst), 0);
+
+    let persisted = store
+        .get("objective-plan-2")
+        .expect("load decomposed objective")
+        .expect("decomposed objective exists");
+    assert_eq!(persisted.view, view);
+    assert_eq!(persisted.graph.root().status, TaskStatus::Ready);
+    assert_eq!(persisted.graph.log.len(), 2);
+    assert_eq!(persisted.graph.log[1].phase, "DECOMPOSE");
+
+    let event = receiver.try_recv().expect("decomposition lifecycle event");
+    assert_eq!(event.event_type, "objective_planning");
+    assert_eq!(event.phase.as_deref(), Some("decompose"));
     assert_eq!(event.status, ObjectiveStatus::Planning);
     assert!(receiver.try_recv().is_err());
 }
