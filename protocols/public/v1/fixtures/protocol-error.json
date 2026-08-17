@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "code": "invalid_request",
+  "message": "repository is required",
+  "retryable": false,
+  "correlation_id": "obj-0001"
+}
