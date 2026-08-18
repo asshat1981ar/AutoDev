@@ -68,3 +68,14 @@ temp/
 *.p12
 *.jks
 secrets/
+
+# Generated / ephemeral — not versioned (harness memory + blueprint caches)
+data/
+docs/codebase/
+docs/workflow-blueprint.md
+wiki/
+memory/
+.cline/candidates/
+.cline/skills/*/
+!.cline/skills/.gitkeep
+
