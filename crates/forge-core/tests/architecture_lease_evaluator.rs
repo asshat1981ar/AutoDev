@@ -145,10 +145,7 @@ fn high_risk_expired_evidence_requires_explicit_revalidation() {
     .unwrap();
 
     assert_eq!(result.status, LeaseEvaluationStatus::RevalidationRequired);
-    assert_eq!(
-        result.reason,
-        LeaseEvaluationReason::HighRiskReviewRequired
-    );
+    assert_eq!(result.reason, LeaseEvaluationReason::HighRiskReviewRequired);
 }
 
 #[test]
@@ -156,11 +153,7 @@ fn unchanged_low_risk_refresh_can_renew_automatically_after_expiry() {
     let evidence = evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(12, 0, 0));
-    let proposal = refresh(
-        &evidence,
-        evidence("ev-2", "obj-1", "same content"),
-        "v1",
-    );
+    let proposal = refresh(&evidence, evidence("ev-2", "obj-1", "same content"), "v1");
 
     let result = evaluate_lease(
         &evidence,
@@ -182,11 +175,7 @@ fn changed_source_version_requires_revalidation() {
     let evidence = evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
-    let proposal = refresh(
-        &evidence,
-        evidence("ev-2", "obj-1", "same content"),
-        "v2",
-    );
+    let proposal = refresh(&evidence, evidence("ev-2", "obj-1", "same content"), "v2");
 
     let result = evaluate_lease(
         &evidence,
@@ -362,11 +351,7 @@ fn refresh_proposal_cannot_overwrite_previous_evidence_record() {
     let evidence = evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
-    let proposal = refresh(
-        &evidence,
-        evidence("ev-1", "obj-1", "same content"),
-        "v1",
-    );
+    let proposal = refresh(&evidence, evidence("ev-1", "obj-1", "same content"), "v1");
 
     assert_eq!(
         evaluate_lease(
