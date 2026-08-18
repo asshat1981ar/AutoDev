@@ -15,8 +15,15 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 
+def _normalize_path(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
 def classify_path(path: str) -> str:
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = _normalize_path(path)
     if normalized.startswith("crates/forge-core/"):
         return "authority-core"
     if normalized.startswith(".github/workflows/"):
@@ -42,7 +49,7 @@ def analyze_pr_overlaps(changed_paths: Mapping[int, Iterable[str]]) -> dict:
     for number, paths in changed_paths.items():
         pr_number = int(number)
         for path in set(paths):
-            normalized = path.replace("\\", "/").lstrip("./")
+            normalized = _normalize_path(path)
             if normalized:
                 owners[normalized].add(pr_number)
 
