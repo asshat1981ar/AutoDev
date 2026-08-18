@@ -45,8 +45,9 @@ pub use architecture_evidence::{
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
 pub use architecture_lease::{
-    ArchitectureLeaseError, EffectivePolicy, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule,
-    RevalidationMode, RiskTier,
+    ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError, EffectivePolicy,
+    LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule, PolicyRelaxation,
+    RepositoryApprovalEvidence, RepositoryPolicyOverride, RevalidationMode, RiskTier,
 };
 pub use capability_gap::{
     discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
