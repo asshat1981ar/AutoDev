@@ -190,12 +190,7 @@ fn wait_with_timeout(
         }
 
         if started.elapsed() >= timeout {
-            return terminate_for_timeout(
-                child,
-                exit_status.take(),
-                stdout_reader,
-                stderr_reader,
-            );
+            return terminate_for_timeout(child, exit_status.take(), stdout_reader, stderr_reader);
         }
 
         thread::sleep(POLL_INTERVAL);
