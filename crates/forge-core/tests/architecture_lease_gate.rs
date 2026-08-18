@@ -151,14 +151,9 @@ fn expired_attestation_is_ineligible_without_rewriting_historical_maturity() {
     let decision = decision(&record.id, DecisionMaturity::Verified);
     let (evidence, attestations, policies) = maps(record, policy, attestation);
 
-    let result = evaluate_current_verification(
-        &decision,
-        &evidence,
-        &attestations,
-        &policies,
-        ts(12, 0, 2),
-    )
-    .unwrap();
+    let result =
+        evaluate_current_verification(&decision, &evidence, &attestations, &policies, ts(12, 0, 2))
+            .unwrap();
 
     assert_eq!(result.status, CurrentVerificationStatus::Ineligible);
     assert_eq!(result.ineligible_evidence_ids, vec!["ev-current"]);
@@ -190,19 +185,11 @@ fn renewed_attestation_restores_current_eligibility() {
     let decision = decision(&record.id, DecisionMaturity::Verified);
     let evidence = BTreeMap::from([(record.id.clone(), record.clone())]);
     let policies = BTreeMap::from([(policy.id.clone(), policy.clone())]);
-    let expired = BTreeMap::from([(
-        expired_attestation.evidence_id.clone(),
-        expired_attestation,
-    )]);
+    let expired = BTreeMap::from([(expired_attestation.evidence_id.clone(), expired_attestation)]);
 
-    let stale = evaluate_current_verification(
-        &decision,
-        &evidence,
-        &expired,
-        &policies,
-        ts(12, 0, 2),
-    )
-    .unwrap();
+    let stale =
+        evaluate_current_verification(&decision, &evidence, &expired, &policies, ts(12, 0, 2))
+            .unwrap();
     assert_eq!(stale.status, CurrentVerificationStatus::Ineligible);
 
     let next = evidence_record_for_renewal(&record);
