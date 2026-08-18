@@ -74,6 +74,22 @@ jobs:
           path: kotlin/android-command-center/build/outputs/apk/debug/android-command-center-debug.apk
           if-no-files-found: error
 
+  harness:
+    name: Harness - drift, reproducible gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Harness drift (docs ↔ CI)
+        run: python scripts/check_harness_drift.py --verbose
+      - name: Reproducible verification (offline-capable)
+        run: bash scripts/verify_reproducible.sh
+
   python:
     name: Python - compile & test
     runs-on: ubuntu-latest

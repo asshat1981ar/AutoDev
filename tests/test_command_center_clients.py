@@ -98,12 +98,18 @@ class CommandCenterClientTests(unittest.TestCase):
         cls.thread.join(timeout=2)
 
     def run_cli(self, *args):
+        env = {
+            **__import__("os").environ,
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+        }
         return subprocess.run(
             [sys.executable, str(CLI), "--server", self.base_url, *args],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
 
     def test_cli_lists_objectives_as_json(self):
@@ -131,12 +137,18 @@ class CommandCenterClientTests(unittest.TestCase):
         self.assertNotIn("execute", payload)
 
     def test_cli_rejects_non_http_server_urls(self):
+        env = {
+            **__import__("os").environ,
+            "NO_PROXY": "127.0.0.1,localhost",
+            "no_proxy": "127.0.0.1,localhost",
+        }
         result = subprocess.run(
             [sys.executable, str(CLI), "--server", "file:///tmp", "objectives", "list"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("http:// or https://", result.stderr)
