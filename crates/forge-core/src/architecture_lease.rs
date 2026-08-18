@@ -228,6 +228,9 @@ impl RefreshProposal {
     fn validate_against(&self, previous: &EvidenceRecord) -> Result<(), ArchitectureLeaseError> {
         required(&self.previous_evidence_id, "previous_evidence_id")?;
         required(&self.source_version, "source_version")?;
+        self.refreshed_evidence
+            .validate()
+            .map_err(|error| ArchitectureLeaseError::InvalidRefreshEvidence(error.to_string()))?;
         if self.previous_evidence_id != previous.id {
             return Err(ArchitectureLeaseError::RefreshPreviousEvidenceMismatch {
                 expected: previous.id.clone(),
@@ -256,6 +259,7 @@ pub enum LeaseEvaluationStatus {
     Valid,
     Stale,
     RevalidationRequired,
+    RelaxationApprovalRequired,
     Invalid,
 }
 
@@ -270,6 +274,7 @@ pub enum LeaseEvaluationReason {
     PolicyChanged,
     MediumRiskReviewRequired,
     HighRiskReviewRequired,
+    RelaxationMissingApproval,
     ExplicitlyInvalidated,
 }
 
@@ -282,9 +287,6 @@ pub struct LeaseEvaluation {
 }
 
 /// Evaluate current evidence eligibility using only explicit inputs.
-///
-/// `evaluated_at` is caller-supplied; this function reads no ambient clock and
-/// performs no connector, network, filesystem, process, or authorization work.
 pub fn evaluate_lease(
     evidence: &EvidenceRecord,
     policy: &EffectivePolicy,
@@ -294,6 +296,9 @@ pub fn evaluate_lease(
     refresh_proposal: Option<&RefreshProposal>,
     explicitly_invalidated: bool,
 ) -> Result<LeaseEvaluation, ArchitectureLeaseError> {
+    evidence
+        .validate()
+        .map_err(|error| ArchitectureLeaseError::InvalidLeaseEvidence(error.to_string()))?;
     required(&policy.id, "policy.id")?;
     required(&policy.version, "policy.version")?;
     policy.rule.validate()?;
@@ -310,12 +315,41 @@ pub fn evaluate_lease(
         ));
     }
 
+    if policy
+        .relaxation
+        .as_ref()
+        .is_some_and(|relaxation| !relaxation.allow_relaxation)
+    {
+        return Ok(evaluation(
+            LeaseEvaluationStatus::RelaxationApprovalRequired,
+            LeaseEvaluationReason::RelaxationMissingApproval,
+            evaluated_at,
+        ));
+    }
+
     let Some(prior) = prior_attestation else {
         return Ok(review_for_risk(risk_tier, evaluated_at));
     };
 
-    if prior.policy_id != policy.id
-        || prior.policy_version != policy.version
+    if prior.evidence_id != evidence.id {
+        return Err(ArchitectureLeaseError::PriorEvidenceMismatch {
+            expected: evidence.id.clone(),
+            actual: prior.evidence_id.clone(),
+        });
+    }
+    if prior.objective_id != evidence.objective_id {
+        return Err(ArchitectureLeaseError::PriorObjectiveMismatch {
+            expected: evidence.objective_id.clone(),
+            actual: prior.objective_id.clone(),
+        });
+    }
+    if prior.policy_id != policy.id {
+        return Err(ArchitectureLeaseError::PriorPolicyMismatch {
+            expected: policy.id.clone(),
+            actual: prior.policy_id.clone(),
+        });
+    }
+    if prior.policy_version != policy.version
         || prior.policy_fingerprint != policy.policy_fingerprint
     {
         return Ok(evaluation(
@@ -324,11 +358,7 @@ pub fn evaluate_lease(
             evaluated_at,
         ));
     }
-
-    if prior.evidence_id != evidence.id
-        || prior.objective_id != evidence.objective_id
-        || prior.evidence_fingerprint != evidence.content_fingerprint
-    {
+    if prior.evidence_fingerprint != evidence.content_fingerprint {
         return Ok(evaluation(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::FingerprintChanged,
@@ -411,11 +441,6 @@ pub struct LeasePolicyRegistry {
 }
 
 impl LeasePolicyRegistry {
-    /// Construct the built-in safety-floor registry.
-    ///
-    /// Production TTL values are intentionally not invented here. The initial
-    /// `repo_state` policy proves source stability and low-risk eligibility;
-    /// later evaluation decides whether evidence is currently acceptable.
     pub fn built_ins() -> Self {
         let repo_state = LeasePolicyDefinition {
             id: "repo_state".to_string(),
@@ -434,12 +459,10 @@ impl LeasePolicyRegistry {
         Self { policies }
     }
 
-    /// Return a policy definition without compiling repository overrides.
     pub fn get(&self, id: &str) -> Option<&LeasePolicyDefinition> {
         self.policies.get(id)
     }
 
-    /// Resolve and validate one built-in policy deterministically.
     pub fn resolve(&self, id: &str) -> Result<EffectivePolicy, ArchitectureLeaseError> {
         let definition = self
             .get(id)
@@ -447,12 +470,6 @@ impl LeasePolicyRegistry {
         effective_from(definition, None)
     }
 
-    /// Compile a repository override against its built-in safety floor.
-    ///
-    /// Tightening is allowed without approval. Relaxation requires explicit
-    /// relaxation metadata plus repository-observed approval evidence bound to
-    /// the exact candidate policy fingerprint. Structurally incomparable
-    /// policies fail closed.
     pub fn compile(
         &self,
         policy_id: &str,
@@ -503,7 +520,6 @@ impl LeasePolicyRegistry {
     }
 }
 
-/// Typed failures for deterministic lease-policy construction and resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ArchitectureLeaseError {
     #[error("field `{0}` must not be empty")]
@@ -534,6 +550,16 @@ pub enum ArchitectureLeaseError {
     RefreshObjectiveMismatch { expected: String, actual: String },
     #[error("refresh proposal cannot overwrite historical evidence `{0}`")]
     RefreshOverwritesPreviousEvidence(String),
+    #[error("current lease evidence is invalid: {0}")]
+    InvalidLeaseEvidence(String),
+    #[error("refreshed lease evidence is invalid: {0}")]
+    InvalidRefreshEvidence(String),
+    #[error("prior evidence id `{actual}` does not match `{expected}`")]
+    PriorEvidenceMismatch { expected: String, actual: String },
+    #[error("prior objective `{actual}` does not match `{expected}`")]
+    PriorObjectiveMismatch { expected: String, actual: String },
+    #[error("prior policy `{actual}` does not match `{expected}`")]
+    PriorPolicyMismatch { expected: String, actual: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
