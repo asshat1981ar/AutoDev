@@ -89,8 +89,12 @@ def check_ci_exists(errors: list[str], verbose: bool) -> str:
 
 
 def check_canonical_commands_in_ci(ci_text: str, errors: list[str], verbose: bool) -> None:
+    # Normalize optional --locked flag so CI can evolve to reproducible --locked builds without drift
+    normalized_ci = ci_text.replace(" --locked", "")
     for frag in CANONICAL_CI_FRAGMENTS:
-        if frag not in ci_text:
+        # Also normalize fragment for comparison (fragments are canonical without --locked)
+        normalized_frag = frag.replace(" --locked", "")
+        if normalized_frag not in normalized_ci and frag not in ci_text:
             errors.append(f"CI drift: expected fragment not found in ci.yml: {frag!r}")
 
 
@@ -101,6 +105,8 @@ def check_agents_and_readme(ci_text: str, errors: list[str], verbose: bool) -> N
             continue
         text = _read(path)
         # AGENTS.md must contain the core verification commands; README must contain the Rust gate block.
+        # Normalize --locked so docs can be written with or without it
+        normalized_text = text.replace(" --locked", "")
         required = CANONICAL_CI_FRAGMENTS if path == AGENTS else [
             "cargo fmt --all -- --check",
             "cargo build --workspace",
@@ -108,7 +114,8 @@ def check_agents_and_readme(ci_text: str, errors: list[str], verbose: bool) -> N
             "cargo clippy --workspace --all-targets -- -D warnings",
         ]
         for frag in required:
-            if frag not in text:
+            normalized_frag = frag.replace(" --locked", "")
+            if normalized_frag not in normalized_text and frag not in text:
                 # For README we allow prefix match without --all-features
                 if path == README and frag == "cargo clippy --workspace --all-targets --all-features -- -D warnings":
                     if "cargo clippy --workspace --all-targets" not in text:
