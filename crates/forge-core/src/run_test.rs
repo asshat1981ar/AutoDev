@@ -18,6 +18,19 @@ pub fn run_test_authorized(
         return Err(ExecutionError::CapabilityDenied);
     }
 
+    let payload = action
+        .payload
+        .as_object()
+        .ok_or(ExecutionError::PayloadNotObject)?;
+    let runner = payload
+        .get("runner")
+        .ok_or(ExecutionError::MissingPayloadField("runner"))?
+        .as_str()
+        .ok_or(ExecutionError::PayloadFieldNotString("runner"))?;
+    if runner != "cargo" {
+        return Err(ExecutionError::UnsafeCommand(runner.to_string()));
+    }
+
     crate::execute_process(action, workspace)
 }
 
