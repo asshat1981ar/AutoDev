@@ -5,6 +5,9 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use forge_core::{VerificationRecipe, VerifierEvidence};
 use sha2::{Digest, Sha256};
 
@@ -68,19 +71,22 @@ pub fn run_verifier(
     for step in &recipe.steps {
         let current_dir = confined_working_directory(&workspace_root, &step.working_directory)?;
         let started = Instant::now();
-        let mut child = Command::new(&step.program)
+        let mut command = Command::new(&step.program);
+        command
             .args(&step.args)
             .current_dir(current_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| {
-                if error.kind() == io::ErrorKind::NotFound {
-                    RunnerError::MissingExecutable(step.program.clone())
-                } else {
-                    RunnerError::Io(error)
-                }
-            })?;
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        command.process_group(0);
+
+        let mut child = command.spawn().map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                RunnerError::MissingExecutable(step.program.clone())
+            } else {
+                RunnerError::Io(error)
+            }
+        })?;
 
         let stdout = child
             .stdout
@@ -153,17 +159,48 @@ fn wait_with_timeout(child: &mut Child, timeout: Duration) -> io::Result<(ExitSt
         match child.try_wait() {
             Ok(Some(status)) => return Ok((status, false)),
             Ok(None) if started.elapsed() >= timeout => {
-                child.kill()?;
-                return child.wait().map(|status| (status, true));
+                let terminate_result = terminate_child_tree(child);
+                let wait_result = child.wait();
+                terminate_result?;
+                return wait_result.map(|status| (status, true));
             }
             Ok(None) => thread::sleep(POLL_INTERVAL),
             Err(error) => {
-                let _ = child.kill();
+                let _ = terminate_child_tree(child);
                 let _ = child.wait();
                 return Err(error);
             }
         }
     }
+}
+
+#[cfg(unix)]
+fn terminate_child_tree(child: &mut Child) -> io::Result<()> {
+    let pgid = i32::try_from(child.id())
+        .map_err(|_| io::Error::other("verifier pid exceeds process-group range"))?;
+
+    // SAFETY: the child was spawned as leader of a dedicated process group via
+    // CommandExt::process_group(0). `kill` receives only the negated numeric PGID
+    // and SIGKILL; it does not dereference pointers or transfer ownership.
+    let result = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    if result == 0 {
+        return Ok(());
+    }
+
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        match child.try_wait()? {
+            Some(_) => Ok(()),
+            None => child.kill(),
+        }
+    } else {
+        Err(error)
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_child_tree(child: &mut Child) -> io::Result<()> {
+    child.kill()
 }
 
 fn confined_source(root: &Path, relative: &str) -> Result<PathBuf, RunnerError> {
