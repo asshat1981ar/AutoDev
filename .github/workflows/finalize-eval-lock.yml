@@ -1,0 +1,47 @@
+name: One-shot evaluator lockfile finalizer
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  finalize:
+    if: github.head_ref == 'feat/self-evaluation-factory-v0' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate canonical lockfile and enforce locked CI
+        run: |
+          cd crates
+          cargo generate-lockfile
+          cd ..
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/ci.yml')
+          text = path.read_text()
+          replacements = {
+              'cargo clippy --workspace --all-targets --all-features -- -D warnings': 'cargo clippy --locked --workspace --all-targets --all-features -- -D warnings',
+              'cargo build --workspace': 'cargo build --locked --workspace',
+              'cargo test --workspace': 'cargo test --locked --workspace',
+              'cargo run -p autodev-eval -- validate --fixtures autodev-eval/fixtures': 'cargo run --locked -p autodev-eval -- validate --fixtures autodev-eval/fixtures',
+              'cargo test -p autodev-eval --test corpus_smoke -- --ignored --nocapture': 'cargo test --locked -p autodev-eval --test corpus_smoke -- --ignored --nocapture',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'missing expected CI command: {old}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/finalize-eval-lock.yml
+          git add crates/Cargo.lock .github/workflows/ci.yml
+          git commit -m "chore(eval): lock evaluation workspace dependencies"
+          git push origin HEAD:${{ github.head_ref }}
