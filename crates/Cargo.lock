@@ -39,6 +39,7 @@ name = "autodev-eval"
 version = "0.1.0"
 dependencies = [
  "forge-core",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
