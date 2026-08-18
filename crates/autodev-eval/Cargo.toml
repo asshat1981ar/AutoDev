@@ -1,0 +1,19 @@
+[package]
+name = "autodev-eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+description = "Repository-local evaluation adapter for AutoDev"
+
+[dependencies]
+forge-core = { path = "../forge-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

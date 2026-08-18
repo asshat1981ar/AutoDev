@@ -1,0 +1,48 @@
+{
+  "task": {
+    "id": "termux-kanban-pty-repair",
+    "source": {
+      "kind": "commit",
+      "repository": "asshat1981ar/AutoDev",
+      "source_ref": "4e0c35551c890cae71ab7b9af843dac86eaa3d78",
+      "source_url": "https://github.com/asshat1981ar/AutoDev/commit/4e0c35551c890cae71ab7b9af843dac86eaa3d78"
+    },
+    "base_sha": "8ee7ccc72e7a342e9029c90d7ed311ae11a3ec9b",
+    "specification": "Add a self-healing Termux ARM64 Cline Kanban compatibility launcher that detects a broken node-pty binding, installs a pinned Android prebuilt only when needed, verifies its checksum, and exposes non-destructive check mode.",
+    "acceptance_criteria": [
+      "The launcher is valid Node.js syntax",
+      "Check mode exits successfully when no Termux repair is required",
+      "The launcher uses a pinned integrity-checked Android ARM64 PTY repair"
+    ],
+    "verifier": {
+      "steps": [
+        {
+          "id": "node-syntax",
+          "program": "node",
+          "args": ["--check", "scripts/termux-kanban.mjs"],
+          "working_directory": ".",
+          "timeout_seconds": 60,
+          "required": true
+        },
+        {
+          "id": "launcher-check",
+          "program": "node",
+          "args": ["scripts/termux-kanban.mjs", "--check"],
+          "working_directory": ".",
+          "timeout_seconds": 60,
+          "required": true
+        }
+      ],
+      "asset_fingerprints": []
+    },
+    "protected": {
+      "paths": [".autodev-eval/"]
+    },
+    "expected_change_scope": [
+      "scripts/",
+      "docs/",
+      ".github/workflows/"
+    ]
+  },
+  "verifier_overlay": []
+}

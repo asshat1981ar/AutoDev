@@ -104,6 +104,22 @@ AutoDev includes a Cline development fabric and a Termux-compatible Kanban launc
 
 For Android/Termux environments, prefer portable subprocess and Streamable HTTP MCP paths instead of assuming desktop-only PTY, Bun, or Docker support.
 
+## Self-evaluation factory
+
+`autodev-eval` provides a repository-local experimental control system for comparing development configurations against five frozen historical AutoDev tasks. Task identity, verifier identity, outcome derivation, and baseline/candidate comparison are deterministic; historical checkouts and independent verifier execution stay in the adapter outside ForgeCore's trusted authorization boundary.
+
+Evaluation evidence grants **no execution or promotion authority**. It cannot mint approvals, widen capabilities, change policy, merge code, activate skills, or install MCPs.
+
+From `crates/`:
+
+```bash
+cargo run -p autodev-eval -- validate --fixtures autodev-eval/fixtures
+cargo run -p autodev-eval -- smoke --fixtures autodev-eval/fixtures --source-repo ..
+cargo run -p autodev-eval -- compare --baseline baseline.json --candidate candidate.json
+```
+
+See [`docs/evaluation.md`](docs/evaluation.md) for the corpus, trust boundary, hidden-verifier model, comparison semantics, and task-authoring rules.
+
 ## Verification gates
 
 The Rust workflow currently requires:

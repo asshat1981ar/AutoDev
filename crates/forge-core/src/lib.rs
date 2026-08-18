@@ -14,6 +14,7 @@ pub mod development_loop;
 pub mod dispatch;
 pub mod envelope;
 pub mod error;
+pub mod evaluation;
 pub mod evidence;
 pub mod execute;
 mod git;
@@ -58,6 +59,11 @@ pub use envelope::{
     PolicyBinding,
 };
 pub use error::{ExecutionError, ExecutionErrorKind};
+pub use evaluation::{
+    build_report, compare_reports, derive_outcome, ComparisonDecision, EvalAttempt, EvalComparison,
+    EvalOutcome, EvalReport, EvalStatus, EvalTask, EvalTaskKey, EvaluationError, ProtectedSurface,
+    SafetyFinding, TaskSource, TaskSourceKind, VerificationRecipe, VerifierEvidence, VerifierStep,
+};
 pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
     ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
