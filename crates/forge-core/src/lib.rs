@@ -26,6 +26,7 @@ pub mod patch_exec;
 pub mod plugin;
 pub mod policy;
 pub mod read;
+pub mod run_test;
 pub mod runtime;
 pub mod skill;
 pub mod verification;
@@ -98,6 +99,7 @@ pub use policy::{
     PolicyDecision,
 };
 pub use read::read_file;
+pub use run_test::run_test_authorized;
 pub use runtime::{
     AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
 };
@@ -171,6 +173,11 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => execute_git_authorized(exec)?,
+        ActionType::RunTest => run_test::run_test_authorized(
+            &exec.action,
+            &exec.workspace,
+            &exec.authorization,
+        )?,
         other => {
             return Err(ExecutionError::UnsupportedAction(
                 other.as_str().to_string(),
