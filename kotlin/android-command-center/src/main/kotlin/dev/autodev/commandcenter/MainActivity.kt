@@ -119,7 +119,10 @@ class CommandCenterViewModel : ViewModel() {
             }
     }
 
-    fun queueAction(actionType: String, payload: String) {
+    fun queueAction(
+        actionType: String,
+        payload: String,
+    ) {
         val pending = PendingAction(
             id = UUID.randomUUID().toString(),
             actionType = actionType,
@@ -133,7 +136,9 @@ class CommandCenterViewModel : ViewModel() {
         }
     }
 
-    fun replayPending(endpoint: String) {
+    fun replayPending(
+        endpoint: String,
+    ) {
         val pending = pendingActionsFlow.value
         if (pending.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -141,11 +146,17 @@ class CommandCenterViewModel : ViewModel() {
             for (action in pending) {
                 // Reuse same endpoint and existing AuthorizationGrant concept — blocked without grant does not consume attempt
                 // This replay respects VerifiedOrchestratorState: approval resume reuses same envelope id
-                val success = try {
-                    val request = Request.Builder()
-                        .url("$endpoint/api/v1/objectives")
-                        .post(action.payload.toRequestBody("application/json".toMediaType()))
-                        .build()
+                val success =
+                    try {
+                        val request =
+                            Request.Builder()
+                                .url("$endpoint/api/v1/objectives")
+                                .post(
+                                    action.payload.toRequestBody(
+                                        "application/json".toMediaType(),
+                                    ),
+                                )
+                                .build()
                     client.newCall(request).execute().use { resp -> resp.isSuccessful }
                 } catch (_: Exception) {
                     false
@@ -153,7 +164,17 @@ class CommandCenterViewModel : ViewModel() {
                 if (!success) remaining.add(action)
             }
             pendingActionsFlow.value = remaining
-            mutableState.update { it.copy(pendingActions = remaining, status = if (remaining.isEmpty()) "Replayed ${pending.size} queued" else "${remaining.size} pending after replay") }
+            mutableState.update {
+                it.copy(
+                    pendingActions = remaining,
+                    status =
+                        if (remaining.isEmpty()) {
+                            "Replayed ${pending.size} queued"
+                        } else {
+                            "${remaining.size} pending after replay"
+                        },
+                )
+            }
         }
     }
 
@@ -230,10 +251,19 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
         // Offline queue — production hardening G5: survives SSE drops, replays on reconnect
         if (state.pendingActions.isNotEmpty()) {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
                         Text("Queued actions", style = MaterialTheme.typography.titleSmall)
-                        Button(onClick = { viewModel.replayPending(state.endpoint) }, enabled = state.pendingActions.isNotEmpty()) {
+                        Button(
+                            onClick = { viewModel.replayPending(state.endpoint) },
+                            enabled = state.pendingActions.isNotEmpty(),
+                        ) {
                             Text("Replay ${state.pendingActions.size}")
                         }
                     }
@@ -250,7 +280,16 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { viewModel.queueAction("objective.create", "{\"description\":\"Queued objective\"}") }) { Text("Queue test") }
+            Button(
+                onClick = {
+                    viewModel.queueAction(
+                        "objective.create",
+                        "{\"description\":\"Queued objective\"}",
+                    )
+                },
+            ) {
+                Text("Queue test")
+            }
         }
 
         Text("Live events", style = MaterialTheme.typography.titleMedium)
