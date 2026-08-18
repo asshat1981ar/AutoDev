@@ -36,8 +36,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.Call
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -142,7 +144,7 @@ class CommandCenterViewModel : ViewModel() {
                 val success = try {
                     val request = Request.Builder()
                         .url("$endpoint/api/v1/objectives")
-                        .post(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), action.payload))
+                        .post(action.payload.toRequestBody("application/json".toMediaType()))
                         .build()
                     client.newCall(request).execute().use { resp -> resp.isSuccessful }
                 } catch (_: Exception) {
