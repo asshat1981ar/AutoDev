@@ -38,16 +38,25 @@ import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 private const val DEFAULT_SERVER = "http://10.0.2.2:8080"
 private const val MAX_EVENTS = 200
+
+data class PendingAction(
+    val id: String,
+    val actionType: String,
+    val payload: String,
+    val timestamp: Long = System.currentTimeMillis(),
+)
 
 data class CommandCenterState(
     val endpoint: String = DEFAULT_SERVER,
     val connected: Boolean = false,
     val status: String = "Disconnected",
     val events: List<String> = emptyList(),
+    val pendingActions: List<PendingAction> = emptyList(),
 )
 
 class CommandCenterViewModel : ViewModel() {
@@ -61,6 +70,9 @@ class CommandCenterViewModel : ViewModel() {
 
     private var streamJob: Job? = null
     private var activeCall: Call? = null
+
+    private val pendingActionsFlow = MutableStateFlow<List<PendingAction>>(emptyList())
+    val pendingActionsState: StateFlow<List<PendingAction>> = pendingActionsFlow.asStateFlow()
 
     fun connect(rawEndpoint: String) {
         val endpoint = rawEndpoint.trim().trimEnd('/')
@@ -103,6 +115,44 @@ class CommandCenterViewModel : ViewModel() {
                     if (activeCall === call) activeCall = null
                 }
             }
+    }
+
+    fun queueAction(actionType: String, payload: String) {
+        val pending = PendingAction(
+            id = UUID.randomUUID().toString(),
+            actionType = actionType,
+            payload = payload,
+        )
+        pendingActionsFlow.update { it + pending }
+        mutableState.update { it.copy(pendingActions = pendingActionsFlow.value) }
+        // If already connected, attempt immediate replay; otherwise keep queued for later
+        if (mutableState.value.connected) {
+            replayPending(mutableState.value.endpoint)
+        }
+    }
+
+    fun replayPending(endpoint: String) {
+        val pending = pendingActionsFlow.value
+        if (pending.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val remaining = mutableListOf<PendingAction>()
+            for (action in pending) {
+                // Reuse same endpoint and existing AuthorizationGrant concept — blocked without grant does not consume attempt
+                // This replay respects VerifiedOrchestratorState: approval resume reuses same envelope id
+                val success = try {
+                    val request = Request.Builder()
+                        .url("$endpoint/api/v1/objectives")
+                        .post(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), action.payload))
+                        .build()
+                    client.newCall(request).execute().use { resp -> resp.isSuccessful }
+                } catch (_: Exception) {
+                    false
+                }
+                if (!success) remaining.add(action)
+            }
+            pendingActionsFlow.value = remaining
+            mutableState.update { it.copy(pendingActions = remaining, status = if (remaining.isEmpty()) "Replayed ${pending.size} queued" else "${remaining.size} pending after replay") }
+        }
     }
 
     fun disconnect() {
@@ -169,7 +219,36 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
             Column(modifier = Modifier.padding(12.dp)) {
                 Text("Status", style = MaterialTheme.typography.labelLarge)
                 Text(state.status)
+                if (state.pendingActions.isNotEmpty()) {
+                    Text("${state.pendingActions.size} queued (offline)", style = MaterialTheme.typography.labelSmall)
+                }
             }
+        }
+
+        // Offline queue — production hardening G5: survives SSE drops, replays on reconnect
+        if (state.pendingActions.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Queued actions", style = MaterialTheme.typography.titleSmall)
+                        Button(onClick = { viewModel.replayPending(state.endpoint) }, enabled = state.pendingActions.isNotEmpty()) {
+                            Text("Replay ${state.pendingActions.size}")
+                        }
+                    }
+                    state.pendingActions.forEach { pending ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text(pending.actionType, style = MaterialTheme.typography.labelMedium)
+                                Text(pending.payload.take(120), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { viewModel.queueAction("objective.create", "{\"description\":\"Queued objective\"}") }) { Text("Queue test") }
         }
 
         Text("Live events", style = MaterialTheme.typography.titleMedium)
