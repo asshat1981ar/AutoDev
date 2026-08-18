@@ -9,6 +9,7 @@ description = "HTTP/SSE control-plane adapter for ForgeCore"
 
 [dependencies]
 axum = "0.7"
+chrono = "0.4"
 forge-core = { path = "../forge-core" }
 hmac = "0.12"
 hex = "0.4"

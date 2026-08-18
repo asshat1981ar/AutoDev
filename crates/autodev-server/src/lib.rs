@@ -22,6 +22,9 @@ use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
 mod mcp;
+pub mod public_protocol;
+
+use public_protocol::{PublicObjectiveCreate, PublicObjectiveEvent, PublicObjectiveSummary};
 
 type HmacSha256 = Hmac<Sha256>;
 const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
@@ -47,7 +50,7 @@ pub struct ObjectiveRecord {
 #[derive(Clone)]
 pub struct AppState {
     objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
-    events: broadcast::Sender<String>,
+    events: broadcast::Sender<PublicObjectiveEvent>,
     github_webhook_secret: Option<String>,
     mcp_bearer_tag: Option<Arc<Vec<u8>>>,
 }
@@ -105,18 +108,7 @@ impl AppState {
             .write()
             .await
             .insert(id.clone(), record.clone());
-        let _ = self.events.send(
-            json!({
-                "type": "objective_queued",
-                "data": {
-                    "objective_id": id,
-                    "repository": record.repository,
-                    "branch": record.branch,
-                    "status": record.status,
-                }
-            })
-            .to_string(),
-        );
+        let _ = self.events.send(PublicObjectiveEvent::queued(&record));
         Ok(record)
     }
 }
@@ -191,17 +183,31 @@ async fn health() -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
-async fn list_objectives(State(state): State<AppState>) -> Json<Vec<ObjectiveRecord>> {
+async fn list_objectives(State(state): State<AppState>) -> Json<Vec<PublicObjectiveSummary>> {
     let objectives = state.objectives.read().await;
-    Json(objectives.values().cloned().collect())
+    Json(
+        objectives
+            .values()
+            .map(PublicObjectiveSummary::from)
+            .collect(),
+    )
 }
 
 async fn create_objective(
     State(state): State<AppState>,
-    Json(request): Json<ObjectiveRequest>,
+    Json(request): Json<PublicObjectiveCreate>,
 ) -> Response {
+    let request = ObjectiveRequest {
+        repository: request.repository,
+        description: request.description,
+        branch: request.branch,
+    };
     match state.enqueue(request).await {
-        Ok(record) => (StatusCode::ACCEPTED, Json(record)).into_response(),
+        Ok(record) => (
+            StatusCode::ACCEPTED,
+            Json(PublicObjectiveSummary::from(&record)),
+        )
+            .into_response(),
         Err(message) => (StatusCode::BAD_REQUEST, Json(json!({"error": message}))).into_response(),
     }
 }
@@ -211,7 +217,9 @@ async fn event_stream(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let stream =
         BroadcastStream::new(state.events.subscribe()).filter_map(|message| match message {
-            Ok(data) => Some(Ok(Event::default().data(data))),
+            Ok(event) => serde_json::to_string(&event)
+                .ok()
+                .map(|data| Ok(Event::default().data(data))),
             Err(_) => None,
         });
     Sse::new(stream).keep_alive(KeepAlive::default())
