@@ -1,0 +1,33 @@
+name: One-shot descendant-timeout lock finalizer
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.head_ref == 'feat/self-evaluation-factory-v0' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate and push canonical workspace lockfile
+        run: |
+          cd crates
+          cargo generate-lockfile
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Cargo.lock already canonical"
+            exit 0
+          fi
+          git commit -m "chore(eval): lock verifier process-group dependency"
+          git push origin HEAD:${{ github.head_ref }}
