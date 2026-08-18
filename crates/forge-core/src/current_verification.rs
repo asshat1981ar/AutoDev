@@ -76,12 +76,10 @@ pub fn evaluate_current_verification(
                     && attestation.objective_id == record.objective_id
                     && attestation.evidence_fingerprint == record.content_fingerprint
                     && evaluated_at < attestation.valid_until
-                    && policies
-                        .get(&attestation.policy_id)
-                        .is_some_and(|policy| {
-                            policy.id == attestation.policy_id
-                                && policy.policy_fingerprint == attestation.policy_fingerprint
-                        })
+                    && policies.get(&attestation.policy_id).is_some_and(|policy| {
+                        policy.id == attestation.policy_id
+                            && policy.policy_fingerprint == attestation.policy_fingerprint
+                    })
             });
 
         if eligible {
