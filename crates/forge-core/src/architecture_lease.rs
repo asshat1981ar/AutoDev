@@ -213,8 +213,7 @@ fn canonical_rule(rule: &LeaseRule, out: &mut String) {
         LeaseRule::SourceVersionRequired => out.push_str("source_version_required"),
         LeaseRule::FingerprintStable => out.push_str("fingerprint_stable"),
         LeaseRule::RiskAtMost(risk) => {
-            write!(out, "risk_at_most({})", risk.as_str())
-                .expect("writing to String cannot fail");
+            write!(out, "risk_at_most({})", risk.as_str()).expect("writing to String cannot fail");
         }
         LeaseRule::ExplicitRevalidation => out.push_str("explicit_revalidation"),
         LeaseRule::ExplicitInvalidationAbsent => out.push_str("explicit_invalidation_absent"),
