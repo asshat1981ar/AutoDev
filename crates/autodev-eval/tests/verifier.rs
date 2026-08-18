@@ -1,7 +1,8 @@
 use std::fs;
 use std::io::{self, Write};
+use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use autodev_eval::{apply_verifier_overlays, run_verifier, RunnerError, VerifierOverlay};
 use forge_core::{VerificationRecipe, VerifierStep};
@@ -216,6 +217,35 @@ fn started_process_exceeding_timeout_is_killed_and_marked_timed_out() {
 }
 
 #[test]
+#[cfg(unix)]
+fn timeout_terminates_descendants_that_hold_verifier_pipes_open() {
+    let workspace = tempfile::tempdir().unwrap();
+    let started = Instant::now();
+    let executions = run_verifier(
+        workspace.path(),
+        &recipe(executable_step(
+            "descendant-timeout",
+            vec![
+                "--ignored".into(),
+                "--exact".into(),
+                "verifier_child_spawns_grandchild".into(),
+                "--nocapture".into(),
+            ],
+            1,
+        )),
+    )
+    .unwrap();
+
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "timeout returned only after descendant released inherited pipes"
+    );
+    let evidence = &executions[0].evidence;
+    assert!(!evidence.passed);
+    assert!(evidence.timed_out);
+}
+
+#[test]
 fn large_output_is_drained_without_deadlock_and_normalized_to_digests() {
     let workspace = tempfile::tempdir().unwrap();
     let executions = run_verifier(
@@ -257,6 +287,30 @@ fn verifier_working_directory_must_remain_inside_workspace() {
 #[ignore = "subprocess fixture invoked by timeout test"]
 fn verifier_child_sleeps() {
     thread::sleep(Duration::from_secs(3));
+}
+
+#[test]
+#[ignore = "subprocess fixture invoked by descendant-timeout test"]
+fn verifier_child_spawns_grandchild() {
+    let mut grandchild = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--ignored",
+            "--exact",
+            "verifier_grandchild_sleeps",
+            "--nocapture",
+        ])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    thread::sleep(Duration::from_secs(20));
+    let _ = grandchild.wait();
+}
+
+#[test]
+#[ignore = "subprocess fixture invoked by descendant-timeout test"]
+fn verifier_grandchild_sleeps() {
+    thread::sleep(Duration::from_secs(20));
 }
 
 #[test]
