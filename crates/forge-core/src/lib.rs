@@ -45,7 +45,7 @@ pub use architecture_evidence::{
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
 pub use architecture_lease::{
-    evaluate_lease, ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError,
+    attest, evaluate_lease, ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError,
     EffectivePolicy, LeaseAttestation, LeaseEvaluation, LeaseEvaluationReason,
     LeaseEvaluationStatus, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule, PolicyRelaxation,
     RefreshProposal, RepositoryApprovalEvidence, RepositoryPolicyOverride, RevalidationMode,

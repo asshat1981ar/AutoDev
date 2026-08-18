@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -195,10 +195,7 @@ pub struct EffectivePolicy {
     pub relaxation: Option<PolicyRelaxation>,
 }
 
-/// Immutable prior lease-state data consumed by the evaluator.
-///
-/// A4 intentionally exposes only the data shape. A5 owns trusted issuance,
-/// deterministic attestation fingerprinting, expiry derivation, and validation.
+/// Immutable evidence-lease proof. It proves evidence eligibility, not execution authority.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaseAttestation {
     pub evidence_id: String,
@@ -212,6 +209,27 @@ pub struct LeaseAttestation {
     pub valid_until: DateTime<Utc>,
     pub risk_tier: RiskTier,
     pub attestation_fingerprint: String,
+}
+
+impl LeaseAttestation {
+    /// Validate public or deserialized attestation integrity.
+    pub fn validate(&self) -> Result<(), ArchitectureLeaseError> {
+        required(&self.evidence_id, "evidence_id")?;
+        required(&self.objective_id, "objective_id")?;
+        required(&self.policy_id, "policy_id")?;
+        required(&self.policy_version, "policy_version")?;
+        required(&self.source_version, "source_version")?;
+        validate_attestation_sha("evidence_fingerprint", &self.evidence_fingerprint)?;
+        validate_attestation_sha("policy_fingerprint", &self.policy_fingerprint)?;
+        validate_attestation_sha("attestation_fingerprint", &self.attestation_fingerprint)?;
+        if self.evaluated_at >= self.valid_until {
+            return Err(ArchitectureLeaseError::InvalidAttestationWindow);
+        }
+        if self.attestation_fingerprint != attestation_fingerprint(self) {
+            return Err(ArchitectureLeaseError::AttestationFingerprintMismatch);
+        }
+        Ok(())
+    }
 }
 
 /// Adapter-normalized candidate refresh input. It proposes new evidence but does
@@ -284,6 +302,7 @@ pub struct LeaseEvaluation {
     pub status: LeaseEvaluationStatus,
     pub reason: LeaseEvaluationReason,
     pub evaluated_at: DateTime<Utc>,
+    pub risk_tier: RiskTier,
 }
 
 /// Evaluate current evidence eligibility using only explicit inputs.
@@ -312,6 +331,7 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::Invalid,
             LeaseEvaluationReason::ExplicitlyInvalidated,
             evaluated_at,
+            risk_tier,
         ));
     }
 
@@ -324,6 +344,7 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::RelaxationApprovalRequired,
             LeaseEvaluationReason::RelaxationMissingApproval,
             evaluated_at,
+            risk_tier,
         ));
     }
 
@@ -356,6 +377,7 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::PolicyChanged,
             evaluated_at,
+            risk_tier,
         ));
     }
     if prior.evidence_fingerprint != evidence.content_fingerprint {
@@ -363,6 +385,7 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::FingerprintChanged,
             evaluated_at,
+            risk_tier,
         ));
     }
 
@@ -377,21 +400,25 @@ pub fn evaluate_lease(
                     LeaseEvaluationStatus::RevalidationRequired,
                     LeaseEvaluationReason::HighRiskReviewRequired,
                     evaluated_at,
+                    risk_tier,
                 ),
                 RiskTier::Medium => evaluation(
                     LeaseEvaluationStatus::RevalidationRequired,
                     LeaseEvaluationReason::MediumRiskReviewRequired,
                     evaluated_at,
+                    risk_tier,
                 ),
                 RiskTier::Low if source_changed => evaluation(
                     LeaseEvaluationStatus::RevalidationRequired,
                     LeaseEvaluationReason::SourceVersionChanged,
                     evaluated_at,
+                    risk_tier,
                 ),
                 RiskTier::Low => evaluation(
                     LeaseEvaluationStatus::RevalidationRequired,
                     LeaseEvaluationReason::FingerprintChanged,
                     evaluated_at,
+                    risk_tier,
                 ),
             });
         }
@@ -403,6 +430,7 @@ pub fn evaluate_lease(
                 LeaseEvaluationStatus::Valid,
                 LeaseEvaluationReason::FreshWithinPolicy,
                 evaluated_at,
+                risk_tier,
             ));
         }
     }
@@ -412,6 +440,7 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::Valid,
             LeaseEvaluationReason::FreshWithinPolicy,
             evaluated_at,
+            risk_tier,
         ));
     }
 
@@ -420,18 +449,68 @@ pub fn evaluate_lease(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::HighRiskReviewRequired,
             evaluated_at,
+            risk_tier,
         ),
         RiskTier::Medium => evaluation(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::MediumRiskReviewRequired,
             evaluated_at,
+            risk_tier,
         ),
         RiskTier::Low => evaluation(
             LeaseEvaluationStatus::Stale,
             LeaseEvaluationReason::TtlExpired,
             evaluated_at,
+            risk_tier,
         ),
     })
+}
+
+/// Issue an immutable attestation for a Valid evaluation.
+///
+/// Expiry is derived from the unique policy max-age rule. Callers cannot supply
+/// or override `valid_until`.
+pub fn attest(
+    evidence: &EvidenceRecord,
+    policy: &EffectivePolicy,
+    proposal: &RefreshProposal,
+    evaluation: &LeaseEvaluation,
+) -> Result<LeaseAttestation, ArchitectureLeaseError> {
+    if evaluation.status != LeaseEvaluationStatus::Valid {
+        return Err(ArchitectureLeaseError::EvaluationNotValid(evaluation.status));
+    }
+    evidence
+        .validate()
+        .map_err(|error| ArchitectureLeaseError::InvalidLeaseEvidence(error.to_string()))?;
+    proposal.validate_against(evidence)?;
+    required(&policy.id, "policy.id")?;
+    required(&policy.version, "policy.version")?;
+    policy.rule.validate()?;
+
+    let max_age = unique_max_age(&policy.rule)?;
+    let seconds =
+        i64::try_from(max_age).map_err(|_| ArchitectureLeaseError::InvalidMaxAge(max_age))?;
+    let valid_until = evaluation
+        .evaluated_at
+        .checked_add_signed(Duration::seconds(seconds))
+        .ok_or(ArchitectureLeaseError::InvalidMaxAge(max_age))?;
+
+    let mut attestation = LeaseAttestation {
+        evidence_id: proposal.refreshed_evidence.id.clone(),
+        objective_id: proposal.refreshed_evidence.objective_id.clone(),
+        evidence_fingerprint: proposal.refreshed_evidence.content_fingerprint.clone(),
+        policy_id: policy.id.clone(),
+        policy_version: policy.version.clone(),
+        policy_fingerprint: policy.policy_fingerprint.clone(),
+        source_version: proposal.source_version.clone(),
+        evaluated_at: evaluation.evaluated_at,
+        valid_until,
+        risk_tier: evaluation.risk_tier,
+        attestation_fingerprint: String::new(),
+    };
+    attestation.attestation_fingerprint = attestation_fingerprint(&attestation);
+    attestation.validate()?;
+    Ok(attestation)
 }
 
 /// Deterministic registry of named evidence-lease policies.
@@ -524,7 +603,7 @@ impl LeasePolicyRegistry {
 pub enum ArchitectureLeaseError {
     #[error("field `{0}` must not be empty")]
     EmptyField(&'static str),
-    #[error("max age must be greater than zero seconds, got {0}")]
+    #[error("max age must be greater than zero seconds and representable, got {0}")]
     InvalidMaxAge(u64),
     #[error("lease rule set `{0}` must not be empty")]
     EmptyRuleSet(&'static str),
@@ -560,6 +639,18 @@ pub enum ArchitectureLeaseError {
     PriorObjectiveMismatch { expected: String, actual: String },
     #[error("prior policy `{actual}` does not match `{expected}`")]
     PriorPolicyMismatch { expected: String, actual: String },
+    #[error("lease evaluation status `{0:?}` cannot be attested")]
+    EvaluationNotValid(LeaseEvaluationStatus),
+    #[error("lease policy does not contain a max-age rule required for attestation expiry")]
+    MissingMaxAge,
+    #[error("lease policy contains multiple max-age rules; expiry is ambiguous")]
+    AmbiguousMaxAge,
+    #[error("invalid SHA-256 binding in attestation field `{0}`")]
+    InvalidAttestationFingerprint(&'static str),
+    #[error("attestation valid_until must be later than evaluated_at")]
+    InvalidAttestationWindow,
+    #[error("attestation fingerprint does not match its bound fields")]
+    AttestationFingerprintMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -573,11 +664,13 @@ fn evaluation(
     status: LeaseEvaluationStatus,
     reason: LeaseEvaluationReason,
     evaluated_at: DateTime<Utc>,
+    risk_tier: RiskTier,
 ) -> LeaseEvaluation {
     LeaseEvaluation {
         status,
         reason,
         evaluated_at,
+        risk_tier,
     }
 }
 
@@ -587,18 +680,88 @@ fn review_for_risk(risk_tier: RiskTier, evaluated_at: DateTime<Utc>) -> LeaseEva
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::HighRiskReviewRequired,
             evaluated_at,
+            risk_tier,
         ),
         RiskTier::Medium => evaluation(
             LeaseEvaluationStatus::RevalidationRequired,
             LeaseEvaluationReason::MediumRiskReviewRequired,
             evaluated_at,
+            risk_tier,
         ),
         RiskTier::Low => evaluation(
             LeaseEvaluationStatus::Stale,
             LeaseEvaluationReason::TtlExpired,
             evaluated_at,
+            risk_tier,
         ),
     }
+}
+
+fn unique_max_age(rule: &LeaseRule) -> Result<u64, ArchitectureLeaseError> {
+    let mut values = Vec::new();
+    collect_max_ages(rule, &mut values);
+    match values.as_slice() {
+        [] => Err(ArchitectureLeaseError::MissingMaxAge),
+        [value] => Ok(*value),
+        _ => Err(ArchitectureLeaseError::AmbiguousMaxAge),
+    }
+}
+
+fn collect_max_ages(rule: &LeaseRule, values: &mut Vec<u64>) {
+    match rule {
+        LeaseRule::MaxAgeSeconds(value) => values.push(*value),
+        LeaseRule::AllOf(children) | LeaseRule::AnyOf(children) => {
+            for child in children {
+                collect_max_ages(child, values);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_attestation_sha(
+    field: &'static str,
+    value: &str,
+) -> Result<(), ArchitectureLeaseError> {
+    if is_sha256_hex(value) {
+        Ok(())
+    } else {
+        Err(ArchitectureLeaseError::InvalidAttestationFingerprint(field))
+    }
+}
+
+fn attestation_fingerprint(attestation: &LeaseAttestation) -> String {
+    let mut canonical = String::new();
+    write_len_field(&mut canonical, "evidence_id", &attestation.evidence_id);
+    write_len_field(&mut canonical, "objective_id", &attestation.objective_id);
+    write_len_field(
+        &mut canonical,
+        "evidence_fingerprint",
+        &attestation.evidence_fingerprint,
+    );
+    write_len_field(&mut canonical, "policy_id", &attestation.policy_id);
+    write_len_field(&mut canonical, "policy_version", &attestation.policy_version);
+    write_len_field(
+        &mut canonical,
+        "policy_fingerprint",
+        &attestation.policy_fingerprint,
+    );
+    write_len_field(&mut canonical, "source_version", &attestation.source_version);
+    write!(
+        canonical,
+        "evaluated_at:{}:{}|valid_until:{}:{}|risk:{}|",
+        attestation.evaluated_at.timestamp(),
+        attestation.evaluated_at.timestamp_subsec_nanos(),
+        attestation.valid_until.timestamp(),
+        attestation.valid_until.timestamp_subsec_nanos(),
+        attestation.risk_tier.as_str(),
+    )
+    .expect("writing to String cannot fail");
+    sha256_hex(canonical.as_bytes())
+}
+
+fn write_len_field(out: &mut String, name: &str, value: &str) {
+    write!(out, "{name}:{}:{value}|", value.len()).expect("writing to String cannot fail");
 }
 
 fn validate_children(
