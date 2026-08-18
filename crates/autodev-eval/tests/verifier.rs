@@ -246,6 +246,35 @@ fn timeout_terminates_descendants_that_hold_verifier_pipes_open() {
 }
 
 #[test]
+#[cfg(unix)]
+fn timeout_terminates_descendants_when_leader_exits_first() {
+    let workspace = tempfile::tempdir().unwrap();
+    let started = Instant::now();
+    let executions = run_verifier(
+        workspace.path(),
+        &recipe(executable_step(
+            "early-leader-exit",
+            vec![
+                "--ignored".into(),
+                "--exact".into(),
+                "verifier_child_exits_after_spawning_grandchild".into(),
+                "--nocapture".into(),
+            ],
+            1,
+        )),
+    )
+    .unwrap();
+
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "timeout returned only after an early-exit leader's descendant released pipes"
+    );
+    let evidence = &executions[0].evidence;
+    assert!(!evidence.passed);
+    assert!(evidence.timed_out);
+}
+
+#[test]
 fn large_output_is_drained_without_deadlock_and_normalized_to_digests() {
     let workspace = tempfile::tempdir().unwrap();
     let executions = run_verifier(
@@ -308,7 +337,23 @@ fn verifier_child_spawns_grandchild() {
 }
 
 #[test]
-#[ignore = "subprocess fixture invoked by descendant-timeout test"]
+#[ignore = "subprocess fixture invoked by early-leader-exit timeout test"]
+fn verifier_child_exits_after_spawning_grandchild() {
+    let _grandchild = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--ignored",
+            "--exact",
+            "verifier_grandchild_sleeps",
+            "--nocapture",
+        ])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+}
+
+#[test]
+#[ignore = "subprocess fixture invoked by descendant-timeout tests"]
 fn verifier_grandchild_sleeps() {
     thread::sleep(Duration::from_secs(20));
 }
