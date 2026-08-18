@@ -10,7 +10,7 @@ fn ts(hour: u32, minute: u32, second: u32) -> DateTime<Utc> {
         .unwrap()
 }
 
-fn evidence(id: &str, objective_id: &str, normalized_content: &str) -> EvidenceRecord {
+fn make_evidence(id: &str, objective_id: &str, normalized_content: &str) -> EvidenceRecord {
     EvidenceRecord::new(
         id,
         objective_id,
@@ -87,7 +87,7 @@ fn refresh(
 
 #[test]
 fn fresh_prior_attestation_is_valid_before_expiry() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::Explicit);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(12, 0, 0));
 
@@ -108,7 +108,7 @@ fn fresh_prior_attestation_is_valid_before_expiry() {
 
 #[test]
 fn attestation_is_stale_at_exact_valid_until_boundary() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::Explicit);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(12, 0, 0));
 
@@ -129,7 +129,7 @@ fn attestation_is_stale_at_exact_valid_until_boundary() {
 
 #[test]
 fn high_risk_expired_evidence_requires_explicit_revalidation() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::Explicit);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::High, ts(12, 0, 0));
 
@@ -150,10 +150,14 @@ fn high_risk_expired_evidence_requires_explicit_revalidation() {
 
 #[test]
 fn unchanged_low_risk_refresh_can_renew_automatically_after_expiry() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(12, 0, 0));
-    let proposal = refresh(&evidence, evidence("ev-2", "obj-1", "same content"), "v1");
+    let proposal = refresh(
+        &evidence,
+        make_evidence("ev-2", "obj-1", "same content"),
+        "v1",
+    );
 
     let result = evaluate_lease(
         &evidence,
@@ -172,10 +176,14 @@ fn unchanged_low_risk_refresh_can_renew_automatically_after_expiry() {
 
 #[test]
 fn changed_source_version_requires_revalidation() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
-    let proposal = refresh(&evidence, evidence("ev-2", "obj-1", "same content"), "v2");
+    let proposal = refresh(
+        &evidence,
+        make_evidence("ev-2", "obj-1", "same content"),
+        "v2",
+    );
 
     let result = evaluate_lease(
         &evidence,
@@ -194,12 +202,12 @@ fn changed_source_version_requires_revalidation() {
 
 #[test]
 fn changed_fingerprint_under_same_source_version_requires_revalidation() {
-    let evidence = evidence("ev-1", "obj-1", "original content");
+    let evidence = make_evidence("ev-1", "obj-1", "original content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
     let proposal = refresh(
         &evidence,
-        evidence("ev-2", "obj-1", "changed content"),
+        make_evidence("ev-2", "obj-1", "changed content"),
         "v1",
     );
 
@@ -220,12 +228,12 @@ fn changed_fingerprint_under_same_source_version_requires_revalidation() {
 
 #[test]
 fn medium_risk_material_change_requires_review() {
-    let evidence = evidence("ev-1", "obj-1", "original content");
+    let evidence = make_evidence("ev-1", "obj-1", "original content");
     let policy = policy(RevalidationMode::ExplicitOnMaterialChange);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Medium, ts(13, 0, 0));
     let proposal = refresh(
         &evidence,
-        evidence("ev-2", "obj-1", "changed content"),
+        make_evidence("ev-2", "obj-1", "changed content"),
         "v1",
     );
 
@@ -249,7 +257,7 @@ fn medium_risk_material_change_requires_review() {
 
 #[test]
 fn explicit_invalidation_overrides_fresh_ttl() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::Explicit);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
 
@@ -270,7 +278,7 @@ fn explicit_invalidation_overrides_fresh_ttl() {
 
 #[test]
 fn changed_policy_fingerprint_requires_revalidation() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::Explicit);
     let mut prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
     prior.policy_fingerprint = "f".repeat(64);
@@ -292,12 +300,12 @@ fn changed_policy_fingerprint_requires_revalidation() {
 
 #[test]
 fn malformed_refresh_proposal_fails_closed() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
     let proposal = RefreshProposal {
         previous_evidence_id: "".into(),
-        refreshed_evidence: evidence("ev-2", "obj-1", "same content"),
+        refreshed_evidence: make_evidence("ev-2", "obj-1", "same content"),
         source_version: "v1".into(),
         proposed_at: ts(12, 0, 0),
     };
@@ -319,12 +327,12 @@ fn malformed_refresh_proposal_fails_closed() {
 
 #[test]
 fn refresh_proposal_cannot_cross_objective_boundary() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
     let proposal = refresh(
         &evidence,
-        evidence("ev-2", "obj-other", "same content"),
+        make_evidence("ev-2", "obj-other", "same content"),
         "v1",
     );
 
@@ -348,10 +356,14 @@ fn refresh_proposal_cannot_cross_objective_boundary() {
 
 #[test]
 fn refresh_proposal_cannot_overwrite_previous_evidence_record() {
-    let evidence = evidence("ev-1", "obj-1", "same content");
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
     let policy = policy(RevalidationMode::AutomaticLowRisk);
     let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
-    let proposal = refresh(&evidence, evidence("ev-1", "obj-1", "same content"), "v1");
+    let proposal = refresh(
+        &evidence,
+        make_evidence("ev-1", "obj-1", "same content"),
+        "v1",
+    );
 
     assert_eq!(
         evaluate_lease(
