@@ -8,6 +8,7 @@
 pub mod action;
 pub mod agent;
 pub mod architecture_evidence;
+pub mod architecture_lease;
 pub mod capability_gap;
 pub mod context;
 pub mod development_loop;
@@ -42,6 +43,10 @@ pub use architecture_evidence::{
     rank_options, render_architecture_report, ArchitectureAlternative, ArchitectureCriterion,
     ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
+};
+pub use architecture_lease::{
+    ArchitectureLeaseError, EffectivePolicy, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule,
+    RevalidationMode, RiskTier,
 };
 pub use capability_gap::{
     discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
