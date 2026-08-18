@@ -94,6 +94,48 @@ Approval resume reuses the same envelope and does not consume an execution attem
 
 `VerifiedOrchestratorState` is serializable so envelope lifecycle and retry state can be recovered after process restart.
 
+## Rust objective control plane
+
+`autodev-server` is the Rust HTTP/SSE adapter over the verified ForgeCore path. Submitted objectives are persisted locally, advanced by one serialized worker, converted from model output into typed intent, rebound to trusted agent-profile capabilities and trusted risk floors, and then executed through the existing `VerifiedOrchestrator`. The HTTP and MCP adapters do not execute repository effects directly.
+
+Start the server from the Rust workspace:
+
+```bash
+cd crates
+AUTODEV_WORKSPACE=/path/to/repository \
+AUTODEV_MODEL_BASE_URL=http://localhost:11434 \
+AUTODEV_MCP_BEARER_TOKEN=replace-with-a-local-secret \
+cargo run -p autodev-server
+```
+
+Configuration:
+
+- `AUTODEV_PORT` — HTTP port, default `8080`.
+- `AUTODEV_WORKSPACE` — trusted repository workspace root, default `.`.
+- `AUTODEV_STATE_DIR` — optional trusted objective/evidence state directory. When omitted, AutoDev uses a sibling directory named `.autodev-state-<workspace-name>`; a state directory equal to or beneath the execution workspace is rejected after canonicalization.
+- `AUTODEV_MODEL_BASE_URL` — model-provider base URL, default `http://localhost:11434`.
+- `AUTODEV_MAX_FILE_BYTES` — ForgeCore workspace file-size limit, default 16 MiB.
+- `AUTODEV_MCP_BEARER_TOKEN` — bearer credential for `/mcp`; when absent or empty, the MCP route fails closed.
+- `AUTODEV_MCP_ALLOWED_HOSTS` — optional comma-separated MCP Host-header allowlist.
+- `GITHUB_WEBHOOK_SECRET` — optional HMAC secret for the GitHub webhook endpoint.
+
+Objective API:
+
+- `POST /api/v1/objectives` — submit repository metadata, description, and optional branch as untrusted intent.
+- `GET /api/v1/objectives` — list public objective projections.
+- `GET /api/v1/objectives/:id` — fetch one public objective projection.
+- `GET /api/v1/events/stream` and `GET /events` — consume typed lifecycle events over SSE.
+- `POST /webhooks/github` — accept signed GitHub issue-opened events when a webhook secret is configured.
+- `/mcp` — stateless MCP proposal/observation adapter backed by the same durable objective store and protected by its bearer/host checks.
+
+Objective snapshots persist the public projection, `TaskGraph`, `VerifiedOrchestratorState`, and fingerprinted execution-evidence records. Produced evidence references therefore remain resolvable after runner reconstruction and process restart. The `repository` field in an objective is metadata; it does not select a local execution path. Only `AUTODEV_WORKSPACE` establishes the ForgeCore workspace boundary.
+
+Model-declared risk is advisory. The control-plane proposal and execution-binding boundaries apply ForgeCore's trusted semantic minimum risk before profile checks or approval decisions; an untrusted model or custom proposer cannot downgrade a mutating write or Git operation to bypass approval.
+
+There is deliberately **no public client approval endpoint** in this slice. Caller/model fields such as `{"approved": true}` cannot unblock an objective. The internal resume path accepts an approval grant scoped to the objective and task and then resumes the same durable execution envelope.
+
+The MCP route has its own bearer and Host-header checks, but the general objective HTTP/SSE API does **not** yet have a client-authentication layer. The service currently binds to `0.0.0.0`; treat it as a local/development control plane and do not expose it to an untrusted network until that authentication boundary is implemented.
+
 ## Repository context fabric
 
 ForgeCore includes deterministic bounded repository retrieval. Context selection is local-first, reproducible, and budgeted by maximum files and bytes. Context is treated as evidence for planning rather than permission to mutate the repository.

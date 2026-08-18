@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use forge_core::{ActionType, AgentAction, Capability, RiskLevel};
 use rmcp::transport::streamable_http_server::{
@@ -13,19 +13,25 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::{AppState, ObjectiveStore, ObjectiveView, StoreError};
 
 pub(crate) const MCP_MAX_BODY_BYTES: usize = 512 * 1024;
 const DEFAULT_MCP_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "::1", "autodev-server"];
 
+type ObjectiveProjection = Arc<dyn Fn() -> Result<Vec<ObjectiveView>, StoreError> + Send + Sync>;
+
 #[derive(Clone)]
 pub(crate) struct AutoDevMcp {
-    state: AppState,
+    objectives: ObjectiveProjection,
 }
 
 impl AutoDevMcp {
-    fn new(state: AppState) -> Self {
-        Self { state }
+    fn new(objectives: ObjectiveProjection) -> Self {
+        Self { objectives }
+    }
+
+    fn current_objectives(&self) -> Result<Vec<ObjectiveView>, StoreError> {
+        (self.objectives)()
     }
 }
 
@@ -57,9 +63,11 @@ impl AutoDevMcp {
         )
     )]
     async fn objectives_list(&self) -> String {
-        let objectives = self.state.objectives.read().await;
-        serde_json::to_string(&objectives.values().cloned().collect::<Vec<_>>())
-            .expect("objective projection is JSON serializable")
+        match self.current_objectives() {
+            Ok(objectives) => serde_json::to_string(&objectives)
+                .expect("objective projection is JSON serializable"),
+            Err(_) => json!({"error": "objective_store_error"}).to_string(),
+        }
     }
 
     #[tool(
@@ -74,8 +82,14 @@ impl AutoDevMcp {
         )
     )]
     async fn gaps_scan(&self) -> String {
-        let objectives = self.state.objectives.read().await;
-        let objective_ids: Vec<String> = objectives.keys().cloned().collect();
+        let objectives = match self.current_objectives() {
+            Ok(objectives) => objectives,
+            Err(_) => return json!({"error": "objective_store_error"}).to_string(),
+        };
+        let objective_ids: Vec<String> = objectives
+            .into_iter()
+            .map(|objective| objective.id)
+            .collect();
         json!({
             "status": "proposal_only",
             "proposal_type": "capability_gap_scan",
@@ -143,14 +157,25 @@ impl ServerHandler for AutoDevMcp {
     }
 }
 
-pub(crate) fn service(state: AppState) -> StreamableHttpService<AutoDevMcp, LocalSessionManager> {
+pub(crate) fn service<S: ObjectiveStore>(
+    state: AppState<S>,
+) -> StreamableHttpService<AutoDevMcp, LocalSessionManager> {
+    let store = state.store();
+    let objectives: ObjectiveProjection = Arc::new(move || {
+        store.load_all().map(|snapshots| {
+            snapshots
+                .into_iter()
+                .map(|snapshot| snapshot.view)
+                .collect()
+        })
+    });
     let hosts = configured_hosts();
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
         .with_allowed_hosts(hosts);
     StreamableHttpService::new(
-        move || Ok(AutoDevMcp::new(state.clone())),
+        move || Ok(AutoDevMcp::new(objectives.clone())),
         LocalSessionManager::default().into(),
         config,
     )

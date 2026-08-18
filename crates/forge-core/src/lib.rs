@@ -6,6 +6,7 @@
 //! model assignment primitives that can prepare bounded execution plans.
 
 pub mod action;
+pub mod action_proposal;
 pub mod agent;
 pub mod architecture_evidence;
 pub mod capability_gap;
@@ -34,6 +35,7 @@ pub mod workspace;
 pub mod write;
 
 pub use action::{ActionType, AgentAction, Capability, RiskLevel};
+pub use action_proposal::{propose_action, ActionProposal, ActionProposalError};
 pub use agent::{
     default_profiles, AgentCapability, AgentError, AgentHealth, AgentInstance, AgentPolicy,
     AgentProfile, AgentRegistry, AgentRole, AgentState, ModelRequirement, RetryPolicy,
@@ -94,8 +96,8 @@ pub use plugin::{
     PluginUsage,
 };
 pub use policy::{
-    enforce_policy, evaluate_policy, has_required_capability, validate_action, AuthorizationGrant,
-    PolicyDecision,
+    effective_risk_for_action, enforce_policy, evaluate_policy, has_required_capability,
+    minimum_risk_for_action, validate_action, AuthorizationGrant, PolicyDecision,
 };
 pub use read::read_file;
 pub use runtime::{
