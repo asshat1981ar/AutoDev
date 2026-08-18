@@ -15,6 +15,9 @@ use crate::{RunnerError, VerifierOverlay};
 
 const MAX_STREAM_BYTES: usize = 64 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
+const CAPTURE_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
+
+type CaptureHandle = thread::JoinHandle<io::Result<Vec<u8>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepExecution {
@@ -99,13 +102,15 @@ pub fn run_verifier(
         let stdout_reader = capture_stream(stdout);
         let stderr_reader = capture_stream(stderr);
 
-        let wait_result = wait_with_timeout(
+        let (status, timed_out) = wait_with_timeout(
             &mut child,
+            &stdout_reader,
+            &stderr_reader,
             Duration::from_secs(u64::from(step.timeout_seconds)),
-        );
+        )
+        .map_err(RunnerError::Io)?;
         let stdout = join_capture(stdout_reader)?;
         let stderr = join_capture(stderr_reader)?;
-        let (status, timed_out) = wait_result.map_err(RunnerError::Io)?;
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
         executions.push(StepExecution {
@@ -125,7 +130,7 @@ pub fn run_verifier(
     Ok(executions)
 }
 
-fn capture_stream<R>(mut reader: R) -> thread::JoinHandle<io::Result<Vec<u8>>>
+fn capture_stream<R>(mut reader: R) -> CaptureHandle
 where
     R: Read + Send + 'static,
 {
@@ -146,32 +151,96 @@ where
     })
 }
 
-fn join_capture(handle: thread::JoinHandle<io::Result<Vec<u8>>>) -> Result<Vec<u8>, RunnerError> {
+fn join_capture(handle: CaptureHandle) -> Result<Vec<u8>, RunnerError> {
     let captured = handle
         .join()
         .map_err(|_| RunnerError::Io(io::Error::other("verifier capture thread panicked")))??;
     Ok(captured)
 }
 
-fn wait_with_timeout(child: &mut Child, timeout: Duration) -> io::Result<(ExitStatus, bool)> {
+fn wait_with_timeout(
+    child: &mut Child,
+    stdout_reader: &CaptureHandle,
+    stderr_reader: &CaptureHandle,
+    timeout: Duration,
+) -> io::Result<(ExitStatus, bool)> {
     let started = Instant::now();
+    let mut exit_status = None;
+
     loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok((status, false)),
-            Ok(None) if started.elapsed() >= timeout => {
-                let terminate_result = terminate_child_tree(child);
-                let wait_result = child.wait();
-                terminate_result?;
-                return wait_result.map(|status| (status, true));
-            }
-            Ok(None) => thread::sleep(POLL_INTERVAL),
-            Err(error) => {
-                let _ = terminate_child_tree(child);
-                let _ = child.wait();
-                return Err(error);
+        if exit_status.is_none() {
+            match child.try_wait() {
+                Ok(Some(status)) => exit_status = Some(status),
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = terminate_child_tree(child);
+                    let _ = child.wait();
+                    return Err(error);
+                }
             }
         }
+
+        if exit_status.is_some() && captures_finished(stdout_reader, stderr_reader) {
+            return Ok((
+                exit_status
+                    .take()
+                    .expect("exit status checked immediately before take"),
+                false,
+            ));
+        }
+
+        if started.elapsed() >= timeout {
+            return terminate_for_timeout(
+                child,
+                exit_status.take(),
+                stdout_reader,
+                stderr_reader,
+            );
+        }
+
+        thread::sleep(POLL_INTERVAL);
     }
+}
+
+fn terminate_for_timeout(
+    child: &mut Child,
+    exit_status: Option<ExitStatus>,
+    stdout_reader: &CaptureHandle,
+    stderr_reader: &CaptureHandle,
+) -> io::Result<(ExitStatus, bool)> {
+    if let Err(error) = terminate_child_tree(child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+
+    let status = match exit_status {
+        Some(status) => status,
+        None => child.wait()?,
+    };
+    wait_for_capture_shutdown(stdout_reader, stderr_reader)?;
+    Ok((status, true))
+}
+
+fn captures_finished(stdout_reader: &CaptureHandle, stderr_reader: &CaptureHandle) -> bool {
+    stdout_reader.is_finished() && stderr_reader.is_finished()
+}
+
+fn wait_for_capture_shutdown(
+    stdout_reader: &CaptureHandle,
+    stderr_reader: &CaptureHandle,
+) -> io::Result<()> {
+    let started = Instant::now();
+    while !captures_finished(stdout_reader, stderr_reader) {
+        if started.elapsed() >= CAPTURE_SHUTDOWN_GRACE {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "verifier capture pipes remained open after process-group termination",
+            ));
+        }
+        thread::sleep(POLL_INTERVAL);
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
