@@ -25,11 +25,11 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Build
-        run: cargo build --workspace
+        run: cargo build --locked --workspace
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
       - name: Build server container
         run: docker build -f ../Dockerfile -t autodev-server:ci ..
 
@@ -117,9 +117,9 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Validate evaluation corpus
         working-directory: crates
-        run: cargo run -p autodev-eval -- validate --fixtures autodev-eval/fixtures
+        run: cargo run --locked -p autodev-eval -- validate --fixtures autodev-eval/fixtures
       - name: Run historical reference smoke
         env:
           AUTODEV_EVAL_SOURCE_REPO: ${{ github.workspace }}
         working-directory: crates
-        run: cargo test -p autodev-eval --test corpus_smoke -- --ignored --nocapture
+        run: cargo test --locked -p autodev-eval --test corpus_smoke -- --ignored --nocapture
