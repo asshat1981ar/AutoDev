@@ -8,7 +8,7 @@ Status: Review required before implementation
 Extend AutoDev's existing advisory toolset-learning memory into a deterministic capability-routing evidence layer that can answer:
 
 ```text
-Given TaskProfile X and EnvironmentProfile E,
+Given TaskProfile X (including its environment constraints),
 which ordered CapabilityBundle B has the strongest observed evidence
 for producing a verified result with the least coordination/context cost?
 ```
@@ -87,7 +87,7 @@ Each later slice must preserve `evidence != authority`.
 
 ## 5. Scope of v1
 
-V1 adds three compact JSONL datasets plus deterministic validation and analysis. It deliberately remains outside ForgeCore authority.
+V1 adds **two compact JSONL datasets plus their README**, with deterministic validation and analysis. It deliberately remains outside ForgeCore authority.
 
 ```text
 memory/capabilities/
@@ -154,7 +154,7 @@ Profiles describe capability properties; they do not grant the capability.
 
 ### 5.2 TaskProfile
 
-Experiments embed a normalized task profile:
+Experiments embed a normalized task profile, including the environment constraints relevant to routing:
 
 ```json
 {
@@ -171,7 +171,7 @@ Experiments embed a normalized task profile:
 }
 ```
 
-V1 uses closed enums for dimensions that will be compared; free text is limited to notes/evidence references.
+V1 uses closed enums for dimensions that will be compared; free text is limited to notes/evidence references. A separate `EnvironmentProfile` dataset is deliberately deferred until repeated environment identities justify it.
 
 ### 5.3 ExperimentRecord
 
