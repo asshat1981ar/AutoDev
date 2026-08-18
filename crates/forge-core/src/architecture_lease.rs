@@ -1,4 +1,4 @@
-//! Deterministic architecture-evidence lease policy definitions.
+//! Deterministic architecture-evidence lease policy definitions and evaluation.
 //!
 //! This module defines current-evidence eligibility policy only. It performs no
 //! I/O, reads no ambient clock, grants no execution capability, and never turns
@@ -8,9 +8,11 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::architecture_evidence::EvidenceRecord;
 use crate::evidence::sha256_hex;
 
 /// Risk tier used by the closed evidence-lease policy algebra.
@@ -193,6 +195,215 @@ pub struct EffectivePolicy {
     pub relaxation: Option<PolicyRelaxation>,
 }
 
+/// Immutable prior lease-state data consumed by the evaluator.
+///
+/// A4 intentionally exposes only the data shape. A5 owns trusted issuance,
+/// deterministic attestation fingerprinting, expiry derivation, and validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseAttestation {
+    pub evidence_id: String,
+    pub objective_id: String,
+    pub evidence_fingerprint: String,
+    pub policy_id: String,
+    pub policy_version: String,
+    pub policy_fingerprint: String,
+    pub source_version: String,
+    pub evaluated_at: DateTime<Utc>,
+    pub valid_until: DateTime<Utc>,
+    pub risk_tier: RiskTier,
+    pub attestation_fingerprint: String,
+}
+
+/// Adapter-normalized candidate refresh input. It proposes new evidence but does
+/// not mutate or replace the historical evidence record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefreshProposal {
+    pub previous_evidence_id: String,
+    pub refreshed_evidence: EvidenceRecord,
+    pub source_version: String,
+    pub proposed_at: DateTime<Utc>,
+}
+
+impl RefreshProposal {
+    fn validate_against(&self, previous: &EvidenceRecord) -> Result<(), ArchitectureLeaseError> {
+        required(&self.previous_evidence_id, "previous_evidence_id")?;
+        required(&self.source_version, "source_version")?;
+        if self.previous_evidence_id != previous.id {
+            return Err(ArchitectureLeaseError::RefreshPreviousEvidenceMismatch {
+                expected: previous.id.clone(),
+                actual: self.previous_evidence_id.clone(),
+            });
+        }
+        if self.refreshed_evidence.id == previous.id {
+            return Err(ArchitectureLeaseError::RefreshOverwritesPreviousEvidence(
+                previous.id.clone(),
+            ));
+        }
+        if self.refreshed_evidence.objective_id != previous.objective_id {
+            return Err(ArchitectureLeaseError::RefreshObjectiveMismatch {
+                expected: previous.objective_id.clone(),
+                actual: self.refreshed_evidence.objective_id.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Current deterministic lease state produced by ForgeCore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaseEvaluationStatus {
+    Valid,
+    Stale,
+    RevalidationRequired,
+    Invalid,
+}
+
+/// Stable reason code explaining a lease-state transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaseEvaluationReason {
+    FreshWithinPolicy,
+    TtlExpired,
+    SourceVersionChanged,
+    FingerprintChanged,
+    PolicyChanged,
+    MediumRiskReviewRequired,
+    HighRiskReviewRequired,
+    ExplicitlyInvalidated,
+}
+
+/// Deterministic result of evaluating one evidence record under one policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseEvaluation {
+    pub status: LeaseEvaluationStatus,
+    pub reason: LeaseEvaluationReason,
+    pub evaluated_at: DateTime<Utc>,
+}
+
+/// Evaluate current evidence eligibility using only explicit inputs.
+///
+/// `evaluated_at` is caller-supplied; this function reads no ambient clock and
+/// performs no connector, network, filesystem, process, or authorization work.
+pub fn evaluate_lease(
+    evidence: &EvidenceRecord,
+    policy: &EffectivePolicy,
+    risk_tier: RiskTier,
+    evaluated_at: DateTime<Utc>,
+    prior_attestation: Option<&LeaseAttestation>,
+    refresh_proposal: Option<&RefreshProposal>,
+    explicitly_invalidated: bool,
+) -> Result<LeaseEvaluation, ArchitectureLeaseError> {
+    required(&policy.id, "policy.id")?;
+    required(&policy.version, "policy.version")?;
+    policy.rule.validate()?;
+
+    if let Some(proposal) = refresh_proposal {
+        proposal.validate_against(evidence)?;
+    }
+
+    if explicitly_invalidated {
+        return Ok(evaluation(
+            LeaseEvaluationStatus::Invalid,
+            LeaseEvaluationReason::ExplicitlyInvalidated,
+            evaluated_at,
+        ));
+    }
+
+    let Some(prior) = prior_attestation else {
+        return Ok(review_for_risk(risk_tier, evaluated_at));
+    };
+
+    if prior.policy_id != policy.id
+        || prior.policy_version != policy.version
+        || prior.policy_fingerprint != policy.policy_fingerprint
+    {
+        return Ok(evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::PolicyChanged,
+            evaluated_at,
+        ));
+    }
+
+    if prior.evidence_id != evidence.id
+        || prior.objective_id != evidence.objective_id
+        || prior.evidence_fingerprint != evidence.content_fingerprint
+    {
+        return Ok(evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::FingerprintChanged,
+            evaluated_at,
+        ));
+    }
+
+    if let Some(proposal) = refresh_proposal {
+        let source_changed = proposal.source_version != prior.source_version;
+        let fingerprint_changed =
+            proposal.refreshed_evidence.content_fingerprint != evidence.content_fingerprint;
+
+        if source_changed || fingerprint_changed {
+            return Ok(match risk_tier {
+                RiskTier::High => evaluation(
+                    LeaseEvaluationStatus::RevalidationRequired,
+                    LeaseEvaluationReason::HighRiskReviewRequired,
+                    evaluated_at,
+                ),
+                RiskTier::Medium => evaluation(
+                    LeaseEvaluationStatus::RevalidationRequired,
+                    LeaseEvaluationReason::MediumRiskReviewRequired,
+                    evaluated_at,
+                ),
+                RiskTier::Low if source_changed => evaluation(
+                    LeaseEvaluationStatus::RevalidationRequired,
+                    LeaseEvaluationReason::SourceVersionChanged,
+                    evaluated_at,
+                ),
+                RiskTier::Low => evaluation(
+                    LeaseEvaluationStatus::RevalidationRequired,
+                    LeaseEvaluationReason::FingerprintChanged,
+                    evaluated_at,
+                ),
+            });
+        }
+
+        if risk_tier == RiskTier::Low
+            && policy.revalidation_mode == RevalidationMode::AutomaticLowRisk
+        {
+            return Ok(evaluation(
+                LeaseEvaluationStatus::Valid,
+                LeaseEvaluationReason::FreshWithinPolicy,
+                evaluated_at,
+            ));
+        }
+    }
+
+    if evaluated_at < prior.valid_until {
+        return Ok(evaluation(
+            LeaseEvaluationStatus::Valid,
+            LeaseEvaluationReason::FreshWithinPolicy,
+            evaluated_at,
+        ));
+    }
+
+    Ok(match risk_tier {
+        RiskTier::High => evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::HighRiskReviewRequired,
+            evaluated_at,
+        ),
+        RiskTier::Medium => evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::MediumRiskReviewRequired,
+            evaluated_at,
+        ),
+        RiskTier::Low => evaluation(
+            LeaseEvaluationStatus::Stale,
+            LeaseEvaluationReason::TtlExpired,
+            evaluated_at,
+        ),
+    })
+}
+
 /// Deterministic registry of named evidence-lease policies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeasePolicyRegistry {
@@ -317,6 +528,12 @@ pub enum ArchitectureLeaseError {
     ApprovalEvidenceMismatch,
     #[error("policy structures cannot be compared safely")]
     UnsupportedPolicyComparison,
+    #[error("refresh previous evidence id `{actual}` does not match `{expected}`")]
+    RefreshPreviousEvidenceMismatch { expected: String, actual: String },
+    #[error("refresh objective `{actual}` does not match `{expected}`")]
+    RefreshObjectiveMismatch { expected: String, actual: String },
+    #[error("refresh proposal cannot overwrite historical evidence `{0}`")]
+    RefreshOverwritesPreviousEvidence(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +541,38 @@ enum PolicyRelation {
     Equal,
     Tightening,
     Relaxation,
+}
+
+fn evaluation(
+    status: LeaseEvaluationStatus,
+    reason: LeaseEvaluationReason,
+    evaluated_at: DateTime<Utc>,
+) -> LeaseEvaluation {
+    LeaseEvaluation {
+        status,
+        reason,
+        evaluated_at,
+    }
+}
+
+fn review_for_risk(risk_tier: RiskTier, evaluated_at: DateTime<Utc>) -> LeaseEvaluation {
+    match risk_tier {
+        RiskTier::High => evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::HighRiskReviewRequired,
+            evaluated_at,
+        ),
+        RiskTier::Medium => evaluation(
+            LeaseEvaluationStatus::RevalidationRequired,
+            LeaseEvaluationReason::MediumRiskReviewRequired,
+            evaluated_at,
+        ),
+        RiskTier::Low => evaluation(
+            LeaseEvaluationStatus::Stale,
+            LeaseEvaluationReason::TtlExpired,
+            evaluated_at,
+        ),
+    }
 }
 
 fn validate_children(
