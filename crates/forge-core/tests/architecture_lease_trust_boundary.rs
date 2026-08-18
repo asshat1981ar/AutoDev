@@ -1,3 +1,4 @@
+// TDD RED proof: prior lease attestations are trust-bearing inputs and must validate before use.
 use chrono::{DateTime, TimeZone, Utc};
 use forge_core::{
     evaluate_lease, EffectivePolicy, EvidenceClass, EvidenceRecord, LeaseAttestation,
