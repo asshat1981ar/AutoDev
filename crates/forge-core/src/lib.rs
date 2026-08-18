@@ -47,9 +47,9 @@ pub use architecture_evidence::{
 pub use architecture_lease::{
     evaluate_lease, ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError,
     EffectivePolicy, LeaseAttestation, LeaseEvaluation, LeaseEvaluationReason,
-    LeaseEvaluationStatus, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule,
-    PolicyRelaxation, RefreshProposal, RepositoryApprovalEvidence, RepositoryPolicyOverride,
-    RevalidationMode, RiskTier,
+    LeaseEvaluationStatus, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule, PolicyRelaxation,
+    RefreshProposal, RepositoryApprovalEvidence, RepositoryPolicyOverride, RevalidationMode,
+    RiskTier,
 };
 pub use capability_gap::{
     discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
