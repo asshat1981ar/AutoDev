@@ -1,8 +1,9 @@
 use chrono::{DateTime, TimeZone, Utc};
 use forge_core::{
-    evaluate_lease, ArchitectureLeaseError, EffectivePolicy, EvidenceClass, EvidenceRecord,
-    LeaseAttestation, LeaseEvaluationReason, LeaseEvaluationStatus, LeasePolicyDefinition,
-    LeaseRule, RefreshProposal, RevalidationMode, RiskTier,
+    evaluate_lease, ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError,
+    EffectivePolicy, EvidenceClass, EvidenceRecord, LeaseAttestation, LeaseEvaluationReason,
+    LeaseEvaluationStatus, LeasePolicyDefinition, LeaseRule, PolicyRelaxation, RefreshProposal,
+    RevalidationMode, RiskTier,
 };
 
 fn ts(hour: u32, minute: u32, second: u32) -> DateTime<Utc> {
@@ -377,5 +378,146 @@ fn refresh_proposal_cannot_overwrite_previous_evidence_record() {
         )
         .unwrap_err(),
         ArchitectureLeaseError::RefreshOverwritesPreviousEvidence("ev-1".into()),
+    );
+}
+
+#[test]
+fn malformed_current_evidence_fails_closed() {
+    let mut evidence = make_evidence("ev-1", "obj-1", "same content");
+    evidence.content_fingerprint = "not-a-sha256".into();
+    let policy = policy(RevalidationMode::Explicit);
+
+    assert!(matches!(
+        evaluate_lease(
+            &evidence,
+            &policy,
+            RiskTier::Low,
+            ts(12, 0, 0),
+            None,
+            None,
+            false,
+        ),
+        Err(ArchitectureLeaseError::InvalidLeaseEvidence(_))
+    ));
+}
+
+#[test]
+fn malformed_refreshed_evidence_fails_closed() {
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
+    let policy = policy(RevalidationMode::AutomaticLowRisk);
+    let prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
+    let mut refreshed = make_evidence("ev-2", "obj-1", "same content");
+    refreshed.content_fingerprint = "not-a-sha256".into();
+    let proposal = refresh(&evidence, refreshed, "v1");
+
+    assert!(matches!(
+        evaluate_lease(
+            &evidence,
+            &policy,
+            RiskTier::Low,
+            ts(12, 0, 0),
+            Some(&prior),
+            Some(&proposal),
+            false,
+        ),
+        Err(ArchitectureLeaseError::InvalidRefreshEvidence(_))
+    ));
+}
+
+#[test]
+fn wrong_prior_evidence_binding_fails_closed() {
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
+    let policy = policy(RevalidationMode::Explicit);
+    let mut prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
+    prior.evidence_id = "ev-other".into();
+
+    assert!(matches!(
+        evaluate_lease(
+            &evidence,
+            &policy,
+            RiskTier::Low,
+            ts(12, 0, 0),
+            Some(&prior),
+            None,
+            false,
+        ),
+        Err(ArchitectureLeaseError::PriorEvidenceMismatch { .. })
+    ));
+}
+
+#[test]
+fn wrong_prior_objective_binding_fails_closed() {
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
+    let policy = policy(RevalidationMode::Explicit);
+    let mut prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
+    prior.objective_id = "obj-other".into();
+
+    assert!(matches!(
+        evaluate_lease(
+            &evidence,
+            &policy,
+            RiskTier::Low,
+            ts(12, 0, 0),
+            Some(&prior),
+            None,
+            false,
+        ),
+        Err(ArchitectureLeaseError::PriorObjectiveMismatch { .. })
+    ));
+}
+
+#[test]
+fn wrong_prior_policy_binding_fails_closed() {
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
+    let policy = policy(RevalidationMode::Explicit);
+    let mut prior = prior_attestation(&evidence, &policy, "v1", RiskTier::Low, ts(13, 0, 0));
+    prior.policy_id = "another_policy".into();
+
+    assert!(matches!(
+        evaluate_lease(
+            &evidence,
+            &policy,
+            RiskTier::Low,
+            ts(12, 0, 0),
+            Some(&prior),
+            None,
+            false,
+        ),
+        Err(ArchitectureLeaseError::PriorPolicyMismatch { .. })
+    ));
+}
+
+#[test]
+fn malformed_effective_relaxation_requires_approval_state() {
+    let evidence = make_evidence("ev-1", "obj-1", "same content");
+    let mut policy = policy(RevalidationMode::AutomaticLowRisk);
+    policy.relaxation = Some(PolicyRelaxation {
+        allow_relaxation: false,
+        rationale: "caller-forged effective policy".into(),
+        approval_reference: ApprovalReference {
+            repository: "asshat1981ar/AutoDev".into(),
+            kind: ApprovalReferenceKind::Commit,
+            reference: "abc123".into(),
+        },
+    });
+
+    let result = evaluate_lease(
+        &evidence,
+        &policy,
+        RiskTier::Low,
+        ts(12, 0, 0),
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.status,
+        LeaseEvaluationStatus::RelaxationApprovalRequired
+    );
+    assert_eq!(
+        result.reason,
+        LeaseEvaluationReason::RelaxationMissingApproval
     );
 }
