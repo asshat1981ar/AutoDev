@@ -11,6 +11,7 @@ pub mod architecture_evidence;
 pub mod architecture_lease;
 pub mod capability_gap;
 pub mod context;
+pub mod current_verification;
 pub mod development_loop;
 pub mod dispatch;
 pub mod envelope;
@@ -57,6 +58,9 @@ pub use capability_gap::{
     GapObservation, PromotionDecision,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
+pub use current_verification::{
+    evaluate_current_verification, CurrentVerificationResult, CurrentVerificationStatus,
+};
 pub use development_loop::{
     DevelopmentLoop, DevelopmentLoopError, DevelopmentLoopOutcome, DevelopmentLoopResult,
 };
