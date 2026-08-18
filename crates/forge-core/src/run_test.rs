@@ -57,10 +57,13 @@ mod tests {
         let mut action = action(vec![Capability::RunTest]);
         action.payload = json!({"args":["test"]});
 
-        let error = run_test_authorized(&action, &workspace, &AuthorizationGrant::none())
-            .unwrap_err();
+        let error =
+            run_test_authorized(&action, &workspace, &AuthorizationGrant::none()).unwrap_err();
 
-        assert!(matches!(error, ExecutionError::MissingPayloadField("runner")));
+        assert!(matches!(
+            error,
+            ExecutionError::MissingPayloadField("runner")
+        ));
     }
 
     #[test]
@@ -70,8 +73,8 @@ mod tests {
         let mut action = action(vec![Capability::RunTest]);
         action.payload = json!({"runner":"cargo; rm -rf /","args":[]});
 
-        let error = run_test_authorized(&action, &workspace, &AuthorizationGrant::none())
-            .unwrap_err();
+        let error =
+            run_test_authorized(&action, &workspace, &AuthorizationGrant::none()).unwrap_err();
 
         assert!(matches!(error, ExecutionError::UnsafeCommand(_)));
     }
