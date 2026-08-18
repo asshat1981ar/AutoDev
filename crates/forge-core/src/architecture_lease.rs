@@ -477,7 +477,9 @@ pub fn attest(
     evaluation: &LeaseEvaluation,
 ) -> Result<LeaseAttestation, ArchitectureLeaseError> {
     if evaluation.status != LeaseEvaluationStatus::Valid {
-        return Err(ArchitectureLeaseError::EvaluationNotValid(evaluation.status));
+        return Err(ArchitectureLeaseError::EvaluationNotValid(
+            evaluation.status,
+        ));
     }
     evidence
         .validate()
@@ -740,13 +742,21 @@ fn attestation_fingerprint(attestation: &LeaseAttestation) -> String {
         &attestation.evidence_fingerprint,
     );
     write_len_field(&mut canonical, "policy_id", &attestation.policy_id);
-    write_len_field(&mut canonical, "policy_version", &attestation.policy_version);
+    write_len_field(
+        &mut canonical,
+        "policy_version",
+        &attestation.policy_version,
+    );
     write_len_field(
         &mut canonical,
         "policy_fingerprint",
         &attestation.policy_fingerprint,
     );
-    write_len_field(&mut canonical, "source_version", &attestation.source_version);
+    write_len_field(
+        &mut canonical,
+        "source_version",
+        &attestation.source_version,
+    );
     write!(
         canonical,
         "evaluated_at:{}:{}|valid_until:{}:{}|risk:{}|",
