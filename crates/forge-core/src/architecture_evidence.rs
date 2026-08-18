@@ -119,7 +119,9 @@ impl EvidenceRecord {
         required_ref(&self.source_reference, "source_reference")?;
         required_ref(&self.invalidation_condition, "invalidation_condition")?;
         if self.confidence > 100 {
-            return Err(ArchitectureEvidenceError::InvalidConfidence(self.confidence));
+            return Err(ArchitectureEvidenceError::InvalidConfidence(
+                self.confidence,
+            ));
         }
         if self.content_fingerprint.len() != 64
             || !self
