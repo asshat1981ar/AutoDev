@@ -182,14 +182,19 @@ fn hypothesis_with_current_attestation_cannot_satisfy_current_verified_gate() {
 #[test]
 fn renewed_attestation_restores_current_eligibility() {
     let (record, policy, expired_attestation) = current_fixture(EvidenceClass::Documented);
-    let decision = decision(&record.id, DecisionMaturity::Verified);
+    let historical_decision = decision(&record.id, DecisionMaturity::Verified);
     let evidence = BTreeMap::from([(record.id.clone(), record.clone())]);
     let policies = BTreeMap::from([(policy.id.clone(), policy.clone())]);
     let expired = BTreeMap::from([(expired_attestation.evidence_id.clone(), expired_attestation)]);
 
-    let stale =
-        evaluate_current_verification(&decision, &evidence, &expired, &policies, ts(12, 0, 2))
-            .unwrap();
+    let stale = evaluate_current_verification(
+        &historical_decision,
+        &evidence,
+        &expired,
+        &policies,
+        ts(12, 0, 2),
+    )
+    .unwrap();
     assert_eq!(stale.status, CurrentVerificationStatus::Ineligible);
 
     let next = evidence_record_for_renewal(&record);
