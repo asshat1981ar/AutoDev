@@ -273,8 +273,8 @@ impl LeasePolicyRegistry {
                     .as_ref()
                     .ok_or(ArchitectureLeaseError::UnsafePolicyRelaxation)?;
                 relaxation.validate()?;
-                let approval = approval_evidence
-                    .ok_or(ArchitectureLeaseError::RelaxationApprovalRequired)?;
+                let approval =
+                    approval_evidence.ok_or(ArchitectureLeaseError::RelaxationApprovalRequired)?;
                 approval.validate()?;
                 let candidate_fingerprint = candidate.fingerprint()?;
 
