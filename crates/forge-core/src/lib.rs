@@ -173,11 +173,9 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
         ActionType::Git => execute_git_authorized(exec)?,
-        ActionType::RunTest => run_test::run_test_authorized(
-            &exec.action,
-            &exec.workspace,
-            &exec.authorization,
-        )?,
+        ActionType::RunTest => {
+            run_test::run_test_authorized(&exec.action, &exec.workspace, &exec.authorization)?
+        }
         other => {
             return Err(ExecutionError::UnsupportedAction(
                 other.as_str().to_string(),
