@@ -51,6 +51,32 @@ mod tests {
     }
 
     #[test]
+    fn missing_runner_is_rejected_before_process_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 4096).unwrap();
+        let mut action = action(vec![Capability::RunTest]);
+        action.payload = json!({"args":["test"]});
+
+        let error = run_test_authorized(&action, &workspace, &AuthorizationGrant::none())
+            .unwrap_err();
+
+        assert!(matches!(error, ExecutionError::MissingPayloadField("runner")));
+    }
+
+    #[test]
+    fn non_cargo_runner_is_rejected_before_process_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 4096).unwrap();
+        let mut action = action(vec![Capability::RunTest]);
+        action.payload = json!({"runner":"cargo; rm -rf /","args":[]});
+
+        let error = run_test_authorized(&action, &workspace, &AuthorizationGrant::none())
+            .unwrap_err();
+
+        assert!(matches!(error, ExecutionError::UnsafeCommand(_)));
+    }
+
+    #[test]
     fn authorized_run_test_fails_closed_without_tier_two_sandbox() {
         let dir = tempfile::tempdir().unwrap();
         let workspace = Workspace::new(dir.path(), 4096).unwrap();
