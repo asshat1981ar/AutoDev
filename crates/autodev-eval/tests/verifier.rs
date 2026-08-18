@@ -338,7 +338,10 @@ fn verifier_child_spawns_grandchild() {
 
 #[test]
 #[ignore = "subprocess fixture invoked by early-leader-exit timeout test"]
+#[allow(clippy::zombie_processes)]
 fn verifier_child_exits_after_spawning_grandchild() {
+    // This fixture intentionally exits without reaping its descendant so the
+    // verifier timeout can prove that inherited pipes are still bounded.
     let _grandchild = Command::new(std::env::current_exe().unwrap())
         .args([
             "--ignored",
