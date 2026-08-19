@@ -1,0 +1,27 @@
+name: ExecPlan Control Plane
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feat/execplan-control-plane]
+
+jobs:
+  execplan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Verify plan contract
+        run: |
+          python scripts/check_execplan_contract.py
+          python -m unittest tests.test_execplan_contract -v
+      - name: Verify ForgeCore ExecPlan
+        working-directory: crates
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -p forge-core --all-targets --all-features -- -D warnings
+          cargo test -p forge-core --test exec_plan
+          cargo test -p forge-core
