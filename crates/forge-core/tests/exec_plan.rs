@@ -2,13 +2,18 @@ use forge_core::{ExecPlan, ExecPlanError, ExecPlanStatus, PlanBudget, PlanMilest
 
 fn test_plan() -> ExecPlan {
     let mut plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(2, 3));
-    plan.milestones.push(PlanMilestone::new("m1", "First milestone"));
+    plan.milestones
+        .push(PlanMilestone::new("m1", "First milestone"));
     plan
 }
 
 #[test]
 fn exec_plan_round_trips_without_authority_fields() {
-    let plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(3, 5));
+    let plan = ExecPlan::new(
+        "plan-1",
+        "Ship durable planning",
+        PlanBudget::new(3, 5),
+    );
     let json = serde_json::to_string(&plan).unwrap();
     assert!(!json.contains("authorization_grant"));
     assert!(!json.contains("approved"));
@@ -26,7 +31,9 @@ fn validation_rejects_invalid_identity_budget_and_milestones() {
     assert_eq!(zero_budget.validate(), Err(ExecPlanError::InvalidBudget));
 
     let mut duplicate = test_plan();
-    duplicate.milestones.push(PlanMilestone::new("m1", "Duplicate"));
+    duplicate
+        .milestones
+        .push(PlanMilestone::new("m1", "Duplicate"));
     assert_eq!(duplicate.validate(), Err(ExecPlanError::InvalidMilestones));
 }
 
@@ -35,7 +42,10 @@ fn interrupted_plan_requires_reconciliation_before_running() {
     let mut plan = test_plan();
     plan.start().unwrap();
     plan.interrupt("process died during effect").unwrap();
-    assert_eq!(plan.resume(false), Err(ExecPlanError::ReconciliationRequired));
+    assert_eq!(
+        plan.resume(false),
+        Err(ExecPlanError::ReconciliationRequired)
+    );
     plan.resume(true).unwrap();
     assert_eq!(plan.status, ExecPlanStatus::Running);
 }
@@ -44,7 +54,10 @@ fn interrupted_plan_requires_reconciliation_before_running() {
 fn replanning_is_bounded() {
     let mut plan = ExecPlan::new("p", "g", PlanBudget::new(1, 2));
     plan.consume_replan("first").unwrap();
-    assert_eq!(plan.consume_replan("second"), Err(ExecPlanError::ReplanBudgetExhausted));
+    assert_eq!(
+        plan.consume_replan("second"),
+        Err(ExecPlanError::ReplanBudgetExhausted)
+    );
 }
 
 #[test]
@@ -64,7 +77,10 @@ fn checkpoint_round_trip_preserves_coordination_state() {
     plan.references.task_ids.push("t-root".into());
     plan.references.run_ids.push("run-1".into());
     plan.references.envelope_ids.push("env-1".into());
-    plan.record_decision("Keep plans authority-free", "ForgeCore owns authorization");
+    plan.record_decision(
+        "Keep plans authority-free",
+        "ForgeCore owns authorization",
+    );
     plan.record_discovery("External effect reconciliation is required");
     plan.consume_replan("adjust milestone ordering").unwrap();
 
@@ -77,4 +93,40 @@ fn checkpoint_round_trip_preserves_coordination_state() {
     assert_eq!(restored.milestones, plan.milestones);
     assert_eq!(restored.decisions, plan.decisions);
     assert_eq!(restored.discoveries, plan.discoveries);
+}
+
+#[test]
+fn milestone_attempts_are_bounded_and_persisted() {
+    let mut plan = test_plan();
+
+    assert_eq!(plan.start_milestone_attempt("m1").unwrap(), 1);
+    assert_eq!(plan.start_milestone_attempt("m1").unwrap(), 2);
+    assert_eq!(plan.start_milestone_attempt("m1").unwrap(), 3);
+    assert_eq!(
+        plan.start_milestone_attempt("m1"),
+        Err(ExecPlanError::MilestoneAttemptBudgetExhausted)
+    );
+
+    let checkpoint = plan.checkpoint("cp-attempts").unwrap();
+    assert_eq!(checkpoint.milestones[0].attempts, 3);
+}
+
+#[test]
+fn validation_rejects_attempt_count_above_budget() {
+    let mut plan = test_plan();
+    plan.milestones[0].attempts = plan.budget.max_attempts_per_milestone + 1;
+
+    assert_eq!(
+        plan.validate(),
+        Err(ExecPlanError::MilestoneAttemptBudgetExhausted)
+    );
+}
+
+#[test]
+fn milestone_attempt_rejects_unknown_milestone() {
+    let mut plan = test_plan();
+    assert_eq!(
+        plan.start_milestone_attempt("missing"),
+        Err(ExecPlanError::UnknownMilestone)
+    );
 }
