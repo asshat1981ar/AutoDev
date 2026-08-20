@@ -41,6 +41,9 @@ pub struct AmcxEvidenceRef {
 #[serde(deny_unknown_fields)]
 pub struct AmcxVerificationRef {
     pub source: AmcxSourceIdentity,
+    pub report_ref: String,
+    pub report_sha256: String,
+    pub completed_at: String,
     pub verdict: String,
     pub checks: Vec<String>,
 }
@@ -62,9 +65,9 @@ pub enum AmcxBridgeError {
     MissingIdentity,
     #[error("execution evidence fingerprint failed verification")]
     InvalidEvidenceFingerprint,
-    #[error("context projection requires a non-blank immutable artifact reference")]
+    #[error("projection requires a non-blank immutable artifact reference")]
     MissingArtifactReference,
-    #[error("context projection requires a lowercase or uppercase 64-hex SHA-256 digest")]
+    #[error("projection requires a lowercase or uppercase 64-hex SHA-256 digest")]
     InvalidArtifactDigest,
 }
 
@@ -149,10 +152,22 @@ pub fn project_evidence(
 pub fn project_verification(
     source: AmcxSourceIdentity,
     report: &VerificationReport,
+    report_ref: &str,
+    report_sha256: &str,
 ) -> Result<AmcxVerificationRef, AmcxBridgeError> {
     validate_source(&source)?;
+    if report_ref.trim().is_empty() {
+        return Err(AmcxBridgeError::MissingArtifactReference);
+    }
+    if !valid_sha256_hex(report_sha256) {
+        return Err(AmcxBridgeError::InvalidArtifactDigest);
+    }
+
     Ok(AmcxVerificationRef {
         source,
+        report_ref: report_ref.to_string(),
+        report_sha256: report_sha256.to_string(),
+        completed_at: report.completed_at.to_rfc3339(),
         verdict: verification_verdict(report.overall).to_string(),
         checks: report
             .results
