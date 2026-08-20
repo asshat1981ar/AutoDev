@@ -87,15 +87,35 @@ fn evidence_projection_requires_verified_fingerprint() {
 }
 
 #[test]
-fn verification_projection_preserves_verdict_as_evidence_only() {
-    let projected = project_verification(source(), &verification_report()).unwrap();
+fn verification_projection_preserves_provenance_without_authority() {
+    let report = verification_report();
+    let digest = "b".repeat(64);
+    let projected = project_verification(
+        source(),
+        &report,
+        "evidence:verification-report-1",
+        &digest,
+    )
+    .unwrap();
     assert_eq!(projected.verdict, "pass");
     assert_eq!(projected.checks, vec!["unit_tests"]);
+    assert_eq!(projected.report_ref, "evidence:verification-report-1");
+    assert_eq!(projected.report_sha256, digest);
+    assert_eq!(projected.completed_at, report.completed_at.to_rfc3339());
 
     let json = serde_json::to_value(projected).unwrap();
     assert!(json.get("authorization").is_none());
     assert!(json.get("approval").is_none());
     assert!(json.get("approval_ref").is_none());
+
+    assert_eq!(
+        project_verification(source(), &report, "", &"b".repeat(64)),
+        Err(AmcxBridgeError::MissingArtifactReference)
+    );
+    assert_eq!(
+        project_verification(source(), &report, "evidence:verification-report-1", "bad"),
+        Err(AmcxBridgeError::InvalidArtifactDigest)
+    );
 }
 
 #[test]
@@ -133,7 +153,12 @@ fn blank_source_identity_fails_closed() {
     let mut blank = source();
     blank.repository = "   ".into();
     assert_eq!(
-        project_verification(blank, &verification_report()),
+        project_verification(
+            blank,
+            &verification_report(),
+            "evidence:verification-report-1",
+            &"b".repeat(64),
+        ),
         Err(AmcxBridgeError::MissingIdentity)
     );
 
