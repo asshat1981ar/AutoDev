@@ -47,6 +47,20 @@ fn interrupted_plan_requires_reconciliation_before_running() {
 }
 
 #[test]
+fn interrupted_plan_cannot_replan_around_reconciliation() {
+    let mut plan = test_plan();
+    plan.start().unwrap();
+    plan.interrupt("effect outcome unknown").unwrap();
+
+    assert_eq!(
+        plan.consume_replan("try a different path"),
+        Err(ExecPlanError::ReconciliationRequired)
+    );
+    assert_eq!(plan.status, ExecPlanStatus::Interrupted);
+    assert_eq!(plan.budget.replans_used, 0);
+}
+
+#[test]
 fn replanning_is_bounded() {
     let mut plan = ExecPlan::new("p", "g", PlanBudget::new(1, 2));
     plan.consume_replan("first").unwrap();
