@@ -16,6 +16,7 @@ pub mod envelope;
 pub mod error;
 pub mod evaluation;
 pub mod evidence;
+pub mod exec_plan;
 pub mod execute;
 mod git;
 pub mod hybrid_simulation;
@@ -68,6 +69,10 @@ pub use evidence::{
     action_id_from_record, action_type_from_record, record_from, Artifact, ArtifactHash,
     ArtifactHashAlgo, Evidence, EvidenceStore, ExecutionErrorInfo, ExecutionRecord,
     ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
+};
+pub use exec_plan::{
+    ExecPlan, ExecPlanError, ExecPlanStatus, PlanBudget, PlanCheckpoint, PlanDecision, PlanDiscovery,
+    PlanMilestone, PlanReferences,
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
