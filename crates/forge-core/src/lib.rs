@@ -71,8 +71,8 @@ pub use evidence::{
     ExecutionResult, ExecutionStatus, PolicyOutcome, ReadMetadata,
 };
 pub use exec_plan::{
-    ExecPlan, ExecPlanError, ExecPlanStatus, PlanBudget, PlanCheckpoint, PlanDecision, PlanDiscovery,
-    PlanMilestone, PlanReferences,
+    ExecPlan, ExecPlanError, ExecPlanStatus, PlanBudget, PlanCheckpoint, PlanDecision,
+    PlanDiscovery, PlanMilestone, PlanReferences,
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
