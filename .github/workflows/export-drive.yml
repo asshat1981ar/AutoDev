@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - audit/round-2-1-foundation
+  pull_request:
+    branches:
+      - main
   workflow_dispatch: {}
 
 jobs:
