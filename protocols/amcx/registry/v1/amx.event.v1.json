@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AMX Event DAG Schema v1",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "record_id",
+    "parent_event_ids",
+    "event_digest",
+    "timestamp",
+    "actor"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "RECORD_CREATED",
+        "RECORD_MUTATED",
+        "RECORD_SUPERSEDED",
+        "RECORD_RETRACTED",
+        "RECORD_QUARANTINED"
+      ]
+    },
+    "record_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "parent_event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "event_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actor": {
+      "type": "string"
+    }
+  }
+}

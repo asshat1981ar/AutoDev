@@ -1,0 +1,55 @@
+{
+  "registry_version": "1.0.0",
+  "status": "REVIEWED_ACTIVE",
+  "governing_adr": "ADR-002",
+  "schemas": {
+    "amcx.gate_profile.v1.json": {
+      "sha256": "2c94dbfbbb77f173abc781f0c987fd4165c7919933cc8687f5ff87427df9e1e7",
+      "byte_size": 977
+    },
+    "amcx.state_dimensions.v1.json": {
+      "sha256": "4bcd258650f57a2efcb0aed263f3b7d6b2ac12b285509a021ad76d1fb9f45816",
+      "byte_size": 574
+    },
+    "amcx.trust_boundaries.v1.json": {
+      "sha256": "df080ffe59c472aeaca741aae2170ce7f83851eace7f3a4936f2a3bc7559019b",
+      "byte_size": 1100
+    },
+    "amx.bundle.v1.json": {
+      "sha256": "a2e45f9ee3f1a5f9e2381abd765ce4b3ad95ae8427a271582cb7e8f93d75db0a",
+      "byte_size": 1071
+    },
+    "amx.event.v1.json": {
+      "sha256": "b1440d8962c2d2917ca79a4ae45894a21e288345911e4dae260b202b1cd7ba77",
+      "byte_size": 1049
+    },
+    "amx.record.v1.json": {
+      "sha256": "45105349a1205e7cad92c35163d1b4f6b653db35d5ff76e65ad34b24ad269e12",
+      "byte_size": 2137
+    },
+    "amx.transition.v1.json": {
+      "sha256": "7623e1d4427244ccd33f714d7ae7c7d2346cfa60df476ae386fb7a82bfb0527e",
+      "byte_size": 817
+    },
+    "ecm.attempt.v1.json": {
+      "sha256": "e888bda8cca6fa4dcdbe7aff4aff96ddc659d1eed3137bdef13486279cc3f98f",
+      "byte_size": 883
+    },
+    "ecm.lease.v1.json": {
+      "sha256": "f443c7b18073b4ab58b5de6bdc73bfb88a65ee8086e81471e2e03390d7beaf49",
+      "byte_size": 646
+    },
+    "ecm.memory_binding.v1.json": {
+      "sha256": "f384a52d7a1ff3d56fbede140cab70cf0e75057e60754878972749286e83a8e2",
+      "byte_size": 964
+    },
+    "ecm.message.v1.json": {
+      "sha256": "1862e147426eed715dceaf3d7310c17d60ca0c00cf5920d7eca9d9ccdc68ffed",
+      "byte_size": 1061
+    },
+    "ecm.task.v1.json": {
+      "sha256": "7d7993423076c2970bbfded7140522846b688be42fcb2f907778f1f629422742",
+      "byte_size": 1136
+    }
+  }
+}
