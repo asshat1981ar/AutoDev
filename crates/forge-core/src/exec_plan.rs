@@ -206,7 +206,7 @@ impl ExecPlan {
     pub fn resume(&mut self, reconciled: bool) -> Result<(), ExecPlanError> {
         match self.status {
             ExecPlanStatus::Interrupted if !reconciled => {
-                return Err(ExecPlanError::ReconciliationRequired)
+                Err(ExecPlanError::ReconciliationRequired)
             }
             ExecPlanStatus::Interrupted | ExecPlanStatus::Blocked => {
                 self.status = ExecPlanStatus::Running;
