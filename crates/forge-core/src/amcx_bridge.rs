@@ -62,8 +62,10 @@ pub enum AmcxBridgeError {
     MissingIdentity,
     #[error("execution evidence fingerprint failed verification")]
     InvalidEvidenceFingerprint,
-    #[error("context projection requires a non-blank immutable artifact reference and digest")]
+    #[error("context projection requires a non-blank immutable artifact reference")]
     MissingArtifactReference,
+    #[error("context projection requires a lowercase or uppercase 64-hex SHA-256 digest")]
+    InvalidArtifactDigest,
 }
 
 fn validate_source(source: &AmcxSourceIdentity) -> Result<(), AmcxBridgeError> {
@@ -74,6 +76,10 @@ fn validate_source(source: &AmcxSourceIdentity) -> Result<(), AmcxBridgeError> {
         return Err(AmcxBridgeError::MissingIdentity);
     }
     Ok(())
+}
+
+fn valid_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn plan_status(status: ExecPlanStatus) -> &'static str {
@@ -129,7 +135,7 @@ pub fn project_evidence(
     if evidence.record.id.trim().is_empty() {
         return Err(AmcxBridgeError::MissingIdentity);
     }
-    if !evidence.verify() || evidence.fingerprint.digest.trim().is_empty() {
+    if !evidence.verify() || !valid_sha256_hex(&evidence.fingerprint.digest) {
         return Err(AmcxBridgeError::InvalidEvidenceFingerprint);
     }
 
@@ -163,8 +169,11 @@ pub fn project_context(
     artifact_sha256: &str,
 ) -> Result<AmcxRepositoryContextRef, AmcxBridgeError> {
     validate_source(&source)?;
-    if artifact_ref.trim().is_empty() || artifact_sha256.trim().is_empty() {
+    if artifact_ref.trim().is_empty() {
         return Err(AmcxBridgeError::MissingArtifactReference);
+    }
+    if !valid_sha256_hex(artifact_sha256) {
+        return Err(AmcxBridgeError::InvalidArtifactDigest);
     }
 
     Ok(AmcxRepositoryContextRef {
