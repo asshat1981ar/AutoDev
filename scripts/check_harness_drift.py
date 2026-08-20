@@ -11,6 +11,7 @@ Checks that are fast, stdlib-only, and CI-suitable:
 5. File-scoped instruction files exist for the polyglot areas.
 6. Kotlin commonMain purity is not violated by illegal imports.
 7. scripts/autodev-cli.py remains dependency-free / authority-free.
+8. PLANS.md preserves the durable ExecPlan coordination contract.
 
 Exit 0 when all checks pass. Exit 1 with a clear message otherwise.
 Run: python scripts/check_harness_drift.py
@@ -31,10 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CI = ROOT / ".github/workflows/ci.yml"
 README = ROOT / "README.md"
 AGENTS = ROOT / "AGENTS.md"
+PLANS = ROOT / "PLANS.md"
 
-# Canonical commands that MUST appear in CI and in AGENTS.md (and README.md verification gates).
-# We check substrings, not exact line matches, to tolerate formatting differences.
-# Plus reproducible offline gate from Slice A
 REPRODUCIBLE_SCRIPT = ROOT / "scripts/verify_reproducible.sh"
 CANONICAL_CI_FRAGMENTS = [
     "cargo fmt --all -- --check",
@@ -56,9 +55,19 @@ CANONICAL_CI_FRAGMENTS = [
     'sdkmanager "platforms;android-35" "build-tools;35.0.0"',
 ]
 
-# Forbidden files that must not appear without an ADR (prevent template drift).
+REQUIRED_PLAN_FRAGMENTS = [
+    "## Non-negotiable authority boundary",
+    "### Progress",
+    "### Surprises & Discoveries",
+    "### Decision Log",
+    "### Outcomes & Retrospective",
+    "An ExecPlan is durable coordination state, not execution authority.",
+    "reconciliation",
+    "verification",
+]
+
 FORBIDDEN_ROOT_FILES = [
-    ROOT / "Cargo.toml",  # workspace is crates/Cargo.toml
+    ROOT / "Cargo.toml",
     ROOT / "package.json",
     ROOT / "pyproject.toml",
     ROOT / "requirements.txt",
@@ -89,10 +98,8 @@ def check_ci_exists(errors: list[str], verbose: bool) -> str:
 
 
 def check_canonical_commands_in_ci(ci_text: str, errors: list[str], verbose: bool) -> None:
-    # Normalize optional --locked flag so CI can evolve to reproducible --locked builds without drift
     normalized_ci = ci_text.replace(" --locked", "")
     for frag in CANONICAL_CI_FRAGMENTS:
-        # Also normalize fragment for comparison (fragments are canonical without --locked)
         normalized_frag = frag.replace(" --locked", "")
         if normalized_frag not in normalized_ci and frag not in ci_text:
             errors.append(f"CI drift: expected fragment not found in ci.yml: {frag!r}")
@@ -104,33 +111,49 @@ def check_agents_and_readme(ci_text: str, errors: list[str], verbose: bool) -> N
             errors.append(f"Missing {label} at {path.relative_to(ROOT)}")
             continue
         text = _read(path)
-        # AGENTS.md must contain the core verification commands; README must contain the Rust gate block.
-        # Normalize --locked so docs can be written with or without it
         normalized_text = text.replace(" --locked", "")
-        required = CANONICAL_CI_FRAGMENTS if path == AGENTS else [
-            "cargo fmt --all -- --check",
-            "cargo build --workspace",
-            "cargo test --workspace",
-            "cargo clippy --workspace --all-targets -- -D warnings",
-        ]
+        required = (
+            CANONICAL_CI_FRAGMENTS
+            if path == AGENTS
+            else [
+                "cargo fmt --all -- --check",
+                "cargo build --workspace",
+                "cargo test --workspace",
+                "cargo clippy --workspace --all-targets -- -D warnings",
+            ]
+        )
         for frag in required:
             normalized_frag = frag.replace(" --locked", "")
             if normalized_frag not in normalized_text and frag not in text:
-                # For README we allow prefix match without --all-features
-                if path == README and frag == "cargo clippy --workspace --all-targets --all-features -- -D warnings":
+                if (
+                    path == README
+                    and frag == "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+                ):
                     if "cargo clippy --workspace --all-targets" not in text:
                         errors.append(f"{label} drift: missing clippy gate fragment {frag!r}")
                 else:
                     errors.append(f"{label} drift: missing fragment {frag!r}")
-        # Kotlin wrapper mention
         if path == AGENTS and "kotlin/gradlew" not in text:
             errors.append("AGENTS.md drift: must mention kotlin/gradlew (wrapper-only rule)")
         if verbose and not any(e.startswith(label) for e in errors):
             print(f"[ok] {label} mentions canonical commands")
 
 
+def check_plans_contract(
+    errors: list[str], verbose: bool, plans_path: Path = PLANS
+) -> None:
+    if not plans_path.is_file():
+        errors.append("PLANS.md drift: durable ExecPlan contract is missing")
+        return
+    text = _read(plans_path)
+    missing = [fragment for fragment in REQUIRED_PLAN_FRAGMENTS if fragment not in text]
+    for fragment in missing:
+        errors.append(f"PLANS.md drift: missing required fragment {fragment!r}")
+    if verbose and not missing:
+        print("[ok] PLANS.md durable ExecPlan contract")
+
+
 def check_referenced_files_exist(errors: list[str], verbose: bool) -> None:
-    # Files that AGENTS.md and CI reference must exist
     must_exist = [
         ROOT / "crates/Cargo.toml",
         ROOT / "crates/forge-core/Cargo.toml",
@@ -183,17 +206,22 @@ def check_failure_memory(errors: list[str], verbose: bool) -> None:
         return
     mds = sorted(failures_dir.glob("*.md"))
     if not mds:
-        errors.append(f"No failure docs found in {failures_dir.relative_to(ROOT)}/ — expected at least 1 example")
+        errors.append(
+            f"No failure docs found in {failures_dir.relative_to(ROOT)}/ — expected at least 1 example"
+        )
         return
     for md in mds:
         text = _read(md)
         for section in EXPECTED_FAILURE_SECTIONS:
             if section not in text:
                 errors.append(f"{md.relative_to(ROOT)} missing section: {section}")
-        # Prevention must name a check or explain manual review
         if "## Prevention" in text:
             prevention = text.split("## Prevention", 1)[1].split("##", 1)[0]
-            if "Detection" not in prevention and "detection" not in prevention and "check" not in prevention.lower():
+            if (
+                "Detection" not in prevention
+                and "detection" not in prevention
+                and "check" not in prevention.lower()
+            ):
                 errors.append(
                     f"{md.relative_to(ROOT)} Prevention must name a Detection/check (or explain why manual)"
                 )
@@ -202,12 +230,16 @@ def check_failure_memory(errors: list[str], verbose: bool) -> None:
 
 
 def check_kotlin_purity(errors: list[str], verbose: bool) -> None:
-    # Scan commonMain sources for illegal imports
     illegal = re.compile(r"^\s*import\s+(java\.|android\.|androidx\.|darwin\.)", re.MULTILINE)
-    common_mains = list((ROOT / "kotlin").rglob("src/commonMain/**/*.kt")) if (ROOT / "kotlin").exists() else []
-    # Also check via glob that works without ** recursion quirks
+    common_mains = (
+        list((ROOT / "kotlin").rglob("src/commonMain/**/*.kt"))
+        if (ROOT / "kotlin").exists()
+        else []
+    )
     if not common_mains:
-        common_mains = [p for p in (ROOT / "kotlin").rglob("*.kt") if "src/commonMain" in p.as_posix()]
+        common_mains = [
+            p for p in (ROOT / "kotlin").rglob("*.kt") if "src/commonMain" in p.as_posix()
+        ]
     violations = []
     for kt in common_mains:
         try:
@@ -217,8 +249,8 @@ def check_kotlin_purity(errors: list[str], verbose: bool) -> None:
         if illegal.search(text):
             violations.append(kt.relative_to(ROOT).as_posix())
     if violations:
-        for v in violations:
-            errors.append(f"Kotlin commonMain purity violation (illegal import) in {v}")
+        for violation in violations:
+            errors.append(f"Kotlin commonMain purity violation (illegal import) in {violation}")
     elif verbose:
         print(f"[ok] Kotlin commonMain purity: {len(common_mains)} files scanned, no violations")
 
@@ -229,62 +261,73 @@ def check_cli_authority(errors: list[str], verbose: bool) -> None:
         errors.append(f"Missing CLI: {cli.relative_to(ROOT)}")
         return
     text = _read(cli)
-    # Must remain stdlib-only: forbid importing forge_core, requests, httpx, aiohttp etc.
-    forbidden_imports = ["import requests", "import httpx", "import aiohttp", "forge_core", "AuthorizationGrant"]
+    forbidden_imports = [
+        "import requests",
+        "import httpx",
+        "import aiohttp",
+        "forge_core",
+        "AuthorizationGrant",
+    ]
     for token in forbidden_imports:
         if token in text:
             errors.append(f"CLI authority drift: forbidden token {token!r} found in {cli.relative_to(ROOT)}")
-    # Must use urllib
     if "urllib" not in text:
         errors.append(f"CLI drift: {cli.relative_to(ROOT)} should use urllib (stdlib-only)")
-    # Syntax check
     try:
         ast.parse(text)
-    except SyntaxError as e:
-        errors.append(f"CLI syntax error: {e}")
-    if verbose and not any("CLI" in e for e in errors):
+    except SyntaxError as exc:
+        errors.append(f"CLI syntax error: {exc}")
+    if verbose and not any("CLI" in error for error in errors):
         print(f"[ok] CLI authority boundary: {cli.relative_to(ROOT)} stdlib-only")
 
 
 def check_reproducible_script(errors: list[str], verbose: bool) -> None:
     script = REPRODUCIBLE_SCRIPT
     if not script.is_file():
-        errors.append(f"Missing reproducible verification script: {script.relative_to(ROOT)} — see docs/failures/002")
+        errors.append(
+            f"Missing reproducible verification script: {script.relative_to(ROOT)} — see docs/failures/002"
+        )
         return
     if not os.access(script, os.X_OK):
-        errors.append(f"Reproducible script not executable: {script.relative_to(ROOT)} — run chmod +x {script.relative_to(ROOT)}")
+        errors.append(
+            f"Reproducible script not executable: {script.relative_to(ROOT)} — run chmod +x {script.relative_to(ROOT)}"
+        )
     try:
         text = _read(script)
-    except Exception as e:
-        errors.append(f"Cannot read {script.relative_to(ROOT)}: {e}")
+    except Exception as exc:
+        errors.append(f"Cannot read {script.relative_to(ROOT)}: {exc}")
         return
     if "cargo fmt --all -- --check" not in text:
         errors.append(f"{script.relative_to(ROOT)} must contain cargo fmt gate")
     if "check_harness_drift" not in text:
         errors.append(f"{script.relative_to(ROOT)} must invoke check_harness_drift")
-    # AGENTS.md must mention it
     try:
         agents_text = _read(AGENTS)
     except Exception:
         agents_text = ""
     if "verify_reproducible.sh" not in agents_text:
-        errors.append("AGENTS.md drift: must mention scripts/verify_reproducible.sh (Slice A offline-capable gate)")
-    if verbose and not any("reproducible" in e.lower() for e in errors):
+        errors.append(
+            "AGENTS.md drift: must mention scripts/verify_reproducible.sh (Slice A offline-capable gate)"
+        )
+    if verbose and not any("reproducible" in error.lower() for error in errors):
         print(f"[ok] reproducible script: {script.relative_to(ROOT)} executable and referenced")
 
 
 def check_scripts_syntax(errors: list[str], verbose: bool) -> None:
-    for py in [ROOT / "scripts/check_harness_drift.py", ROOT / "install.py", ROOT / "bootstrap_cline_mcp.py"]:
+    for py in [
+        ROOT / "scripts/check_harness_drift.py",
+        ROOT / "install.py",
+        ROOT / "bootstrap_cline_mcp.py",
+    ]:
         if not py.is_file():
             continue
         try:
             ast.parse(_read(py))
-        except SyntaxError as e:
-            errors.append(f"Syntax error in {py.relative_to(ROOT)}: {e}")
+        except SyntaxError as exc:
+            errors.append(f"Syntax error in {py.relative_to(ROOT)}: {exc}")
         else:
             if verbose:
                 print(f"[ok] Python syntax: {py.relative_to(ROOT)}")
-    # Node syntax check via node --check if available
     termux = ROOT / "scripts/termux-kanban.mjs"
     if termux.is_file():
         import shutil
@@ -311,6 +354,7 @@ def main() -> int:
         check_canonical_commands_in_ci(ci_text, errors, args.verbose)
         check_agents_and_readme(ci_text, errors, args.verbose)
 
+    check_plans_contract(errors, args.verbose)
     check_referenced_files_exist(errors, args.verbose)
     check_forbidden_files(errors, args.verbose)
     check_instructions(errors, args.verbose)
@@ -322,8 +366,8 @@ def main() -> int:
 
     if errors:
         print("Harness drift detected:", file=sys.stderr)
-        for i, e in enumerate(errors, 1):
-            print(f"  {i}. {e}", file=sys.stderr)
+        for index, error in enumerate(errors, 1):
+            print(f"  {index}. {error}", file=sys.stderr)
         print(
             "\nFix guidance: update AGENTS.md / README.md / .github/workflows/ci.yml so all three agree, "
             "or remove the forbidden file. See AGENTS.md section 9.",
