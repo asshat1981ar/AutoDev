@@ -130,6 +130,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 - **Do not edit generated artifacts:** `**/build/`, `**/target/`, `**/.gradle/`, `**/__pycache__/`, `*.apk`, `*.aab`, `crates/Cargo.lock` (except via `cargo update`), `kotlin/gradle/wrapper/gradle-wrapper.jar` (except via wrapper upgrader).
 - **Do not create:** root `Cargo.toml`, root `package.json`, root `pyproject.toml`, or `kotlin/gradle/libs.versions.toml` without an ADR.
 - **Do not bypass ForgeCore boundaries:** Never add direct filesystem/network/process execution that skips `Workspace` confinement or `AuthorizationGrant`. Public adapters stay fail-closed.
+- **Use durable ExecPlans for architectural or multi-hour work:** follow root `PLANS.md`; keep Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective current as evidence changes. Typed `ExecPlan` state owns lifecycle, milestone-attempt, and replan invariants. Plans never grant execution/approval authority or self-verify; reconcile interrupted effects before retry.
 - **Preserve `commonMain` purity:** No `java.*`/`android.*`/`darwin.*` types in `kotlin/*/src/commonMain`. Use `expect`/`actual` contracts.
 - **Preserve CLI authority boundary:** `scripts/autodev-cli.py` must not gain ForgeCore execution, approval, Git, or MCP write authority. It is read-only observer + objective enqueue.
 - **Workspace patch hygiene:** After editing, check `git status` for collateral rewrites (`yarn.lock`, `Cargo.lock` drift, `gradle-wrapper.properties`). Revert unintended changes.
@@ -142,7 +143,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 - **Every Python/fabric change:** `python -m py_compile` + `python -m unittest discover -s tests -v` must pass.
 - **Every launcher change:** `node --check` + `node scripts/termux-kanban.mjs --check` must pass.
 - **Verification evidence contract:** `ExecutionEnvelope.evidence.required` names checks that must be present AND passing. A missing required check fails the task even if all executed checks passed. Unknown required names fail closed — do not invent new evidence names without updating `crates/forge-core/src/verification.rs`.
-- **Harness drift:** `python scripts/check_harness_drift.py` must pass for any change to `README.md`, `AGENTS.md`, `docs/**`, `scripts/**`, `.github/workflows/ci.yml`, `kotlin/**/*.gradle.kts`, or `crates/**`.
+- **Harness drift:** `python scripts/check_harness_drift.py` must pass for any change to `README.md`, `AGENTS.md`, `PLANS.md`, `docs/**`, `scripts/**`, `.github/workflows/ci.yml`, `kotlin/**/*.gradle.kts`, or `crates/**`.
 
 ## 7. PR and commit conventions
 
@@ -162,6 +163,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 | Rule | Enforcement |
 |------|-------------|
 | Commands in docs match CI | `scripts/check_harness_drift.py` — compares `README.md`/`AGENTS.md` code fences against `ci.yml` |
+| ExecPlan coordination contract | `scripts/check_harness_drift.py` — validates root `PLANS.md` authority, living-section, reconciliation, and verification invariants |
 | No forbidden lockfiles/root manifests | `scripts/check_harness_drift.py` — fails if `package.json`/`pyproject.toml`/root `Cargo.toml` appear without ADR |
 | Failure docs have Detection | `scripts/check_harness_drift.py` — validates `docs/failures/*.md` structure |
 | Kotlin `commonMain` purity | `cargo`/`gradle` compilation + `check_harness_drift.py` grep for illegal imports |
@@ -173,6 +175,7 @@ Run `python scripts/check_harness_drift.py --help` for details.
 ## 10. References
 
 - `README.md` — architecture, verification gates, KMP module table
+- `PLANS.md` — durable ExecPlan coordination and recovery contract
 - `.github/workflows/ci.yml` — canonical verification commands
 - `docs/adr/ADR-001-forgecore-execution.md` — trusted execution boundary
 - `docs/architecture/**` — protocol, runtime, and evidence specs
