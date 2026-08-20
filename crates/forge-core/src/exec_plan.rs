@@ -219,7 +219,10 @@ impl ExecPlan {
     }
 
     pub fn cancel(&mut self) -> Result<(), ExecPlanError> {
-        if matches!(self.status, ExecPlanStatus::Completed | ExecPlanStatus::Cancelled) {
+        if matches!(
+            self.status,
+            ExecPlanStatus::Completed | ExecPlanStatus::Cancelled
+        ) {
             return Err(ExecPlanError::InvalidTransition);
         }
         self.status = ExecPlanStatus::Cancelled;
@@ -228,7 +231,10 @@ impl ExecPlan {
     }
 
     pub fn complete(&mut self) -> Result<(), ExecPlanError> {
-        if !matches!(self.status, ExecPlanStatus::Running | ExecPlanStatus::Blocked) {
+        if !matches!(
+            self.status,
+            ExecPlanStatus::Running | ExecPlanStatus::Blocked
+        ) {
             return Err(ExecPlanError::InvalidTransition);
         }
         if self.milestones.iter().any(|milestone| !milestone.completed) {
@@ -295,7 +301,10 @@ impl ExecPlan {
         }
         self.budget.replans_used += 1;
         self.record_decision("Replan", reason);
-        if !matches!(self.status, ExecPlanStatus::Completed | ExecPlanStatus::Cancelled) {
+        if !matches!(
+            self.status,
+            ExecPlanStatus::Completed | ExecPlanStatus::Cancelled
+        ) {
             self.status = ExecPlanStatus::Planned;
             self.interruption_reason = None;
             self.touch();
