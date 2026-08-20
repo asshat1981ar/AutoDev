@@ -4,9 +4,37 @@
 
 **Goal:** Add a pure, non-authorizing mapping layer between existing ForgeCore state and AMCX reference/projection types without creating a second execution, plan, evidence, or verification authority.
 
-**Architecture:** `crates/forge-core/src/amcx_bridge.rs` will contain serializable validated references derived from existing ForgeCore objects. Conversion is one-way projection: host objects remain canonical and are never mutated. The module exposes no executor, policy mutator, grant constructor, filesystem/network/process call, or schema activation function.
+**Architecture:** `crates/forge-core/src/amcx_bridge.rs` contains serializable validated references derived from existing ForgeCore objects. Conversion is one-way projection: host objects remain canonical and are never mutated. The module exposes no executor, policy mutator, grant constructor, filesystem/network/process call, or schema activation function.
 
 **Spec:** `docs/architecture/amcx/reconciliation-v1.1.md`
+
+## Progress
+
+- [x] Repository ownership reconciliation completed.
+- [x] Focused RED gate observed under Rust 1.97.1: `E0583` because `forge_core::amcx_bridge` did not exist.
+- [x] Minimal projection-only bridge implemented.
+- [x] Local focused GREEN proxy passed: 5/5 bridge projection tests.
+- [x] Manual authority-surface review found no executor or `AuthorizationGrant` construction/return path; context projection does not copy source bodies.
+- [ ] Canonical repository Rust gate: fmt, clippy, focused bridge test, workspace test.
+- [ ] Harness drift gate.
+- [ ] Independent PR review.
+- [ ] Mark PR ready only after required gates are evidenced.
+
+## Surprises & Discoveries
+
+- The ChatGPT sandbox can run the user-provided offline Rust 1.97.1 toolchain but cannot resolve `github.com`, so a complete checkout/workspace test cannot be reconstructed there without fabricating repository state.
+- PR #38 initially exposed no GitHub status checks despite `.github/workflows/ci.yml` declaring `pull_request` on `main`. This plan checkpoint intentionally updates the PR branch to emit a fresh `synchronize` event; absence of a run after that event must be treated as a CI/integration finding rather than a pass.
+- The offline Rust bundle exposes `rustc`, `cargo`, and `rustfmt`; `cargo clippy` is not registered in that sandbox installation. Canonical CI remains responsible for Clippy.
+
+## Decision Log
+
+- Preserve AutoDev's existing `ExecPlan`, `EvidenceStore`, `VerificationFabric`, `ContextPack`, `ExecutionEnvelope`, and kernel-owned `AuthorizationGrant` as canonical host authorities. AMCX receives projections/references only.
+- Keep PR #38 draft until canonical repository verification and independent review are observable.
+- Do not substitute the local proxy harness for workspace verification; it proves the bridge behavior only.
+
+## Outcomes & Retrospective
+
+Current outcome is **implemented but not integration-verified**. The bridge surface exists and focused behavior is exercised locally, while merge readiness remains blocked on repository-level CI/harness evidence.
 
 ## Global constraints
 
@@ -25,38 +53,16 @@
 **Files:**
 - Create: `crates/forge-core/tests/amcx_bridge.rs`
 
-**Tests to write before implementation:**
+**Tests:**
 
 1. `plan_projection_retains_identity_without_mutating_plan`
-   - construct an `ExecPlan` with a milestone and checkpoint;
-   - project it;
-   - assert plan/checkpoint IDs and source kind are retained;
-   - assert original plan status and milestone state are unchanged.
-
 2. `evidence_projection_requires_verified_fingerprint`
-   - construct valid `Evidence` and project it successfully;
-   - tamper with a cloned evidence record;
-   - assert projection rejects it rather than copying an unverified digest.
-
 3. `verification_projection_preserves_verdict_as_evidence_only`
-   - construct a `VerificationReport` PASS;
-   - project it;
-   - assert output reports the source verdict and check identifiers;
-   - assert the bridge type contains no authorization/approval fields.
-
 4. `context_projection_is_reference_only`
-   - construct a `ContextPack`;
-   - project using an externally supplied immutable artifact reference/digest;
-   - assert output contains query/count/bytes/ref/digest but not copied file contents.
-
 5. `blank_source_identity_fails_closed`
-   - attempt each projection with a blank repository/revision/worktree/source ID;
-   - assert `AmcxBridgeError::MissingIdentity`.
+6. API review: bridge exposes projection types/functions only; no `From<...> for AuthorizationGrant` and no public method returning `AuthorizationGrant`.
 
-6. `bridge_surface_has_no_grant_conversion`
-   - compile-time API design: bridge exports projection types/functions only; no `From<...> for AuthorizationGrant` and no public method returning `AuthorizationGrant`.
-
-**RED gate:** run `cd crates && cargo test -p forge-core --test amcx_bridge --locked`. Confirm failure because `forge_core::amcx_bridge` does not yet exist.
+**RED evidence:** observed with Rust 1.97.1: module-not-found `E0583` before production bridge creation.
 
 ### Task 2: Implement minimal validated reference types
 
@@ -64,82 +70,9 @@
 - Create: `crates/forge-core/src/amcx_bridge.rs`
 - Modify: `crates/forge-core/src/lib.rs`
 
-**Types:**
-
-```rust
-pub struct AmcxSourceIdentity {
-    pub repository: String,
-    pub revision: String,
-    pub worktree: String,
-}
-
-pub struct AmcxPlanRef {
-    pub source: AmcxSourceIdentity,
-    pub plan_id: String,
-    pub checkpoint_id: String,
-    pub status: String,
-}
-
-pub struct AmcxEvidenceRef {
-    pub source: AmcxSourceIdentity,
-    pub evidence_id: String,
-    pub fingerprint_sha256: String,
-}
-
-pub struct AmcxVerificationRef {
-    pub source: AmcxSourceIdentity,
-    pub verdict: String,
-    pub checks: Vec<String>,
-}
-
-pub struct AmcxRepositoryContextRef {
-    pub source: AmcxSourceIdentity,
-    pub artifact_ref: String,
-    pub artifact_sha256: String,
-    pub query: String,
-    pub item_count: usize,
-    pub total_bytes: usize,
-}
-
-pub enum AmcxBridgeError {
-    MissingIdentity,
-    InvalidEvidenceFingerprint,
-    MissingArtifactReference,
-}
-```
-
-All types derive `Debug`, `Clone`, `PartialEq`, `Eq`, `Serialize`, `Deserialize` and `deny_unknown_fields` where appropriate.
-
-**Functions:**
-
-```rust
-pub fn project_plan(
-    source: AmcxSourceIdentity,
-    plan: &ExecPlan,
-    checkpoint: &PlanCheckpoint,
-) -> Result<AmcxPlanRef, AmcxBridgeError>;
-
-pub fn project_evidence(
-    source: AmcxSourceIdentity,
-    evidence: &Evidence,
-) -> Result<AmcxEvidenceRef, AmcxBridgeError>;
-
-pub fn project_verification(
-    source: AmcxSourceIdentity,
-    report: &VerificationReport,
-) -> Result<AmcxVerificationRef, AmcxBridgeError>;
-
-pub fn project_context(
-    source: AmcxSourceIdentity,
-    pack: &ContextPack,
-    artifact_ref: &str,
-    artifact_sha256: &str,
-) -> Result<AmcxRepositoryContextRef, AmcxBridgeError>;
-```
-
 Implementation is validation + immutable projection only.
 
-**GREEN gate:** rerun the focused test until all bridge tests pass.
+**GREEN evidence:** local focused proxy: 5 passed, 0 failed.
 
 ### Task 3: Regression and authority-boundary verification
 
