@@ -296,6 +296,9 @@ impl ExecPlan {
     }
 
     pub fn consume_replan(&mut self, reason: impl Into<String>) -> Result<(), ExecPlanError> {
+        if self.status == ExecPlanStatus::Interrupted {
+            return Err(ExecPlanError::ReconciliationRequired);
+        }
         if self.budget.replans_used >= self.budget.max_replans {
             return Err(ExecPlanError::ReplanBudgetExhausted);
         }
