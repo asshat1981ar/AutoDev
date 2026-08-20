@@ -90,13 +90,8 @@ fn evidence_projection_requires_verified_fingerprint() {
 fn verification_projection_preserves_provenance_without_authority() {
     let report = verification_report();
     let digest = "b".repeat(64);
-    let projected = project_verification(
-        source(),
-        &report,
-        "evidence:verification-report-1",
-        &digest,
-    )
-    .unwrap();
+    let projected =
+        project_verification(source(), &report, "evidence:verification-report-1", &digest).unwrap();
     assert_eq!(projected.verdict, "pass");
     assert_eq!(projected.checks, vec!["unit_tests"]);
     assert_eq!(projected.report_ref, "evidence:verification-report-1");
