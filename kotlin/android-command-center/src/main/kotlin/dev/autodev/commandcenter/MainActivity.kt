@@ -119,12 +119,16 @@ class CommandCenterViewModel : ViewModel() {
             }
     }
 
-    fun queueAction(actionType: String, payload: String) {
-        val pending = PendingAction(
-            id = UUID.randomUUID().toString(),
-            actionType = actionType,
-            payload = payload,
-        )
+    fun queueAction(
+        actionType: String,
+        payload: String,
+    ) {
+        val pending =
+            PendingAction(
+                id = UUID.randomUUID().toString(),
+                actionType = actionType,
+                payload = payload,
+            )
         pendingActionsFlow.update { it + pending }
         mutableState.update { it.copy(pendingActions = pendingActionsFlow.value) }
         // If already connected, attempt immediate replay; otherwise keep queued for later
@@ -141,19 +145,31 @@ class CommandCenterViewModel : ViewModel() {
             for (action in pending) {
                 // Reuse same endpoint and existing AuthorizationGrant concept — blocked without grant does not consume attempt
                 // This replay respects VerifiedOrchestratorState: approval resume reuses same envelope id
-                val success = try {
-                    val request = Request.Builder()
-                        .url("$endpoint/api/v1/objectives")
-                        .post(action.payload.toRequestBody("application/json".toMediaType()))
-                        .build()
-                    client.newCall(request).execute().use { resp -> resp.isSuccessful }
-                } catch (_: Exception) {
-                    false
-                }
+                val success =
+                    try {
+                        val request =
+                            Request.Builder()
+                                .url("$endpoint/api/v1/objectives")
+                                .post(action.payload.toRequestBody("application/json".toMediaType()))
+                                .build()
+                        client.newCall(request).execute().use { resp -> resp.isSuccessful }
+                    } catch (_: Exception) {
+                        false
+                    }
                 if (!success) remaining.add(action)
             }
             pendingActionsFlow.value = remaining
-            mutableState.update { it.copy(pendingActions = remaining, status = if (remaining.isEmpty()) "Replayed ${pending.size} queued" else "${remaining.size} pending after replay") }
+            mutableState.update {
+                it.copy(
+                    pendingActions = remaining,
+                    status =
+                        if (remaining.isEmpty()) {
+                            "Replayed ${pending.size} queued"
+                        } else {
+                            "${remaining.size} pending after replay"
+                        },
+                )
+            }
         }
     }
 
