@@ -13,9 +13,11 @@ For future agentic development requiring local compilation, prefer one of these 
 2. a connected command runner exposing a repository shell;
 3. GitHub Actions on an isolated feature branch/draft PR.
 
-Do not treat connector reads as equivalent to compiler/test execution.
+Do not treat connector reads as equivalent to compiler/test execution. The required Detection/check for this prevention path is `python scripts/check_harness_drift.py --verbose` plus the canonical GitHub Actions repository gate when local GitHub DNS is unavailable.
 
 ## Detection
+Run `python scripts/check_harness_drift.py --verbose` to verify this failure record satisfies the repository failure-doc contract. For the underlying environment condition, attempt the repository network operation and treat `Could not resolve host: github.com` as a sandbox-network limitation; then require the canonical GitHub Actions workflow for integration evidence.
+
 The AMCX bridge workflow records a local Rust RED/GREEN proxy gate and requires GitHub Actions/full repository verification before merge. Repository CI remains the authoritative integration gate when the sandbox cannot resolve GitHub.
 
 ## Evidence
