@@ -55,7 +55,8 @@ fn verification_report() -> VerificationReport {
 #[test]
 fn plan_projection_retains_identity_without_mutating_plan() {
     let mut plan = ExecPlan::new("plan-1", "bridge AMCX", PlanBudget::new(2, 2));
-    plan.add_milestone(PlanMilestone::new("m1", "projection")).unwrap();
+    plan.add_milestone(PlanMilestone::new("m1", "projection"))
+        .unwrap();
     plan.start().unwrap();
     let checkpoint = plan.checkpoint("checkpoint-1").unwrap();
     let before_status = plan.status();
@@ -98,7 +99,7 @@ fn verification_projection_preserves_verdict_as_evidence_only() {
 }
 
 #[test]
-fn context_projection_is_reference_only() {
+fn context_projection_is_reference_only_and_requires_sha256() {
     let pack = ContextPack {
         query: "amcx bridge".into(),
         items: vec![ContextItem {
@@ -109,16 +110,22 @@ fn context_projection_is_reference_only() {
         }],
         total_bytes: 40,
     };
+    let digest = "a".repeat(64);
 
-    let projected = project_context(source(), &pack, "cas:context-1", "abc123").unwrap();
+    let projected = project_context(source(), &pack, "cas:context-1", &digest).unwrap();
     assert_eq!(projected.query, "amcx bridge");
     assert_eq!(projected.item_count, 1);
     assert_eq!(projected.total_bytes, 40);
     assert_eq!(projected.artifact_ref, "cas:context-1");
-    assert_eq!(projected.artifact_sha256, "abc123");
+    assert_eq!(projected.artifact_sha256, digest);
 
     let serialized = serde_json::to_string(&projected).unwrap();
     assert!(!serialized.contains("sensitive source body"));
+
+    assert_eq!(
+        project_context(source(), &pack, "cas:context-1", "abc123"),
+        Err(AmcxBridgeError::InvalidArtifactDigest)
+    );
 }
 
 #[test]
@@ -136,7 +143,7 @@ fn blank_source_identity_fails_closed() {
         total_bytes: 0,
     };
     assert_eq!(
-        project_context(source(), &pack, "", "abc"),
+        project_context(source(), &pack, "", &"a".repeat(64)),
         Err(AmcxBridgeError::MissingArtifactReference)
     );
 }
