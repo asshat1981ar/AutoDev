@@ -9,11 +9,7 @@ fn test_plan() -> ExecPlan {
 
 #[test]
 fn exec_plan_round_trips_without_authority_fields() {
-    let plan = ExecPlan::new(
-        "plan-1",
-        "Ship durable planning",
-        PlanBudget::new(3, 5),
-    );
+    let plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(3, 5));
     let json = serde_json::to_string(&plan).unwrap();
     assert!(!json.contains("authorization_grant"));
     assert!(!json.contains("approved"));
@@ -77,10 +73,7 @@ fn checkpoint_round_trip_preserves_coordination_state() {
     plan.references.task_ids.push("t-root".into());
     plan.references.run_ids.push("run-1".into());
     plan.references.envelope_ids.push("env-1".into());
-    plan.record_decision(
-        "Keep plans authority-free",
-        "ForgeCore owns authorization",
-    );
+    plan.record_decision("Keep plans authority-free", "ForgeCore owns authorization");
     plan.record_discovery("External effect reconciliation is required");
     plan.consume_replan("adjust milestone ordering").unwrap();
 
