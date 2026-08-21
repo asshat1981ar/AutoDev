@@ -1,5 +1,7 @@
 import json
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -9,6 +11,7 @@ from scripts.mistral_connector_sync import (
     apply_plan,
     diff_tools,
     load_manifest,
+    main,
     plan_reconciliation,
     sanitize,
     validate_manifest,
@@ -49,6 +52,15 @@ class ManifestTests(unittest.TestCase):
     def test_rejects_nested_api_key_headers(self):
         with self.assertRaises(ManifestError):
             validate_manifest({**BASE, "headers": {"X-Api-Key": "should-not-be-in-git"}})
+
+    def test_cli_validates_connector_registry(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main(["validate", "connectors/registry.yaml"])
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["schema_version"], 1)
+        self.assertIn("connectors/deepwiki.yaml", parsed["connectors"])
 
 
 class PlanningTests(unittest.TestCase):
