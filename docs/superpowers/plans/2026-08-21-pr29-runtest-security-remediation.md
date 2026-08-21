@@ -149,8 +149,6 @@ This test deliberately grants the capability appropriate to the wrong action typ
 
 - [ ] **Step 4: Run the single regression and verify RED**
 
-Run:
-
 ```bash
 cargo test -p forge-core non_run_test_action_is_rejected_before_policy_and_process_boundary -- --nocapture
 ```
@@ -159,7 +157,7 @@ Expected on the reviewed implementation: the test fails because the returned err
 
 - [ ] **Step 5: Implement the smallest fail-closed action-type guard**
 
-At the beginning of `run_test_authorized`, before `enforce_policy(action, grant)?`, add exactly the action-type ownership check:
+At the beginning of `run_test_authorized`, before `enforce_policy(action, grant)?`, add exactly:
 
 ```rust
 if action.action_type != crate::ActionType::RunTest {
@@ -172,8 +170,6 @@ if action.action_type != crate::ActionType::RunTest {
 Do not move or weaken the existing policy/capability checks for valid RunTest actions. Do not change `execute_process`, sandbox behavior, or runner parsing.
 
 - [ ] **Step 6: Run targeted GREEN verification**
-
-Run:
 
 ```bash
 cargo test -p forge-core non_run_test_action_is_rejected_before_policy_and_process_boundary -- --nocapture
@@ -233,8 +229,6 @@ Expected: every command exits 0. Record command, exit status, and current commit
 
 - [ ] **Step 10: Inspect the focused diff**
 
-Run:
-
 ```bash
 git diff -- crates/forge-core/src/run_test.rs crates/forge-core/src/lib.rs crates/forge-core/src/error.rs
 ```
@@ -262,35 +256,17 @@ Record the resulting commit SHA as `IMPLEMENTED` evidence.
 
 Push/update only the existing PR #29 branch `autodev/run-test-executor` after the repository workflow's normal authorization gate for shared-remote side effects.
 
-Then fetch PR #29 metadata and confirm:
-
-```text
-remote head SHA == the focused repair commit SHA
-```
-
-If they differ, do not use local verification as proof for the remote head; reconcile and re-run the required checks for the actual head.
+Then fetch PR #29 metadata and require the remote head SHA to equal the focused repair commit SHA. If they differ, do not use local verification as proof for the remote head; reconcile and re-run the required checks for the actual head.
 
 - [ ] **Step 13: Inspect CI for the repair head**
 
-Wait only through the normal external CI lifecycle; do not issue duplicate review commands while the same SHA is processing. Inspect the workflow run associated with the repair head and require the applicable required lanes to be green before claiming CI verification.
+Inspect the workflow run associated with the repair head when GitHub reports it. Do not issue duplicate review commands while the same SHA is processing. Require the applicable required lanes to be green before claiming CI verification.
 
 Record the workflow run ID and exact head SHA as `CI_VERIFIED` evidence.
 
-- [ ] **Step 14: Reply to the CodeRabbit inline thread with evidence**
+- [ ] **Step 14: Reply to the CodeRabbit inline thread with actual evidence**
 
-Reply in the existing inline review thread, not as a top-level PR comment. Use a concise evidence report shaped like:
-
-```text
-Confirmed and fixed at the adapter boundary.
-
-- Added a direct regression using ActionType::ReadFile + Capability::ReadFile + runner="cargo".
-- run_test_authorized now rejects non-RunTest actions before policy, capability, payload, or process handling.
-- Targeted RunTest tests: PASS.
-- Rust fmt/clippy/build/workspace tests: PASS.
-- CI: <run id> on head <sha>: PASS.
-```
-
-Use actual fresh evidence values; do not paste placeholders literally into the thread.
+Reply in the existing inline review thread, not as a top-level PR comment. The reply must state the confirmed root cause, identify the direct `ReadFile` + `ReadFile` capability regression case, state that the guard now precedes policy/capability/payload/process handling, and include the actual targeted-test result, full Rust verification result, CI run ID, and verified head SHA obtained during execution. Do not invent or pre-fill evidence values.
 
 - [ ] **Step 15: Ingest incremental CodeRabbit review and resolve only after evidence**
 
