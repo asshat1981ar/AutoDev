@@ -27,7 +27,7 @@
 ## Task 2 — Vibe observation and proposal tools
 
 - [x] Add RED tests for project status, typed plan lookup, non-authoritative verification, inert test proposals, and non-mutating replan proposals.
-- [x] Verify RED: CI run 521 compiled only after the absent Vibe handlers/types were identified as the failure.
+- [x] Verify RED: CI run 521 failed on the absent Vibe handlers/types after formatting passed.
 - [x] Implement `autodev.project.status`.
 - [x] Implement `autodev.execplan.get` with unknown-plan fail-closed behavior.
 - [x] Implement `autodev.verification.status` with `verified=false`, `authority=none`, and no self-verification.
