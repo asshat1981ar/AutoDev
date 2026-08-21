@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "connectors": [
+    "connectors/context7.yaml",
+    "connectors/deepwiki.yaml",
+    "connectors/github.yaml",
+    "connectors/linear.yaml"
+  ]
+}
