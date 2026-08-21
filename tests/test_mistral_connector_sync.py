@@ -65,6 +65,18 @@ class PlanningTests(unittest.TestCase):
         featured = {**BASE, "kind": "featured", "managed": False}
         self.assertEqual(plan_reconciliation(featured, None)["action"], "EXTERNAL")
 
+    def test_visibility_drift_blocks_in_place_update(self):
+        remote = {
+            "id": "uuid-1",
+            "name": BASE["name"],
+            "server": BASE["server"],
+            "visibility": "shared_workspace",
+            "description": BASE["description"],
+        }
+        plan = plan_reconciliation(BASE, remote)
+        self.assertEqual(plan["action"], "BLOCKED")
+        self.assertIn("visibility", plan["reason"])
+
     def test_shared_org_is_blocked_without_explicit_elevation(self):
         desired = {**BASE, "visibility": "shared_org"}
         self.assertEqual(plan_reconciliation(desired, None)["action"], "BLOCKED")
@@ -118,6 +130,16 @@ class ClientTests(unittest.TestCase):
         self.assertNotIn("risk", json.loads(body.decode("utf-8")))
         self.assertIn("refresh=true", transport.calls[1][1])
         self.assertIn("pretty=true", transport.calls[1][1])
+
+    def test_list_connectors_follows_cursor_pagination(self):
+        transport = FakeTransport([
+            {"items": [{"id": "1", "name": "one"}], "pagination": {"next_cursor": "next"}},
+            {"items": [{"id": "2", "name": "two"}], "pagination": {}},
+        ])
+        client = MistralConnectorClient("test-key", transport=transport)
+        self.assertEqual([item["name"] for item in client.list_connectors()], ["one", "two"])
+        self.assertNotIn("cursor=", transport.calls[0][1])
+        self.assertIn("cursor=next", transport.calls[1][1])
 
     def test_apply_only_mutates_create_or_update(self):
         transport = FakeTransport([{"id": "uuid-1", "name": BASE["name"]}])
