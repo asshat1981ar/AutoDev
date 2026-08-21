@@ -1,6 +1,8 @@
+use std::collections::BTreeSet;
+
 use forge_core::{
-    HarnessAssetKind, HarnessAssetRef, HarnessError, HarnessKind, HarnessProfile, HarnessRegistry,
-    HarnessStage,
+    default_harness_profiles, HarnessAssetKind, HarnessAssetRef, HarnessError, HarnessKind,
+    HarnessProfile, HarnessRegistry, HarnessStage,
 };
 
 fn asset(id: &str) -> HarnessAssetRef {
@@ -101,4 +103,67 @@ fn profile_rejects_empty_asset_identity() {
             reason: "asset id must not be empty".to_string(),
         })
     );
+}
+
+#[test]
+fn default_catalog_contains_exactly_five_stable_profiles() {
+    let registry = default_harness_profiles();
+    let actual: Vec<(&str, HarnessKind)> = registry
+        .profiles()
+        .iter()
+        .map(|profile| (profile.id.as_str(), profile.kind))
+        .collect();
+
+    assert_eq!(
+        actual,
+        vec![
+            ("forgeflow-sdlc", HarnessKind::Sdlc),
+            ("sprintmesh-agile", HarnessKind::Agile),
+            ("idea-tournament", HarnessKind::Innovation),
+            ("optiforge-optimizer", HarnessKind::Optimizer),
+            ("harnessforge-meta", HarnessKind::Meta),
+        ]
+    );
+}
+
+#[test]
+fn every_builtin_profile_is_valid_and_evidence_bearing() {
+    let registry = default_harness_profiles();
+
+    for profile in registry.profiles() {
+        profile.validate().expect("built-in profile must validate");
+        assert!(
+            profile.stages.len() >= 3,
+            "{} must have at least three stages",
+            profile.id
+        );
+
+        let mut stage_ids = BTreeSet::new();
+        for stage in &profile.stages {
+            assert!(
+                stage_ids.insert(stage.id.as_str()),
+                "{} repeats stage {}",
+                profile.id,
+                stage.id
+            );
+            assert!(
+                !stage.verification.is_empty(),
+                "{}:{} must carry independent verification",
+                profile.id,
+                stage.id
+            );
+
+            let mut assets = BTreeSet::new();
+            for asset in &stage.assets {
+                assert!(
+                    assets.insert((asset.id.as_str(), asset.version.as_str())),
+                    "{}:{} repeats asset {}@{}",
+                    profile.id,
+                    stage.id,
+                    asset.id,
+                    asset.version
+                );
+            }
+        }
+    }
 }
