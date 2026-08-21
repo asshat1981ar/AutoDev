@@ -46,6 +46,10 @@ class ManifestTests(unittest.TestCase):
             with self.subTest(patch=patch), self.assertRaises(ManifestError):
                 validate_manifest({**BASE, **patch})
 
+    def test_rejects_nested_api_key_headers(self):
+        with self.assertRaises(ManifestError):
+            validate_manifest({**BASE, "headers": {"X-Api-Key": "should-not-be-in-git"}})
+
 
 class PlanningTests(unittest.TestCase):
     def test_create_noop_update_and_external(self):
