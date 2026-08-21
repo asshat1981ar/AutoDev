@@ -46,3 +46,26 @@ async fn objective_intake_creates_observable_durable_exec_plan() {
     assert_eq!(plan.milestones()[0].id(), "objective");
     assert!(!plan.milestones()[0].is_completed());
 }
+
+#[tokio::test]
+async fn mcp_rejects_untrusted_browser_origin_before_dispatch() {
+    let state = AppState::new(None).with_mcp_bearer_token("test-token");
+    let app = router(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header("host", "localhost")
+                .header("origin", "https://evil.example")
+                .header("authorization", "Bearer test-token")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), 403);
+}
