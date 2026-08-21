@@ -12,6 +12,17 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: use std::process::Command;
+              any:
+                - pattern: use std::process::Command;
+                - pattern: use std::process::{Command};
+                - pattern: use std::process::{$$$BEFORE, Command, $$$AFTER};
+    - all:
+        - pattern: $COMMAND_ALIAS::new($PROGRAM)
+        - inside:
+            kind: source_file
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: use std::process::Command as $COMMAND_ALIAS;
 message: Direct process execution in ForgeCore requires trusted-boundary review.
 severity: warning
