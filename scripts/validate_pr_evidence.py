@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+HTML_COMMENT_RE = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 TOP_LEVEL_NO_IMPACT_RE = re.compile(
     r"^- \[([ xX])\] No trusted execution or authorization changes\s*$",
     re.MULTILINE,
@@ -21,12 +21,11 @@ NESTED_BOUNDARY_RE = re.compile(r"^\s{2,}- \[([xX])\] .+changed\s*$", re.MULTILI
 
 
 def _strip_comments(text: str) -> str:
-    """Remove HTML comments before evaluating user-visible PR evidence."""
+    """Remove closed or unterminated HTML comments before evaluating visible evidence."""
     return HTML_COMMENT_RE.sub("", text)
 
 
 def _section(body: str, heading: str) -> str | None:
-    """Return the visible Markdown level-three section body for a heading."""
     pattern = re.compile(
         rf"^### {re.escape(heading)}\s*$\n(?P<content>.*?)(?=^#{{1,3}} \S|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -38,12 +37,10 @@ def _section(body: str, heading: str) -> str | None:
 
 
 def _checked(match: re.Match[str] | None) -> bool:
-    """Return whether a matched Markdown checkbox is checked."""
     return bool(match and match.group(1).lower() == "x")
 
 
 def validate_body(body: str | None) -> list[str]:
-    """Return validation errors for a submitted pull-request body."""
     if not isinstance(body, str) or not body.strip():
         return ["Pull-request body is required for verification evidence."]
 
@@ -75,7 +72,6 @@ def validate_body(body: str | None) -> list[str]:
 
 
 def validate_event(event_path: Path) -> list[str]:
-    """Load a GitHub pull_request event and validate its submitted body."""
     try:
         event = json.loads(event_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -88,7 +84,6 @@ def validate_event(event_path: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    """CLI entry point returning non-zero when submitted evidence is invalid."""
     if len(argv) != 2:
         print("usage: validate_pr_evidence.py <github-event-json>", file=sys.stderr)
         return 2
