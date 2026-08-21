@@ -86,3 +86,8 @@ memory/
 # AMCX-1 integration worktrees
 .worktrees/
 
+# Agent runtime state (WEX protocol heartbeats + Engram MCP memory databases)
+.wex/
+.vibe/
+skills/*/.vibe/
+
