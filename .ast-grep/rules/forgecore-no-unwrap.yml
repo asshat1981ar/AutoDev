@@ -1,0 +1,10 @@
+id: forgecore-no-unwrap
+language: Rust
+files:
+  - crates/forge-core/src/**/*.rs
+rule:
+  any:
+    - pattern: $EXPR.unwrap()
+    - pattern: $EXPR.expect($MSG)
+message: Avoid unchecked unwrap/expect in ForgeCore.
+severity: warning

@@ -1,0 +1,34 @@
+id: forgecore-no-direct-process-command
+language: Rust
+files:
+  - crates/forge-core/src/**/*.rs
+rule:
+  any:
+    - pattern: std::process::Command::new($PROGRAM)
+    - all:
+        - pattern: Command::new($PROGRAM)
+        - inside:
+            kind: source_file
+            stopBy: end
+            has:
+              stopBy: end
+              any:
+                - pattern: use std::process::Command;
+                - pattern: use std::process::{Command};
+                - pattern: use std::process::{$$$BEFORE, Command, $$$AFTER};
+                - pattern: use std::{process::Command};
+                - pattern: use std::{$$$BEFORE, process::Command, $$$AFTER};
+    - all:
+        - pattern: $COMMAND_ALIAS::new($PROGRAM)
+        - inside:
+            kind: source_file
+            stopBy: end
+            has:
+              stopBy: end
+              any:
+                - pattern: use std::process::Command as $COMMAND_ALIAS;
+                - pattern: use std::process::{$$$BEFORE, Command as $COMMAND_ALIAS, $$$AFTER};
+                - pattern: use std::{process::Command as $COMMAND_ALIAS};
+                - pattern: use std::{$$$BEFORE, process::Command as $COMMAND_ALIAS, $$$AFTER};
+message: Direct process execution in ForgeCore requires trusted-boundary review.
+severity: warning
