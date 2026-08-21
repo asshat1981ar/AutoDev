@@ -7,6 +7,9 @@ rule:
     - pattern: subprocess.run($$$ARGS)
     - pattern: subprocess.call($$$ARGS)
     - pattern: subprocess.Popen($$$ARGS)
+    - pattern: subprocess.check_call($$$ARGS)
+    - pattern: subprocess.check_output($$$ARGS)
     - pattern: os.system($CMD)
+    - pattern: os.popen($CMD)
 message: Observer CLI must not gain arbitrary process execution authority.
 severity: error
