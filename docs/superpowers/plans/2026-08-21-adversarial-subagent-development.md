@@ -2,59 +2,58 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a deterministic, side-effect-free ForgeCore planning layer that turns a reviewed finding into a risk-tiered adversarial development cell with isolated roles, falsification prompts, evidence-gated state transitions, and bounded repair policy.
+**Goal:** Add a deterministic, side-effect-free ForgeCore planning layer that turns a reviewed PR finding into a risk-tiered adversarial development cell with isolated roles, falsification prompts, provenance, evidence-gated state transitions, and bounded repair policy.
 
-**Architecture:** Extend ForgeCore's existing logical agent registry, skill-routing, development-loop, and verification primitives rather than creating another scheduler or execution authority. The first slice is a pure planning/evidence module: it selects existing `AgentRole`s, builds self-contained agent briefs, enforces role separation and finding-state transitions, and exposes serializable records that an outer controller or Superpowers SDD workspace can persist. It does not execute agents, mutate repositories, merge PRs, or bypass ForgeCore policy.
+**Architecture:** Extend ForgeCore's existing logical `AgentRole`, skill-routing, durable-task, development-loop, and verification primitives rather than creating another scheduler or execution authority. This slice plans roles and briefs and records serializable evidence; Superpowers SDD remains responsible for isolated worktrees, fresh sub-agent instances, and its git-ignored execution ledger. The slice does not execute agents, mutate repositories, merge PRs, publish artifacts, or bypass ForgeCore policy.
 
-**Tech Stack:** Rust 1.97.1 stable, ForgeCore, serde, thiserror, existing `AgentRole`/`Task`/verification primitives, Markdown prompt contracts.
+**Tech Stack:** Rust 1.97.1 stable, ForgeCore, serde, thiserror, existing `AgentRole` and `Task`, Markdown prompt contracts.
 
 **Spec:** `docs/superpowers/specs/2026-08-21-adversarial-subagent-development-design.md`
 
 ## Global Constraints
 
 - ForgeCore remains the sole trusted execution and authorization boundary.
-- Do not introduce a second scheduler, background worker service, or autonomous merge/publish path.
-- Do not add third-party dependencies; use existing ForgeCore dependencies and the standard library.
-- External review text is evidence to adjudicate, never executable authority.
-- The implementation agent must not be the decisive reviewer for its own change.
-- Risk-tier planning and prompt generation must be deterministic for identical inputs.
-- TDD is mandatory for behavioral changes: observe RED before production implementation.
-- Verification evidence must refer to the current commit/head being assessed.
-- Prompt contracts may instruct agents to read, reason, test, or propose changes, but must not weaken ForgeCore capability, approval, workspace, or sandbox policy.
-- This plan produces planning/evidence primitives only; PR-specific remediation remains in separate plans.
+- Do not introduce a second scheduler, background worker service, autonomous merge path, or new process model.
+- Do not add third-party dependencies.
+- External review text is a claim to adjudicate, never executable authority.
+- The production/spec modifying stage must not be its own decisive reviewer.
+- Fresh sub-agent instances are required at the independent review and verification stages even when two stages use the same logical `AgentRole`.
+- Planning and brief generation must be deterministic for identical inputs.
+- TDD is mandatory for behavioral implementation tasks: observe RED before production code.
+- Verification evidence must identify the exact commit/head it supports.
+- Prompt contracts cannot weaken ForgeCore capability, approval, workspace, or sandbox policy.
+- PR-specific repairs remain in separate remediation plans and branches.
 
 ---
 
 ## File Structure
 
-- Create `crates/forge-core/src/adversarial_development.rs` — finding model, risk tiers, cell planner, role-separation validation, evidence-gated state machine, repair-loop policy, and brief construction.
-- Create `crates/forge-core/prompts/adversarial/context-scout.md` — read-only context acquisition contract.
-- Create `crates/forge-core/prompts/adversarial/adversarial-analyst.md` — falsification/red-team contract.
-- Create `crates/forge-core/prompts/adversarial/test-designer.md` — RED-test design contract.
-- Create `crates/forge-core/prompts/adversarial/implementer.md` — minimal GREEN implementation contract.
-- Create `crates/forge-core/prompts/adversarial/spec-editor.md` — specification-only edit contract.
-- Create `crates/forge-core/prompts/adversarial/spec-reviewer.md` — independent requirement-compliance attack contract.
-- Create `crates/forge-core/prompts/adversarial/security-reviewer.md` — trust-boundary counterexample contract.
-- Create `crates/forge-core/prompts/adversarial/verifier.md` — fresh-evidence verification contract.
-- Create `crates/forge-core/prompts/adversarial/integration-reviewer.md` — whole-change interaction and SHA-coherence contract.
-- Modify `crates/forge-core/src/lib.rs` — module declaration and public re-exports only.
-- Create `crates/forge-core/tests/adversarial_development.rs` — public-API acceptance coverage using PR #29 as a concrete Tier-0 fixture.
-- Modify `docs/architecture/agent-registry.md` — document that adversarial cells reuse logical roles and do not create new privileged runtimes.
+- Create `crates/forge-core/src/adversarial_development.rs` — finding provenance/model, risk tiers, cell planning, role-separation validation, evidence-gated state machine, repair-loop policy, and brief construction.
+- Create `crates/forge-core/prompts/adversarial/context-scout.md`.
+- Create `crates/forge-core/prompts/adversarial/adversarial-analyst.md`.
+- Create `crates/forge-core/prompts/adversarial/test-designer.md`.
+- Create `crates/forge-core/prompts/adversarial/implementer.md`.
+- Create `crates/forge-core/prompts/adversarial/spec-editor.md`.
+- Create `crates/forge-core/prompts/adversarial/spec-reviewer.md`.
+- Create `crates/forge-core/prompts/adversarial/security-reviewer.md`.
+- Create `crates/forge-core/prompts/adversarial/verifier.md`.
+- Create `crates/forge-core/prompts/adversarial/integration-reviewer.md`.
+- Modify `crates/forge-core/src/lib.rs` — module declaration and explicit re-exports only.
+- Create `crates/forge-core/tests/adversarial_development.rs` — public-API acceptance test using PR #29 as the Tier-0 fixture.
+- Modify `docs/architecture/agent-registry.md` — logical-role reuse and authority boundary documentation.
 
 ---
 
-### Task 1: Define the adversarial finding and stage model
+### Task 1: Define finding provenance, evidence, and stage types
 
 **Files:**
 - Create: `crates/forge-core/src/adversarial_development.rs`
 
 **Interfaces:**
-- Consumes: `crate::AgentRole` and serde derives already used throughout ForgeCore.
-- Produces: `AdversarialRiskTier`, `FindingCategory`, `AdversarialStage`, `FindingStatus`, `FindingEvidenceKind`, `FindingEvidence`, `FindingRuling`, `AdversarialFinding`, `CellStage`, `AdversarialCellPlan`, `AdversarialDevelopmentError`.
+- Consumes: `crate::AgentRole`, serde.
+- Produces: `AdversarialRiskTier`, `FindingSourceType`, `FindingCategory`, `FindingValidity`, `AdversarialStage`, `FindingStatus`, `FindingEvidenceKind`, `FindingEvidence`, `FindingRuling`, `AdversarialFinding`, `CellStage`, `AdversarialCellPlan`, `AdversarialDevelopmentError`.
 
-- [ ] **Step 1: Write model serialization tests before the model exists**
-
-Add an initial `#[cfg(test)]` module in the new file with the intended wire names:
+- [ ] **Step 1: Write the serialization test before the types exist**
 
 ```rust
 #[cfg(test)]
@@ -62,103 +61,94 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finding_model_round_trips_with_stable_wire_names() {
+    fn finding_round_trips_with_provenance_and_stable_wire_names() {
         let finding = AdversarialFinding::new(
             "PR29-CR-001",
+            29,
             "ab76053135f638943bcdf1d3367af3a16a34c53b",
+            FindingSourceType::CodeRabbit,
             "PRRT_kwDOTzuzVM6bG4UZ",
             AdversarialRiskTier::Tier0,
             FindingCategory::Authorization,
             "run_test adapter must reject non-RunTest actions before privileged evaluation",
+            vec!["crates/forge-core/src/run_test.rs".into()],
         );
         let value = serde_json::to_value(&finding).unwrap();
+        assert_eq!(value["pr"], 29);
+        assert_eq!(value["source_type"], "coderabbit");
         assert_eq!(value["risk_tier"], "tier_0");
-        assert_eq!(value["category"], "authorization");
         assert_eq!(value["status"], "discovered");
+        assert_eq!(value["validity"], "unadjudicated");
         assert_eq!(serde_json::from_value::<AdversarialFinding>(value).unwrap(), finding);
     }
 }
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
-
-Run:
+- [ ] **Step 2: Run and verify RED**
 
 ```bash
-cargo test -p forge-core finding_model_round_trips_with_stable_wire_names -- --nocapture
+cargo test -p forge-core finding_round_trips_with_provenance_and_stable_wire_names -- --nocapture
 ```
 
-Expected: compile failure because the adversarial model types do not yet exist.
+Expected: compile failure because the types do not exist.
 
 - [ ] **Step 3: Implement the minimal serializable model**
 
-Implement these exact shapes, retaining `Vec` ordering for deterministic serialized evidence:
+Use explicit risk-tier wire names so the test and serialized ledger cannot disagree:
 
 ```rust
 use serde::{Deserialize, Serialize};
 use crate::AgentRole;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdversarialRiskTier {
+    #[serde(rename = "tier_0")]
+    Tier0,
+    #[serde(rename = "tier_1")]
+    Tier1,
+    #[serde(rename = "tier_2")]
+    Tier2,
+    #[serde(rename = "tier_3")]
+    Tier3,
+    #[serde(rename = "tier_4")]
+    Tier4,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AdversarialRiskTier { Tier0, Tier1, Tier2, Tier3, Tier4 }
+pub enum FindingSourceType { CodeRabbit, Human, Ci, Local }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingCategory {
-    Authorization,
-    Security,
-    Correctness,
-    Reliability,
-    Persistence,
-    Specification,
-    Documentation,
-    Style,
+    Authorization, Security, Correctness, Reliability, Persistence,
+    Specification, Documentation, Style,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingValidity { Unadjudicated, Valid, PartiallyValid, FalsePositive, Stale }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdversarialStage {
-    ContextScout,
-    AdversarialAnalysis,
-    TestDesign,
-    Implement,
-    EditSpecification,
-    SpecReview,
-    SecurityReview,
-    Verify,
-    ExternalReview,
-    Integrate,
+    ContextScout, AdversarialAnalysis, TestDesign, Implement, EditSpecification,
+    SpecReview, SecurityReview, Verify, ExternalReview, Integrate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingStatus {
-    Discovered,
-    Investigating,
-    Confirmed,
-    RejectedFalsePositive,
-    Stale,
-    RedProven,
-    FixJustifiedWithoutRed,
-    Implemented,
-    LocallyVerified,
-    AdversariallyReviewed,
-    CiVerified,
-    ExternalReviewed,
-    Done,
+    Discovered, Investigating, Confirmed, RejectedFalsePositive, Stale,
+    RedProven, FixJustifiedWithoutRed, Implemented, LocallyVerified,
+    AdversariallyReviewed, CiVerified, ExternalReviewed, Done,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingEvidenceKind {
-    SourceInspection,
-    RedTest,
-    Ruling,
-    ImplementationCommit,
-    LocalVerification,
-    AdversarialReview,
-    CiRun,
-    ExternalReview,
+    SourceInspection, RedTest, Ruling, ImplementationCommit, LocalVerification,
+    AdversarialReview, CiRun, ExternalReview,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,35 +169,41 @@ pub struct FindingRuling {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdversarialFinding {
     pub finding_id: String,
+    pub pr: u64,
     pub head_sha: String,
+    pub source_type: FindingSourceType,
     pub source_ref: String,
     pub risk_tier: AdversarialRiskTier,
     pub category: FindingCategory,
+    pub validity: FindingValidity,
     pub status: FindingStatus,
     pub invariant: String,
+    pub allowed_paths: Vec<String>,
+    pub adversarial_cases: Vec<String>,
     pub evidence: Vec<FindingEvidence>,
     pub rulings: Vec<FindingRuling>,
 }
 
 impl AdversarialFinding {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         finding_id: impl Into<String>,
+        pr: u64,
         head_sha: impl Into<String>,
+        source_type: FindingSourceType,
         source_ref: impl Into<String>,
         risk_tier: AdversarialRiskTier,
         category: FindingCategory,
         invariant: impl Into<String>,
+        allowed_paths: Vec<String>,
     ) -> Self {
         Self {
-            finding_id: finding_id.into(),
-            head_sha: head_sha.into(),
-            source_ref: source_ref.into(),
-            risk_tier,
-            category,
+            finding_id: finding_id.into(), pr, head_sha: head_sha.into(), source_type,
+            source_ref: source_ref.into(), risk_tier, category,
+            validity: FindingValidity::Unadjudicated,
             status: FindingStatus::Discovered,
-            invariant: invariant.into(),
-            evidence: vec![],
-            rulings: vec![],
+            invariant: invariant.into(), allowed_paths, adversarial_cases: vec![],
+            evidence: vec![], rulings: vec![],
         }
     }
 }
@@ -240,17 +236,15 @@ pub enum AdversarialDevelopmentError {
 }
 ```
 
-- [ ] **Step 4: Run the model test and verify GREEN**
-
-Run:
+- [ ] **Step 4: Run and verify GREEN**
 
 ```bash
-cargo test -p forge-core finding_model_round_trips_with_stable_wire_names -- --nocapture
+cargo test -p forge-core finding_round_trips_with_provenance_and_stable_wire_names -- --nocapture
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the model**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add crates/forge-core/src/adversarial_development.rs
@@ -259,106 +253,98 @@ git commit -m "feat(forge-core): add adversarial finding model"
 
 ---
 
-### Task 2: Add deterministic risk-tier cell planning and role separation
+### Task 2: Plan deterministic risk-tier cells and enforce reviewer independence
 
 **Files:**
 - Modify: `crates/forge-core/src/adversarial_development.rs`
 
 **Interfaces:**
-- Consumes: types from Task 1 and existing `AgentRole` variants.
 - Produces: `plan_adversarial_cell(&AdversarialFinding) -> Result<AdversarialCellPlan, AdversarialDevelopmentError>` and `AdversarialCellPlan::validate()`.
 
-- [ ] **Step 1: Write failing Tier-0 and Tier-3 planning tests**
+- [ ] **Step 1: Write Tier-0 and Tier-3 tests**
+
+Use the Task 1 constructor. For the Tier-0 fixture use PR `29`, `FindingSourceType::CodeRabbit`, and allowed path `crates/forge-core/src/run_test.rs`. Assert this exact stage order:
 
 ```rust
-#[test]
-fn tier_zero_uses_full_cell_with_independent_decisive_reviewers() {
-    let finding = AdversarialFinding::new(
-        "PR29-CR-001", "sha", "thread", AdversarialRiskTier::Tier0,
-        FindingCategory::Authorization, "reject confused deputy calls",
-    );
-    let plan = plan_adversarial_cell(&finding).unwrap();
-    let stages: Vec<_> = plan.stages.iter().map(|item| item.stage).collect();
-    assert_eq!(stages, vec![
-        AdversarialStage::ContextScout,
-        AdversarialStage::AdversarialAnalysis,
-        AdversarialStage::TestDesign,
-        AdversarialStage::Implement,
-        AdversarialStage::SpecReview,
-        AdversarialStage::SecurityReview,
-        AdversarialStage::Verify,
-        AdversarialStage::ExternalReview,
-        AdversarialStage::Integrate,
-    ]);
-    let implementer = plan.stages.iter().find(|s| s.stage == AdversarialStage::Implement).unwrap();
-    assert_eq!(implementer.agent_role, Some(AgentRole::Developer));
-    for reviewer in plan.stages.iter().filter(|s| s.decisive) {
-        assert_ne!(reviewer.agent_role, implementer.agent_role);
-    }
-}
-
-#[test]
-fn tier_three_edits_specs_without_assigning_the_editor_as_decisive_reviewer() {
-    let finding = AdversarialFinding::new(
-        "PR41-SPEC-001", "sha", "review", AdversarialRiskTier::Tier3,
-        FindingCategory::Specification, "managed repos cannot override mandatory policy",
-    );
-    let plan = plan_adversarial_cell(&finding).unwrap();
-    let editor = plan.stages.iter().find(|s| s.stage == AdversarialStage::EditSpecification).unwrap();
-    assert_eq!(editor.agent_role, Some(AgentRole::Architect));
-    assert!(plan.stages.iter().filter(|s| s.decisive).all(|s| s.agent_role != editor.agent_role));
-}
+vec![
+    AdversarialStage::ContextScout,
+    AdversarialStage::AdversarialAnalysis,
+    AdversarialStage::TestDesign,
+    AdversarialStage::Implement,
+    AdversarialStage::SpecReview,
+    AdversarialStage::SecurityReview,
+    AdversarialStage::Verify,
+    AdversarialStage::ExternalReview,
+    AdversarialStage::Integrate,
+]
 ```
 
-- [ ] **Step 2: Run and verify RED**
+Assert `Implement` uses `AgentRole::Developer`, `SpecReview` uses `AgentRole::Architect`, `SecurityReview` uses `AgentRole::SecurityReviewer`, and `Verify` uses `AgentRole::Tester`. Assert every decisive local reviewer has a role different from the modifying `Developer` role.
 
-```bash
-cargo test -p forge-core tier_zero_uses_full_cell_with_independent_decisive_reviewers tier_three_edits_specs_without_assigning_the_editor_as_decisive_reviewer -- --nocapture
-```
+For Tier 3, use PR `41`, source `CodeRabbit`, category `Specification`, and assert `EditSpecification` uses `AgentRole::Architect` while decisive `SpecReview` uses `AgentRole::SecurityReviewer` and final `Integrate` uses `AgentRole::Planner`.
 
-If Cargo accepts only one filter, run the two test names separately. Expected: compile failure because the planner does not exist.
-
-- [ ] **Step 3: Implement deterministic stage maps**
-
-Implement `plan_adversarial_cell` with these role assignments and dependencies:
-
-```text
-Tier0: context_scout(Researcher)
-       -> adversarial_analysis(SecurityReviewer)
-       -> test_design(Tester)
-       -> implement(Developer)
-       -> {spec_review(Architect), security_review(SecurityReviewer)}
-       -> verify(Tester)
-       -> external_review(no local agent)
-       -> integrate(Architect)
-
-Tier1: context_scout -> adversarial_analysis -> test_design -> implement
-       -> security_review -> verify -> external_review -> integrate
-
-Tier2: context_scout -> test_design -> implement -> spec_review
-       -> verify -> integrate
-
-Tier3: context_scout -> adversarial_analysis -> edit_specification(Architect)
-       -> spec_review(SecurityReviewer) -> verify(Tester) -> integrate(Planner)
-
-Tier4: implement(Developer) -> verify(Tester) -> integrate(Architect)
-```
-
-Use a small local constructor so every `CellStage` explicitly records `read_only`, `decisive`, and `depends_on`. `ExternalReview` must have `agent_role: None` and be read-only. `TestDesign`, `Implement`, and `EditSpecification` are modifying stages; all reviewer/verifier stages are read-only.
-
-`validate()` must identify the modifying role (`Implement` or `EditSpecification`) and reject a plan when any `decisive` stage has the same `Some(AgentRole)`.
-
-- [ ] **Step 4: Run planner tests and the ForgeCore unit suite**
+- [ ] **Step 2: Run each RED test separately**
 
 ```bash
 cargo test -p forge-core tier_zero_uses_full_cell_with_independent_decisive_reviewers -- --nocapture
-cargo test -p forge-core tier_three_edits_specs_without_assigning_the_editor_as_decisive_reviewer -- --nocapture
+cargo test -p forge-core tier_three_edits_specs_without_self_review -- --nocapture
+```
+
+Expected: compile failure because the planner does not exist.
+
+- [ ] **Step 3: Implement exact stage maps**
+
+```text
+Tier0: ContextScout(Researcher)
+       -> AdversarialAnalysis(SecurityReviewer)
+       -> TestDesign(Tester)
+       -> Implement(Developer)
+       -> {SpecReview(Architect), SecurityReview(SecurityReviewer)}
+       -> Verify(Tester)
+       -> ExternalReview(no local agent)
+       -> Integrate(Architect)
+
+Tier1: ContextScout(Researcher)
+       -> AdversarialAnalysis(SecurityReviewer)
+       -> TestDesign(Tester)
+       -> Implement(Developer)
+       -> SecurityReview(SecurityReviewer)
+       -> Verify(Tester)
+       -> ExternalReview(no local agent)
+       -> Integrate(Architect)
+
+Tier2: ContextScout(Researcher)
+       -> TestDesign(Tester)
+       -> Implement(Developer)
+       -> SpecReview(Architect)
+       -> Verify(Tester)
+       -> Integrate(Architect)
+
+Tier3: ContextScout(Researcher)
+       -> AdversarialAnalysis(SecurityReviewer)
+       -> EditSpecification(Architect)
+       -> SpecReview(SecurityReviewer)
+       -> Verify(Tester)
+       -> Integrate(Planner)
+
+Tier4: Implement(Developer) -> Verify(Tester) -> Integrate(Architect)
+```
+
+`ExternalReview` has `agent_role: None`, `read_only: true`, and cannot produce an agent brief. Reviewer/verifier/integration stages are read-only. `Implement` and `EditSpecification` are modifying stages. `TestDesign` may create/modify tests during execution, but it is not an acceptance authority; fresh sub-agent instances preserve separation from `Verify` even though both use the logical Tester role.
+
+`validate()` rejects a cell if the production/spec modifying role is also assigned to any decisive review/verification stage.
+
+- [ ] **Step 4: Run planner tests and ForgeCore unit tests**
+
+```bash
+cargo test -p forge-core tier_zero_uses_full_cell_with_independent_decisive_reviewers -- --nocapture
+cargo test -p forge-core tier_three_edits_specs_without_self_review -- --nocapture
 cargo test -p forge-core --lib
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the planner**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add crates/forge-core/src/adversarial_development.rs
@@ -367,125 +353,67 @@ git commit -m "feat(forge-core): plan risk-tiered adversarial cells"
 
 ---
 
-### Task 3: Add stage-specific adversarial prompt contracts and brief construction
+### Task 3: Add falsification prompt contracts and self-contained agent briefs
 
 **Files:**
-- Create: `crates/forge-core/prompts/adversarial/context-scout.md`
-- Create: `crates/forge-core/prompts/adversarial/adversarial-analyst.md`
-- Create: `crates/forge-core/prompts/adversarial/test-designer.md`
-- Create: `crates/forge-core/prompts/adversarial/implementer.md`
-- Create: `crates/forge-core/prompts/adversarial/spec-editor.md`
-- Create: `crates/forge-core/prompts/adversarial/spec-reviewer.md`
-- Create: `crates/forge-core/prompts/adversarial/security-reviewer.md`
-- Create: `crates/forge-core/prompts/adversarial/verifier.md`
-- Create: `crates/forge-core/prompts/adversarial/integration-reviewer.md`
+- Create all nine Markdown files listed under `crates/forge-core/prompts/adversarial/` in File Structure.
 - Modify: `crates/forge-core/src/adversarial_development.rs`
 
 **Interfaces:**
 - Consumes: `AdversarialFinding`, `CellStage`, existing `crate::Task`.
-- Produces: `AgentBrief`, `build_agent_brief(&AdversarialFinding, &CellStage) -> Result<AgentBrief, AdversarialDevelopmentError>`.
+- Produces: `AgentBrief` and `build_agent_brief(&AdversarialFinding, &CellStage)`.
 
-- [ ] **Step 1: Write failing prompt/brief tests**
+- [ ] **Step 1: Write RED tests**
 
-```rust
-#[test]
-fn adversarial_brief_is_falsification_biased_and_self_contained() {
-    let finding = AdversarialFinding::new(
-        "PR29-CR-001", "abc123", "thread-1", AdversarialRiskTier::Tier0,
-        FindingCategory::Authorization, "non-RunTest actions must be rejected before policy evaluation",
-    );
-    let plan = plan_adversarial_cell(&finding).unwrap();
-    let stage = plan.stages.iter().find(|s| s.stage == AdversarialStage::AdversarialAnalysis).unwrap();
-    let brief = build_agent_brief(&finding, stage).unwrap();
-    assert_eq!(brief.agent_role, AgentRole::SecurityReviewer);
-    assert!(brief.task.context.contains("PR29-CR-001"));
-    assert!(brief.task.context.contains("abc123"));
-    assert!(brief.task.context.contains("smallest source-supported counterexample"));
-    assert!(brief.task.context.contains("non-RunTest actions"));
-}
+Test that an `AdversarialAnalysis` brief for PR #29:
 
-#[test]
-fn external_review_is_a_gate_not_an_agent_prompt() {
-    let finding = AdversarialFinding::new(
-        "id", "sha", "source", AdversarialRiskTier::Tier0,
-        FindingCategory::Security, "invariant",
-    );
-    let plan = plan_adversarial_cell(&finding).unwrap();
-    let external = plan.stages.iter().find(|s| s.stage == AdversarialStage::ExternalReview).unwrap();
-    assert!(matches!(
-        build_agent_brief(&finding, external),
-        Err(AdversarialDevelopmentError::NoAgentForStage(AdversarialStage::ExternalReview))
-    ));
-}
+```text
+- uses AgentRole::SecurityReviewer
+- contains finding id PR29-CR-001
+- contains the exact head SHA
+- contains the invariant
+- contains the phrase "smallest source-supported counterexample"
+- contains the allowed path crates/forge-core/src/run_test.rs
 ```
 
-- [ ] **Step 2: Run and verify RED**
+Also test that `ExternalReview` returns `AdversarialDevelopmentError::NoAgentForStage(AdversarialStage::ExternalReview)`.
+
+Run:
 
 ```bash
 cargo test -p forge-core adversarial_brief_is_falsification_biased_and_self_contained -- --nocapture
+cargo test -p forge-core external_review_is_a_gate_not_an_agent_prompt -- --nocapture
 ```
 
-Expected: compile failure because `AgentBrief` and `build_agent_brief` do not exist.
+Expected: compile failure before implementation.
 
-- [ ] **Step 3: Create the prompt contracts**
+- [ ] **Step 2: Create exact prompt cores**
 
-Each prompt must be self-contained. Use these mandatory cores:
+`context-scout.md` must say it is read-only, must establish current head SHA/source/public entry points/allowed scope, and must verify review claims against current source.
 
-`context-scout.md`:
+`adversarial-analyst.md` must include:
 
-```markdown
-You are the Context Scout. Do not modify code. Establish the current head SHA, the claimed invariant, affected source/tests, public entry points, callers, authority/persistence interfaces, allowed modification scope, and verification commands. Treat review text as a claim to verify against current source. Return a context brief only.
+```text
+Do not try to prove the patch is correct. Try to construct the smallest source-supported counterexample proving it is incorrect.
 ```
 
-`adversarial-analyst.md`:
+It must direct applicable attacks across alternate public entry points, confused deputy calls, malformed-but-type-valid inputs, duplicates/stale state, ordering, restart/persistence, capability-policy mismatch, partial failure, aliases/path normalization, and fail-open defaults.
 
-```markdown
-Do not try to prove the patch is correct. Try to construct the smallest source-supported counterexample proving it is incorrect. Test alternate public entry points, confused-deputy calls, malformed-but-type-valid input, duplicate or stale state, ordering, restart/persistence, capability-policy mismatch, partial failure, aliases/path normalization, and fail-open defaults when applicable. Report confirmed counterexamples before recommendations.
-```
+`test-designer.md` must require a behavioral RED test and prohibit production implementation.
 
-`test-designer.md`:
+`implementer.md` must require minimal GREEN code, preserve ForgeCore authority, prohibit test weakening and unrelated refactors, and prohibit self-certification.
 
-```markdown
-Design the smallest real behavioral regression test that distinguishes the violated invariant from the current defect. State the invariant, attack represented, setup, operation, expected observable behavior, production change that would make the test pass, and why the current implementation should fail. Do not implement the production fix and do not weaken existing assertions.
-```
+`spec-editor.md` must allow specification edits only and prohibit runtime code changes.
 
-`implementer.md`:
+`spec-reviewer.md` must review the binding invariant independently of tests and return concrete counterexamples before acceptance.
 
-```markdown
-Implement only the approved invariant and scope. Preserve ForgeCore authority, fail closed, do not weaken RED tests, do not broaden capabilities or approval, do not add unrelated refactors, and prefer the smallest production change that makes the validated regression test pass. Report the diff and commands run, but do not certify acceptance.
-```
+`security-reviewer.md` must attack authorization ordering, confused deputy paths, canonicalization, TOCTOU, stale/mutable ownership, injection, secret exposure, unintended mutation, partial failure, concurrency, persistence/restart, traversal, and unsafe defaults when applicable.
 
-`spec-editor.md`:
+`verifier.md` must require fresh current-SHA evidence and prohibit relying on implementer claims or previous runs.
 
-```markdown
-Edit specification text only. Resolve the confirmed contract ambiguity or defect without introducing production implementation into a specification-only task. Preserve explicit authority, precedence, rollback, and fail-closed semantics. Do not change runtime code.
-```
+`integration-reviewer.md` must check interaction between fixes, unresolved review threads, docs/code mismatch, authority drift, stale evidence, and reviewed/tested SHA equality; it may produce merge-readiness evidence but may not merge.
 
-`spec-reviewer.md`:
-
-```markdown
-Review against the binding requirement independently of the tests. Search every relevant public entry point and contract for a counterexample. Report path, input, expected behavior, actual behavior, and severity for each source-supported defect. The modifying agent is not the acceptance authority.
-```
-
-`security-reviewer.md`:
-
-```markdown
-Assume caller-controlled fields are hostile. Search for authorization ordering, confused deputy paths, canonicalization gaps, TOCTOU, stale or mutable ownership, injection, secret exposure, unintended mutation, partial failure, concurrency, persistence/restart, traversal, and unsafe defaults. Report source-supported counterexamples only.
-```
-
-`verifier.md`:
-
-```markdown
-Verify independently using the current commit SHA and required commands. Do not rely on implementer claims or previous runs. Run targeted regression checks, affected package checks, format/lint/static analysis, broader tests required by risk tier, diff inspection, and head-SHA/CI coherence checks. Report evidence and failures; do not merge.
-```
-
-`integration-reviewer.md`:
-
-```markdown
-Review the whole change after individual findings are addressed. Check interaction between fixes, unresolved review threads, documentation/code mismatch, authority drift, stale evidence, and whether the reviewed and tested SHA equals the current head. Produce merge-readiness evidence only; do not merge.
-```
-
-- [ ] **Step 4: Implement `AgentBrief` and deterministic prompt selection**
+- [ ] **Step 3: Implement `AgentBrief` and prompt selection**
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -496,20 +424,23 @@ pub struct AgentBrief {
 }
 ```
 
-Use `include_str!("../prompts/adversarial/<name>.md")` for each prompt. Build `Task.context` in this deterministic order:
+Use `include_str!("../prompts/adversarial/<file>.md")` for local stages. Build `Task.context` deterministically in this order:
 
 ```text
-Finding: <finding_id>
-Head SHA: <head_sha>
-Source: <source_ref>
+Finding: <finding id>
+PR: <number>
+Head SHA: <sha>
+Source: <source type>:<source ref>
 Invariant: <invariant>
+Allowed paths:
+- <sorted allowed path entries>
 
-<stage prompt text>
+<stage prompt>
 ```
 
-Use task id `<finding_id>:<stage wire name>` and title `<stage wire name>: <finding_id>`. Return `NoAgentForStage(ExternalReview)` when `agent_role` is `None`.
+Sort a cloned `allowed_paths` before rendering so caller input order cannot change the brief. Use task id `<finding-id>:<stage-wire-name>` and title `<stage-wire-name>: <finding-id>`.
 
-- [ ] **Step 5: Run prompt tests and compile all prompt includes**
+- [ ] **Step 4: Verify GREEN**
 
 ```bash
 cargo test -p forge-core adversarial_brief_is_falsification_biased_and_self_contained -- --nocapture
@@ -519,7 +450,7 @@ cargo check -p forge-core
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit prompt contracts**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add crates/forge-core/prompts/adversarial crates/forge-core/src/adversarial_development.rs
@@ -528,103 +459,64 @@ git commit -m "feat(forge-core): add adversarial agent briefs"
 
 ---
 
-### Task 4: Enforce the evidence-gated finding state machine
+### Task 4: Enforce finding validity and evidence-gated transitions
 
 **Files:**
 - Modify: `crates/forge-core/src/adversarial_development.rs`
 
 **Interfaces:**
-- Consumes: `FindingStatus`, `FindingEvidenceKind`, `FindingEvidence`.
-- Produces: `AdversarialFinding::transition(next, evidence) -> Result<(), AdversarialDevelopmentError>` and `AdversarialFinding::add_ruling(...)`.
+- Produces: `AdversarialFinding::adjudicate`, `AdversarialFinding::transition`, `AdversarialFinding::add_ruling`.
 
-- [ ] **Step 1: Write failing transition tests**
+- [ ] **Step 1: Write RED tests**
 
-```rust
-#[test]
-fn finding_cannot_claim_red_without_red_test_evidence() {
-    let mut finding = AdversarialFinding::new(
-        "id", "sha", "source", AdversarialRiskTier::Tier0,
-        FindingCategory::Security, "invariant",
-    );
-    finding.transition(FindingStatus::Investigating, None).unwrap();
-    finding.transition(
-        FindingStatus::Confirmed,
-        Some(FindingEvidence { kind: FindingEvidenceKind::SourceInspection, reference: "source@sha".into() }),
-    ).unwrap();
-    assert!(matches!(
-        finding.transition(FindingStatus::RedProven, None),
-        Err(AdversarialDevelopmentError::MissingEvidence {
-            status: FindingStatus::RedProven,
-            required: FindingEvidenceKind::RedTest,
-        })
-    ));
-}
+Test these rules:
 
-#[test]
-fn finding_reaches_done_only_through_verified_reviewed_states() {
-    let mut finding = AdversarialFinding::new(
-        "id", "sha", "source", AdversarialRiskTier::Tier0,
-        FindingCategory::Security, "invariant",
-    );
-    assert!(matches!(
-        finding.transition(FindingStatus::Done, None),
-        Err(AdversarialDevelopmentError::InvalidTransition { .. })
-    ));
-}
+```text
+Discovered -> Investigating requires no evidence.
+Investigating -> Confirmed requires SourceInspection and validity Valid or PartiallyValid.
+Investigating -> RejectedFalsePositive requires SourceInspection and validity FalsePositive.
+Investigating -> Stale requires SourceInspection and validity Stale.
+Confirmed -> RedProven requires RedTest.
+Confirmed -> FixJustifiedWithoutRed requires Ruling.
+RedProven/FixJustifiedWithoutRed -> Implemented requires ImplementationCommit.
+Implemented -> LocallyVerified requires LocalVerification.
+LocallyVerified -> AdversariallyReviewed requires AdversarialReview.
+AdversariallyReviewed -> CiVerified requires CiRun.
+CiVerified -> ExternalReviewed requires ExternalReview.
+ExternalReviewed -> Done requires no new evidence.
+Every other transition is invalid.
 ```
 
-- [ ] **Step 2: Run and verify RED**
+Include a test that `Confirmed -> RedProven` without `RedTest` returns `MissingEvidence` and a test that `Discovered -> Done` returns `InvalidTransition`.
+
+- [ ] **Step 2: Run RED**
 
 ```bash
 cargo test -p forge-core finding_cannot_claim_red_without_red_test_evidence -- --nocapture
+cargo test -p forge-core finding_cannot_skip_to_done -- --nocapture
 ```
 
-Expected: compile failure because transition enforcement does not exist.
+Expected: compile failure before transition methods exist.
 
-- [ ] **Step 3: Implement exact transition and evidence rules**
+- [ ] **Step 3: Implement adjudication and transitions**
 
-Allow only:
+`adjudicate(validity, evidence)` is allowed only while `status == Investigating`; it requires non-empty `SourceInspection` evidence and maps validity to the corresponding destination status. `Valid` and `PartiallyValid` map to `Confirmed`.
 
-```text
-discovered -> investigating
-investigating -> confirmed | rejected_false_positive | stale
-confirmed -> red_proven | fix_justified_without_red
-red_proven | fix_justified_without_red -> implemented
-implemented -> locally_verified
-locally_verified -> adversarially_reviewed
-adversarially_reviewed -> ci_verified
-ci_verified -> external_reviewed
-external_reviewed -> done
-```
+`transition(next, evidence)` enforces the remaining ordered state machine and exact destination evidence kinds above. Reject an evidence value whose `reference.trim().is_empty()`.
 
-Require evidence on the destination state:
+`add_ruling(ruling)` appends the ruling and records `FindingEvidenceKind::Ruling` using the ruling's non-empty evidence text.
 
-```text
-confirmed/rejected_false_positive/stale -> source_inspection
-red_proven -> red_test
-fix_justified_without_red -> ruling
-implemented -> implementation_commit
-locally_verified -> local_verification
-adversarially_reviewed -> adversarial_review
-ci_verified -> ci_run
-external_reviewed -> external_review
-```
-
-`Done` requires no new evidence because `ExternalReviewed` is already evidence-gated. Reject empty `reference` strings as missing evidence. Push valid evidence into `finding.evidence` before changing status.
-
-`add_ruling` must append a `FindingRuling` and also append `FindingEvidence { kind: Ruling, reference: ruling.evidence.clone() }` so `FixJustifiedWithoutRed` can be audited.
-
-- [ ] **Step 4: Run transition tests and serde round-trip tests**
+- [ ] **Step 4: Verify GREEN**
 
 ```bash
 cargo test -p forge-core finding_cannot_claim_red_without_red_test_evidence -- --nocapture
-cargo test -p forge-core finding_reaches_done_only_through_verified_reviewed_states -- --nocapture
+cargo test -p forge-core finding_cannot_skip_to_done -- --nocapture
 cargo test -p forge-core adversarial_development::tests -- --nocapture
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit state-machine enforcement**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add crates/forge-core/src/adversarial_development.rs
@@ -633,19 +525,19 @@ git commit -m "feat(forge-core): gate finding state on evidence"
 
 ---
 
-### Task 5: Add bounded repair-loop strategy
+### Task 5: Add bounded repair-loop routing
 
 **Files:**
 - Modify: `crates/forge-core/src/adversarial_development.rs`
 
 **Interfaces:**
-- Produces: `RepairStrategy` and `repair_strategy(round: u32) -> RepairStrategy`.
+- Produces: `RepairStrategy` and `repair_strategy(round: u32)`.
 
-- [ ] **Step 1: Write the failing breaker test**
+- [ ] **Step 1: Write RED test**
 
 ```rust
 #[test]
-fn repair_strategy_changes_agent_after_three_rounds_and_breaks_after_five() {
+fn repair_strategy_replaces_context_and_trips_a_breaker() {
     assert_eq!(repair_strategy(1), RepairStrategy::ResumeImplementer);
     assert_eq!(repair_strategy(3), RepairStrategy::ResumeImplementer);
     assert_eq!(repair_strategy(4), RepairStrategy::ReplaceImplementer);
@@ -654,15 +546,15 @@ fn repair_strategy_changes_agent_after_three_rounds_and_breaks_after_five() {
 }
 ```
 
-- [ ] **Step 2: Run and verify RED**
+Run:
 
 ```bash
-cargo test -p forge-core repair_strategy_changes_agent_after_three_rounds_and_breaks_after_five -- --nocapture
+cargo test -p forge-core repair_strategy_replaces_context_and_trips_a_breaker -- --nocapture
 ```
 
-Expected: compile failure because `RepairStrategy` is missing.
+Expected: compile failure.
 
-- [ ] **Step 3: Implement the bounded policy**
+- [ ] **Step 2: Implement exact repair policy**
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -684,26 +576,19 @@ pub fn repair_strategy(round: u32) -> RepairStrategy {
 }
 ```
 
-Treat round `0` as pre-first-repair and therefore equivalent to resuming the selected implementer; callers increment after a failed review.
+Round zero means no failed repair round has yet occurred. The controller increments after each failed independent review.
 
-- [ ] **Step 4: Run and verify GREEN**
-
-```bash
-cargo test -p forge-core repair_strategy_changes_agent_after_three_rounds_and_breaks_after_five -- --nocapture
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit repair-loop policy**
+- [ ] **Step 3: Verify GREEN and commit**
 
 ```bash
+cargo test -p forge-core repair_strategy_replaces_context_and_trips_a_breaker -- --nocapture
 git add crates/forge-core/src/adversarial_development.rs
 git commit -m "feat(forge-core): bound adversarial repair loops"
 ```
 
 ---
 
-### Task 6: Export the harness and prove it against the PR #29 acceptance fixture
+### Task 6: Export the planning API and prove the PR #29 Tier-0 fixture
 
 **Files:**
 - Modify: `crates/forge-core/src/lib.rs`
@@ -711,92 +596,50 @@ git commit -m "feat(forge-core): bound adversarial repair loops"
 - Modify: `docs/architecture/agent-registry.md`
 
 **Interfaces:**
-- Consumes: all public types/functions from Tasks 1-5.
-- Produces: stable ForgeCore public API for adversarial development planning.
+- Produces the stable public planning/evidence surface for the outer SDD controller.
 
-- [ ] **Step 1: Write the public-API acceptance test first**
+- [ ] **Step 1: Write the public-API RED test**
 
-Create `crates/forge-core/tests/adversarial_development.rs`:
+Create a PR #29 `AdversarialFinding` with:
 
-```rust
-use forge_core::{
-    build_agent_brief, plan_adversarial_cell, AdversarialFinding, AdversarialRiskTier,
-    AdversarialStage, AgentRole, FindingCategory,
-};
-
-#[test]
-fn pr29_major_authorization_finding_builds_a_full_adversarial_cell() {
-    let finding = AdversarialFinding::new(
-        "PR29-CR-001",
-        "ab76053135f638943bcdf1d3367af3a16a34c53b",
-        "PRRT_kwDOTzuzVM6bG4UZ",
-        AdversarialRiskTier::Tier0,
-        FindingCategory::Authorization,
-        "execute_run_test must reject non-RunTest actions before policy, capability, runner parsing, or process delegation",
-    );
-    let plan = plan_adversarial_cell(&finding).unwrap();
-    let adversary = plan
-        .stages
-        .iter()
-        .find(|stage| stage.stage == AdversarialStage::AdversarialAnalysis)
-        .unwrap();
-    let verifier = plan
-        .stages
-        .iter()
-        .find(|stage| stage.stage == AdversarialStage::Verify)
-        .unwrap();
-
-    assert_eq!(adversary.agent_role, Some(AgentRole::SecurityReviewer));
-    assert_eq!(verifier.agent_role, Some(AgentRole::Tester));
-    assert!(adversary.read_only);
-    assert!(verifier.decisive);
-
-    let brief = build_agent_brief(&finding, adversary).unwrap();
-    assert!(brief.task.context.contains("confused-deputy"));
-    assert!(brief.task.context.contains("ab76053135f638943bcdf1d3367af3a16a34c53b"));
-}
+```text
+finding_id: PR29-CR-001
+pr: 29
+head_sha: ab76053135f638943bcdf1d3367af3a16a34c53b
+source_type: coderabbit
+source_ref: PRRT_kwDOTzuzVM6bG4UZ
+risk_tier: tier_0
+category: authorization
+allowed_paths: [crates/forge-core/src/run_test.rs]
+invariant: execute_run_test must reject non-RunTest actions before policy, capability, runner parsing, or process delegation
 ```
 
-- [ ] **Step 2: Run and verify RED because exports are absent**
+Assert the planned cell contains `SecurityReviewer` for adversarial/security stages, `Developer` for implementation, `Tester` for verification, and that the adversarial brief contains the source-supported-counterexample instruction and reviewed SHA.
+
+Run:
 
 ```bash
 cargo test -p forge-core --test adversarial_development -- --nocapture
 ```
 
-Expected: compile failure from unresolved public imports.
+Expected: compile failure because public exports are absent.
 
-- [ ] **Step 3: Add module declaration and explicit re-exports in `lib.rs`**
+- [ ] **Step 2: Add explicit module/re-exports**
 
-Add:
+In `lib.rs` add `pub mod adversarial_development;` and re-export the public model, planner, brief builder, transition/evidence types, and repair strategy. Do not export prompt text as authority.
 
-```rust
-pub mod adversarial_development;
+- [ ] **Step 3: Document existing logical-role reuse**
+
+Add `## Adversarial development cells` to `docs/architecture/agent-registry.md` with these exact requirements:
+
+```text
+- a cell is a deterministic plan over existing logical AgentRole values
+- it does not create privileged agent processes or a second execution authority
+- modifying and decisive-review stages use fresh sub-agent instances
+- executable actions still pass through existing ForgeCore policy, workspace, approval, and sandbox boundaries
 ```
 
-and re-export:
-
-```rust
-pub use adversarial_development::{
-    build_agent_brief, plan_adversarial_cell, repair_strategy, AdversarialCellPlan,
-    AdversarialDevelopmentError, AdversarialFinding, AdversarialRiskTier, AdversarialStage,
-    AgentBrief, CellStage, FindingCategory, FindingEvidence, FindingEvidenceKind, FindingRuling,
-    FindingStatus, RepairStrategy,
-};
-```
-
-Do not re-export prompt text as independent authority; prompts remain implementation resources used by `build_agent_brief`.
-
-- [ ] **Step 4: Document logical-role reuse**
-
-Append a short `Adversarial development cells` section to `docs/architecture/agent-registry.md` stating:
-
-```markdown
-## Adversarial development cells
-
-Adversarial development does not create privileged agent processes or a second execution authority. A cell is a deterministic plan that assigns existing logical roles to separate investigation, test-design, implementation, review, and verification stages. The modifying role is prohibited from serving as its own decisive reviewer. All executable actions still pass through the existing ForgeCore policy, workspace, approval, and sandbox boundaries.
-```
-
-- [ ] **Step 5: Run the acceptance test and full ForgeCore verification**
+- [ ] **Step 4: Run acceptance and full Rust verification**
 
 ```bash
 cargo test -p forge-core --test adversarial_development -- --nocapture
@@ -806,28 +649,26 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-Expected: all commands exit 0. These commands mirror the repository's current Rust CI lane.
+Expected: every command exits 0. These are the current repository Rust CI checks.
 
-- [ ] **Step 6: Inspect the complete diff for authority drift**
-
-Run:
+- [ ] **Step 5: Inspect authority drift before commit**
 
 ```bash
 git diff main...HEAD -- crates/forge-core docs/architecture/agent-registry.md
 ```
 
-Confirm manually:
+Confirm from the actual diff:
 
 ```text
 - no execution path was added
-- no capability or policy rule was weakened
-- no background worker/scheduler was added
-- no merge/publish operation was added
-- prompt text cannot bypass ForgeCore execution policy
+- no capability/policy/approval/sandbox rule was weakened
+- no scheduler/background worker was added
+- no merge/publish path was added
+- prompts cannot bypass ForgeCore execution policy
 - only existing AgentRole values are used
 ```
 
-- [ ] **Step 7: Commit the public slice**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add crates/forge-core/src/lib.rs crates/forge-core/tests/adversarial_development.rs docs/architecture/agent-registry.md
@@ -836,18 +677,25 @@ git commit -m "feat(forge-core): expose adversarial development planning"
 
 ---
 
+## Execution Setup and Durable Ledger
+
+Before Task 1, the executor must use `superpowers:using-git-worktrees`, then `superpowers:subagent-driven-development`. The SDD workspace's `progress.md`, briefs, reports, review packages, and command evidence are the durable execution ledger for this plan. The repository model above is serializable planning/evidence data; it does not replace that workspace.
+
+Each task ends with a fresh independent review before the controller records `Task N: complete`. After all six tasks, run one broad branch review and one final full verification pass before using `superpowers:finishing-a-development-branch`.
+
 ## Plan Self-Review Checklist
 
-Before requesting implementation review, verify this plan against the spec:
-
-- [ ] Context Scout is read-only and receives current-head/source context.
-- [ ] Adversarial analysis explicitly optimizes for counterexamples rather than confirmation.
-- [ ] Test design is distinct from production implementation.
-- [ ] Implementer cannot be its own decisive reviewer.
-- [ ] Tier-0 and Tier-1 cells include adversarial/security treatment.
-- [ ] Tier-3 specification work does not introduce runtime implementation.
-- [ ] Finding states require fresh evidence rather than prose claims.
-- [ ] The repair loop changes agent context after three failed repair rounds and breaks after five.
-- [ ] External review is represented as a gate, not an executable agent.
-- [ ] No new scheduler, process model, dependency, merge path, or execution authority was added.
-- [ ] PR #29 is represented as an acceptance fixture only; its actual security fix is executed from its own remediation plan/branch.
+- [ ] Every required spec role is represented or intentionally mapped to an existing logical `AgentRole`.
+- [ ] PR/source/head provenance and allowed-path scope are represented in the finding model.
+- [ ] Tier wire names are explicit and match tests.
+- [ ] All RED commands are unambiguous single-test commands.
+- [ ] Context Scout and reviewer stages are read-only.
+- [ ] Test design is separate from production implementation.
+- [ ] Modifying stages cannot serve as their own decisive reviewers.
+- [ ] Tier-0/Tier-1 include adversarial security treatment.
+- [ ] Tier-3 specification work cannot introduce runtime implementation.
+- [ ] Finding state transitions require evidence from the exact ordered gates.
+- [ ] Repair rounds 1-3 resume, 4 replace context, 5 adjudicate architecture, and later rounds require explicit breaker disposition.
+- [ ] External review is a gate, not an executable agent.
+- [ ] No new dependency, scheduler, process model, merge path, or execution authority is introduced.
+- [ ] PR #29 is only the harness acceptance fixture; its security repair executes from its separate remediation plan and branch.
