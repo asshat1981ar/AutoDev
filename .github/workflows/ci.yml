@@ -85,10 +85,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install ast-grep
-        run: npm install --global @ast-grep/cli@0.45.0
+      - name: Install locked ast-grep
+        working-directory: tools/ast-grep
+        run: npm ci --no-audit --no-fund
       - name: ast-grep rule regressions
+        env:
+          AST_GREP_BIN: ${{ github.workspace }}/tools/ast-grep/node_modules/.bin/ast-grep
         run: bash tests/test_ast_grep_rules.sh
+      - name: Validate submitted PR evidence
+        if: github.event_name == 'pull_request'
+        run: python scripts/validate_pr_evidence.py "$GITHUB_EVENT_PATH"
       - name: Harness drift (docs ↔ CI)
         run: python scripts/check_harness_drift.py --verbose
       - name: Reproducible verification (offline-capable)
@@ -109,7 +115,7 @@ jobs:
         with:
           node-version: '24'
       - name: Compile entry points
-        run: python -m py_compile install.py bootstrap_cline_mcp.py scripts/validate_toolset_memory.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py
+        run: python -m py_compile install.py bootstrap_cline_mcp.py scripts/validate_toolset_memory.py scripts/validate_pr_evidence.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py
       - name: Validate toolset learning memory
         run: python scripts/validate_toolset_memory.py memory/toolsets/patterns.jsonl
       - name: Test Cline development fabric
