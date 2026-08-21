@@ -45,10 +45,11 @@ pub enum HarnessPromotionDecision {
 
 /// Evaluate whether a harness candidate has earned an advisory promotion signal.
 ///
-/// Safety and correctness are non-regression gates. Independent verification
-/// and a non-zero sample are mandatory. At least one measured efficiency metric
-/// must improve strictly. The function is pure: it does not mutate the supplied
-/// profile, registries, policy state, capability grants, or execution state.
+/// Safety, correctness, and measured efficiency dimensions are non-regression
+/// gates. Independent verification and a non-zero sample are mandatory. At
+/// least one efficiency metric must improve strictly while the other does not
+/// regress. The function is pure: it does not mutate the supplied profile,
+/// registries, policy state, capability grants, or execution state.
 pub fn evaluate_harness_candidate(
     profile: &HarnessProfile,
     evaluation: &HarnessEvaluation,
@@ -91,7 +92,10 @@ pub fn evaluate_harness_candidate(
     let duration_improved = evaluation.candidate_duration_ms < evaluation.baseline_duration_ms;
     let resources_improved =
         evaluation.candidate_resource_units < evaluation.baseline_resource_units;
-    if !duration_improved && !resources_improved {
+    let duration_regressed = evaluation.candidate_duration_ms > evaluation.baseline_duration_ms;
+    let resources_regressed =
+        evaluation.candidate_resource_units > evaluation.baseline_resource_units;
+    if (!duration_improved && !resources_improved) || duration_regressed || resources_regressed {
         return HarnessPromotionDecision::RejectNoEfficiencyImprovement;
     }
 
