@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 #[allow(clippy::too_many_arguments)]
 mod builtins;
+mod routing;
 pub use builtins::default_harness_profiles;
+pub use routing::{route_harness, HarnessRoute, HarnessRoutingEvidence};
 
 /// Broad family of a development harness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,7 +201,7 @@ impl HarnessProfile {
 /// Deterministic registry of validated harness profiles.
 #[derive(Debug, Clone, Default)]
 pub struct HarnessRegistry {
-    profiles: Vec<HarnessProfile>,
+    pub(super) profiles: Vec<HarnessProfile>,
 }
 
 impl HarnessRegistry {
