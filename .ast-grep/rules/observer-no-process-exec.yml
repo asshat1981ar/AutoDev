@@ -15,7 +15,7 @@ rule:
               all:
                 - kind: import_statement
                 - has:
-                    field: name
+                    stopBy: end
                     pattern:
                       context: import subprocess as $SUBPROCESS_MODULE
                       selector: aliased_import
@@ -32,8 +32,12 @@ rule:
                     field: module_name
                     regex: ^subprocess$
                 - has:
-                    field: name
-                    pattern: $SUBPROCESS_METHOD
+                    stopBy: end
+                    all:
+                      - pattern: $SUBPROCESS_METHOD
+                      - not:
+                          inside:
+                            kind: aliased_import
     - all:
         - pattern: $SUBPROCESS_ALIAS($$$ARGS)
         - inside:
@@ -47,7 +51,7 @@ rule:
                     field: module_name
                     regex: ^subprocess$
                 - has:
-                    field: name
+                    stopBy: end
                     pattern:
                       context: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
                       selector: aliased_import
@@ -62,7 +66,7 @@ rule:
               all:
                 - kind: import_statement
                 - has:
-                    field: name
+                    stopBy: end
                     pattern:
                       context: import os as $OS_MODULE
                       selector: aliased_import
@@ -79,8 +83,12 @@ rule:
                     field: module_name
                     regex: ^os$
                 - has:
-                    field: name
-                    pattern: $OS_METHOD
+                    stopBy: end
+                    all:
+                      - pattern: $OS_METHOD
+                      - not:
+                          inside:
+                            kind: aliased_import
     - all:
         - pattern: $OS_ALIAS($$$ARGS)
         - inside:
@@ -94,7 +102,7 @@ rule:
                     field: module_name
                     regex: ^os$
                 - has:
-                    field: name
+                    stopBy: end
                     pattern:
                       context: from os import $OS_ORIGINAL as $OS_ALIAS
                       selector: aliased_import
