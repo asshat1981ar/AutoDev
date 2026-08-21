@@ -4,11 +4,16 @@
 
 ## Trust-boundary impact
 
+Select exactly one top-level declaration:
+
 - [ ] No trusted execution or authorization changes
-- [ ] ForgeCore / Workspace / AuthorizationGrant changed
-- [ ] MCP / HTTP / SSE / RPC boundary changed
-- [ ] Protocol identity / provenance / evidence changed
-- [ ] Kotlin Multiplatform boundary changed
+- [ ] Trusted-boundary impact present (check all applicable categories below)
+  - [ ] ForgeCore / Workspace / AuthorizationGrant changed
+  - [ ] MCP / HTTP / SSE / RPC boundary changed
+  - [ ] Protocol identity / provenance / evidence changed
+  - [ ] Kotlin Multiplatform boundary changed
+
+The no-impact declaration is valid only when the impact-present declaration and every nested boundary-change category remain unchecked.
 
 ## Verification
 
