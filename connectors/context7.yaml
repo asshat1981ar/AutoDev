@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "key": "context7",
+  "name": "autodev_context7",
+  "kind": "mcp",
+  "managed": true,
+  "server": "https://mcp.context7.com/mcp",
+  "visibility": "private",
+  "description": "Read-only current library documentation and code examples for AutoDev research, architecture, implementation, and review agents",
+  "tool_policy": {
+    "include": [],
+    "exclude": []
+  },
+  "confirmation": {
+    "required": []
+  },
+  "risk": "read_only"
+}
