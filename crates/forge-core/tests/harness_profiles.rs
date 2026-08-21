@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use forge_core::{
-    default_harness_profiles, HarnessAssetKind, HarnessAssetRef, HarnessError, HarnessKind,
-    HarnessProfile, HarnessRegistry, HarnessStage,
+    default_harness_profiles, route_harness, DevelopmentContract, HarnessAssetKind, HarnessAssetRef,
+    HarnessError, HarnessKind, HarnessProfile, HarnessRegistry, HarnessStage,
 };
 
 fn asset(id: &str) -> HarnessAssetRef {
@@ -38,6 +38,20 @@ fn profile() -> HarnessProfile {
         memory_policy: vec!["record evidence-backed outcomes".to_string()],
         improvement_policy: vec!["promote only after independent evaluation".to_string()],
     }
+}
+
+fn contract(goal: &str) -> DevelopmentContract {
+    DevelopmentContract::new(goal)
+}
+
+fn selected_id(goal: &str) -> String {
+    let route = route_harness(&default_harness_profiles(), &contract(goal), 1);
+    route
+        .selected
+        .first()
+        .expect("a harness must be selected")
+        .profile_id
+        .clone()
 }
 
 #[test]
@@ -166,4 +180,79 @@ fn every_builtin_profile_is_valid_and_evidence_bearing() {
             }
         }
     }
+}
+
+#[test]
+fn routes_feature_delivery_to_forgeflow() {
+    assert_eq!(
+        selected_id("Implement a feature and deliver it through a pull request"),
+        "forgeflow-sdlc"
+    );
+}
+
+#[test]
+fn routes_backlog_delivery_to_sprintmesh() {
+    assert_eq!(
+        selected_id("Refine the backlog and select work for the next sprint"),
+        "sprintmesh-agile"
+    );
+}
+
+#[test]
+fn routes_structured_ideation_to_idea_tournament() {
+    assert_eq!(
+        selected_id("Brainstorm ideas with TRIZ, six thinking hats, RICE, and game theory"),
+        "idea-tournament"
+    );
+}
+
+#[test]
+fn routes_measured_optimization_to_optiforge() {
+    assert_eq!(
+        selected_id("Optimize CI time by finding the current build bottleneck"),
+        "optiforge-optimizer"
+    );
+}
+
+#[test]
+fn routes_harness_generation_to_harnessforge() {
+    assert_eq!(
+        selected_id("Generate a reusable agent harness and workflow playbook"),
+        "harnessforge-meta"
+    );
+}
+
+#[test]
+fn routing_uses_contract_acceptance_criteria_and_constraints() {
+    let mut request = DevelopmentContract::new("Improve the repository");
+    request
+        .acceptance_criteria
+        .push("reduce build time".to_string());
+    request.constraints.push("measure the bottleneck".to_string());
+
+    let route = route_harness(&default_harness_profiles(), &request, 1);
+    let selected = route.selected.first().expect("optimizer route");
+
+    assert_eq!(selected.profile_id, "optiforge-optimizer");
+    assert!(selected.matched_terms.contains(&"build time".to_string()));
+    assert!(selected.matched_terms.contains(&"bottleneck".to_string()));
+}
+
+#[test]
+fn routing_ties_break_by_stable_profile_id() {
+    let mut registry = HarnessRegistry::new();
+    for id in ["z-profile", "a-profile"] {
+        let mut candidate = profile();
+        candidate.id = id.to_string();
+        registry.register(candidate).expect("register tie candidate");
+    }
+
+    let route = route_harness(&registry, &contract("feature"), 2);
+    let ids: Vec<&str> = route
+        .selected
+        .iter()
+        .map(|evidence| evidence.profile_id.as_str())
+        .collect();
+
+    assert_eq!(ids, vec!["a-profile", "z-profile"]);
 }
