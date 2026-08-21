@@ -139,6 +139,14 @@ def plan_reconciliation(
     }
     if not changes:
         return {"action": "NOOP", "desired": desired, "connector_id": remote.get("id")}
+    if "visibility" in changes:
+        return {
+            "action": "BLOCKED",
+            "desired": desired,
+            "connector_id": remote.get("id"),
+            "reason": "visibility drift cannot be updated in place by the documented Connector update API",
+            "changes": changes,
+        }
     connector_id = remote.get("id")
     if not connector_id:
         return {
@@ -244,8 +252,6 @@ class MistralConnectorClient:
 
     def update_connector(self, connector_id: str, changes: dict[str, Any]) -> dict[str, Any]:
         allowed = {"name", "description", "server", "icon_url", "system_prompt"}
-        # Visibility is intentionally not sent because current management docs list it for create,
-        # but not among updateable fields. A visibility drift therefore fails closed below.
         unsupported = set(changes) - allowed
         if unsupported:
             raise ValueError(f"unsupported connector update fields: {sorted(unsupported)}")
