@@ -12,6 +12,7 @@ Checks that are fast, stdlib-only, and CI-suitable:
 6. Kotlin commonMain purity is not violated by illegal imports.
 7. scripts/autodev-cli.py remains dependency-free / authority-free.
 8. PLANS.md preserves the durable ExecPlan coordination contract.
+9. Harness profile fabric docs/source preserve stable identities and authority boundaries.
 
 Exit 0 when all checks pass. Exit 1 with a clear message otherwise.
 Run: python scripts/check_harness_drift.py
@@ -33,6 +34,8 @@ CI = ROOT / ".github/workflows/ci.yml"
 README = ROOT / "README.md"
 AGENTS = ROOT / "AGENTS.md"
 PLANS = ROOT / "PLANS.md"
+HARNESS_PROFILE_DOC = ROOT / "docs/harness/profile-fabric-v0.md"
+HARNESS_BUILTINS = ROOT / "crates/forge-core/src/harness/builtins.rs"
 
 REPRODUCIBLE_SCRIPT = ROOT / "scripts/verify_reproducible.sh"
 CANONICAL_CI_FRAGMENTS = [
@@ -64,6 +67,19 @@ REQUIRED_PLAN_FRAGMENTS = [
     "An ExecPlan is durable coordination state, not execution authority.",
     "reconciliation",
     "verification",
+]
+
+STABLE_HARNESS_PROFILE_IDS = [
+    "forgeflow-sdlc",
+    "sprintmesh-agile",
+    "idea-tournament",
+    "optiforge-optimizer",
+    "harnessforge-meta",
+]
+
+HARNESS_AUTHORITY_FRAGMENTS = [
+    "Harness configuration cannot mint authorization.",
+    "Harness configuration cannot self-verify.",
 ]
 
 FORBIDDEN_ROOT_FILES = [
@@ -151,6 +167,44 @@ def check_plans_contract(
         errors.append(f"PLANS.md drift: missing required fragment {fragment!r}")
     if verbose and not missing:
         print("[ok] PLANS.md durable ExecPlan contract")
+
+
+def check_harness_profile_fabric(
+    errors: list[str], verbose: bool, profile_doc: Path = HARNESS_PROFILE_DOC
+) -> None:
+    """Protect stable harness identities and non-authority invariants from drift."""
+    start = len(errors)
+    if not profile_doc.is_file():
+        errors.append(f"Harness profile fabric drift: missing document {profile_doc}")
+        return
+
+    text = _read(profile_doc)
+    for profile_id in STABLE_HARNESS_PROFILE_IDS:
+        if profile_id not in text:
+            errors.append(
+                f"Harness profile fabric drift: missing stable profile id {profile_id!r}"
+            )
+    for fragment in HARNESS_AUTHORITY_FRAGMENTS:
+        if fragment not in text:
+            errors.append(
+                f"Harness profile fabric authority drift: missing required statement {fragment!r}"
+            )
+
+    if profile_doc == HARNESS_PROFILE_DOC:
+        if not HARNESS_BUILTINS.is_file():
+            errors.append(
+                f"Harness profile fabric drift: missing built-in source {HARNESS_BUILTINS.relative_to(ROOT)}"
+            )
+        else:
+            source = _read(HARNESS_BUILTINS)
+            for profile_id in STABLE_HARNESS_PROFILE_IDS:
+                if profile_id not in source:
+                    errors.append(
+                        f"Harness profile source drift: missing stable profile id {profile_id!r}"
+                    )
+
+    if verbose and len(errors) == start:
+        print("[ok] harness profile fabric identities and authority boundary")
 
 
 def check_referenced_files_exist(errors: list[str], verbose: bool) -> None:
@@ -355,6 +409,7 @@ def main() -> int:
         check_agents_and_readme(ci_text, errors, args.verbose)
 
     check_plans_contract(errors, args.verbose)
+    check_harness_profile_fabric(errors, args.verbose)
     check_referenced_files_exist(errors, args.verbose)
     check_forbidden_files(errors, args.verbose)
     check_instructions(errors, args.verbose)
@@ -370,7 +425,7 @@ def main() -> int:
             print(f"  {index}. {error}", file=sys.stderr)
         print(
             "\nFix guidance: update AGENTS.md / README.md / .github/workflows/ci.yml so all three agree, "
-            "or remove the forbidden file. See AGENTS.md section 9.",
+            "or restore the required harness/profile contract. See AGENTS.md section 9.",
             file=sys.stderr,
         )
         return 1
