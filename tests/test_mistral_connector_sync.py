@@ -62,6 +62,28 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(parsed["schema_version"], 1)
         self.assertIn("connectors/deepwiki.yaml", parsed["connectors"])
 
+    def test_registry_entries_exist_and_validate(self):
+        registry = json.loads(Path("connectors/registry.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(len(registry["connectors"]), len(set(registry["connectors"])))
+        for manifest_path in registry["connectors"]:
+            with self.subTest(manifest=manifest_path):
+                self.assertTrue(Path(manifest_path).is_file())
+                self.assertEqual(load_manifest(manifest_path)["schema_version"], 1)
+
+    def test_policy_documents_are_deny_by_default(self):
+        permissions = json.loads(
+            Path("policies/mistral-connectors/permissions.yaml").read_text(encoding="utf-8")
+        )
+        confirmation = json.loads(
+            Path("policies/mistral-connectors/confirmation.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(permissions["default"], "deny")
+        self.assertEqual(permissions["tool_discovery_policy"], "deny_until_classified")
+        self.assertEqual(confirmation["unknown_tool"], "deny")
+        self.assertEqual(
+            confirmation["default_for_external_mutation"], "require_confirmation"
+        )
+
 
 class PlanningTests(unittest.TestCase):
     def test_create_noop_update_and_external(self):
