@@ -26,7 +26,7 @@ def _strip_comments(text: str) -> str:
 
 def _section(body: str, heading: str) -> str | None:
     pattern = re.compile(
-        rf"^### {re.escape(heading)}\s*$\n(?P<content>.*?)(?=^#{1,3} \S|\Z)",
+        rf"^### {re.escape(heading)}\s*$\n(?P<content>.*?)(?=^#{{1,3}} \S|\Z)",
         re.MULTILINE | re.DOTALL,
     )
     match = pattern.search(body)
