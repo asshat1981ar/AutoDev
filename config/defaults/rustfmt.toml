@@ -1,0 +1,109 @@
+# AutoDev Rustfmt Configuration
+# Centralized formatting rules for all AutoDev Rust code.
+#
+# Usage:
+#   cargo fmt --all -- --config-path config/defaults/rustfmt.toml
+#
+# Priority: Component .rustfmt.toml > This file > Rust defaults
+
+# =============================================================================
+# FORMATTING OPTIONS
+# =============================================================================
+
+# Edition - matches all AutoDev Rust code
+edition = "2021"
+
+# Line length - matches Kotlin and Python configs for consistency
+max_width = 100
+hard_tabs = false
+tab_spaces = 2
+
+# Line endings - Unix for consistency with AGENTS.md (Termux/Node requirements)
+newline_style = "Unix"
+
+# =============================================================================
+# INDENTATION & WHITESPACE
+# =============================================================================
+
+# Use block indentation for better readability
+indent_style = "Block"
+# But allow Visual for existing code to avoid churn
+# indent_style = "Visual"
+
+# Spaces around operators
+spaces_around_ranges = true
+
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+# Import ordering for consistency
+imports_granularity = "Module"
+imports_layout = "HorizontalVertical"
+group_imports = "StdExternalCrate"
+
+# Reorder imports on format
+reorder_imports = true
+reorder_modules = true
+
+# =============================================================================
+# COMMENTS
+# =============================================================================
+
+# Comment formatting
+format_code_in_doc_comments = true
+wrap_comments = true
+normalize_comments = true
+normalize_doc_attributes = true
+
+# =============================================================================
+# ITEMS
+# =============================================================================
+
+# Item formatting
+format_strings = true
+format_macro_matchers = true
+format_macro_bodies = true
+
+# Braces style
+brace_style = "SameLineWhere"
+
+# Control brace style
+control_brace_style = "AlwaysSameLine"
+
+# Function formatting
+fn_single_line = false
+where_single_line = false
+
+# =============================================================================
+# MISCELLANEOUS
+# =============================================================================
+
+# Merge derives
+merge_derives = true
+
+# Use try shorthand where appropriate
+use_try_shorthand = true
+
+# Use field init shorthand
+use_field_init_shorthand = true
+
+# Condense wildcard suffixes
+condense_wildcard_suffixes = true
+
+# Format string literals
+format_string_literals = true
+
+# Remove nested parens
+remove_nested_parens = true
+
+# =============================================================================
+# FILE-SPECIFIC OVERRIDES
+# =============================================================================
+
+# Some files may need different formatting (e.g., generated code)
+# Add overrides here as needed
+
+# [override]
+# files = ["crates/forge-core/src/generated/**"]
+# edition = "2018"
