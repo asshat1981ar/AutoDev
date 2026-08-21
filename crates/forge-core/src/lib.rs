@@ -79,7 +79,8 @@ pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
 pub use harness::{
     default_harness_profiles, route_harness, HarnessAssetKind, HarnessAssetRef, HarnessError,
-    HarnessKind, HarnessProfile, HarnessRegistry, HarnessRoute, HarnessRoutingEvidence, HarnessStage,
+    HarnessKind, HarnessProfile, HarnessRegistry, HarnessRoute, HarnessRoutingEvidence,
+    HarnessStage,
 };
 pub use hybrid_simulation::{
     pareto_frontier, simulate_hybrid_topologies, simulate_hybrid_traces, strongest_candidate,
