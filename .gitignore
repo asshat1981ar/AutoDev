@@ -79,3 +79,6 @@ memory/
 .cline/skills/*/
 !.cline/skills/.gitkeep
 
+# AMCX-1 integration worktrees
+.worktrees/
+
