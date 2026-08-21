@@ -87,9 +87,16 @@ Integrate centralized configuration architecture (`config/`) with Kotlin Multipl
 
 ### Milestone 3: MPP Core Integration (Day 1-2 — CURRENT)
 **Target**: 2026-08-22 to 2026-08-23
+**Reconciliation (2026-08-21, cycle closeout):** team-1 wired `kotlin/gradle.properties`
+(copied from centralized config) and `kotlin/.ktlint.yaml` (symlink to
+`config/kotlin/ktlint/.ktlint.yaml`). Build was recorded as "blocked: no JDK" —
+**false blocker**: JDK 17 Corretto is installed at
+`/opt/amazon-corretto-17.0.20.10.1-linux-aarch64`, just not on PATH. The copied
+properties also inherited invalid lines (`$JDK_17_HOME`, Groovy block) — fixed at
+source in 74765df; propagation to `kotlin/` pending.
 
-- [ ] Update `mpp-core/build.gradle.kts` to reference `config/kotlin/gradle.properties`
-- [ ] Verify ktlint uses `config/kotlin/ktlint/.ktlint.yaml`
+- [x] Update `mpp-core/build.gradle.kts` to reference `config/kotlin/gradle.properties` *(via kotlin/gradle.properties copy — mechanism review pending)*
+- [x] Verify ktlint uses `config/kotlin/ktlint/.ktlint.yaml` *(symlink in place — portability review pending)*
 - [ ] Test build with `./gradlew :mpp-core:assemble --no-daemon`
 - [ ] Run `python config/validate.py` from team-1
 - [ ] Run `python scripts/check_harness_drift.py`
