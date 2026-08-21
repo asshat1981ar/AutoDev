@@ -69,6 +69,31 @@ class PullRequestEvidenceValidationTests(unittest.TestCase):
         errors = validate_event(self.event_path(body))
         self.assertTrue(any("exactly one" in error for error in errors), errors)
 
+    def test_rejects_complete_evidence_hidden_in_html_comment(self):
+        hidden_body = f"""## Summary
+
+Invisible validation content.
+
+<!--
+## Trust-boundary impact
+
+- [x] No trusted execution or authorization changes
+- [ ] Trusted-boundary impact present (check all applicable categories below)
+
+### Commands run
+
+bash tests/test_ast_grep_rules.sh
+
+### Evidence
+
+{VALID_EVIDENCE}
+-->
+"""
+        errors = validate_event(self.event_path(hidden_body))
+        self.assertTrue(any("exactly one" in error for error in errors), errors)
+        self.assertTrue(any("Commands run" in error for error in errors), errors)
+        self.assertTrue(any("Evidence" in error for error in errors), errors)
+
     def test_rejects_missing_pull_request_body(self):
         handle = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump({"pull_request": {"body": None}}, handle)
