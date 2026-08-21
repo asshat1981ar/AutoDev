@@ -17,6 +17,7 @@ use crate::AppState;
 
 pub(crate) const MCP_MAX_BODY_BYTES: usize = 512 * 1024;
 const DEFAULT_MCP_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "::1", "autodev-server"];
+const MAX_TEST_COMMAND_BYTES: usize = 4096;
 
 #[derive(Clone)]
 pub(crate) struct AutoDevMcp {
@@ -43,8 +44,70 @@ struct WriteProposalInput {
     content: String,
 }
 
+#[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+struct PlanLookupInput {
+    /// Durable ExecPlan identifier, normally the objective ID.
+    plan_id: String,
+}
+
+#[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+struct VerificationStatusInput {
+    /// Optional durable ExecPlan identifier to scope the projection.
+    #[serde(default)]
+    plan_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+struct TestProposalInput {
+    /// Durable task identifier that the test proposal belongs to.
+    task_id: String,
+    /// Logical agent identity proposing the verification command.
+    agent_id: String,
+    /// Human-readable reason the verification is needed.
+    reason: String,
+    /// Bounded command text for trusted evaluation. This adapter never executes it.
+    command: String,
+}
+
+#[derive(Debug, Deserialize, rmcp::schemars::JsonSchema)]
+struct ReplanProposalInput {
+    /// Existing durable ExecPlan identifier.
+    plan_id: String,
+    /// Logical agent identity proposing the replan.
+    agent_id: String,
+    /// Evidence-based reason for proposing a replan.
+    reason: String,
+    /// Candidate replacement goal. This adapter never applies it.
+    proposed_goal: String,
+}
+
 #[tool_router]
 impl AutoDevMcp {
+    #[tool(
+        name = "autodev.project.status",
+        description = "Return an authority-free AutoDev project/control-plane projection for development clients such as Vibe.",
+        annotations(
+            title = "Get AutoDev project status",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn project_status(&self) -> String {
+        let objective_count = self.state.objectives.read().await.len();
+        let exec_plan_count = self.state.exec_plans.read().await.len();
+        json!({
+            "objective_count": objective_count,
+            "exec_plan_count": exec_plan_count,
+            "authority": "none",
+            "trusted_execution_boundary": "forge_core",
+            "transport": "streamable_http",
+            "endpoint": "/mcp"
+        })
+        .to_string()
+    }
+
     #[tool(
         name = "autodev.objectives.list",
         description = "List the current AutoDev objective projection. This is read-only and does not authorize execution.",
@@ -60,6 +123,68 @@ impl AutoDevMcp {
         let objectives = self.state.objectives.read().await;
         serde_json::to_string(&objectives.values().cloned().collect::<Vec<_>>())
             .expect("objective projection is JSON serializable")
+    }
+
+    #[tool(
+        name = "autodev.execplan.get",
+        description = "Read one typed ForgeCore ExecPlan coordination projection. Reading a plan grants no execution, approval, or verification authority.",
+        annotations(
+            title = "Get AutoDev ExecPlan",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn execplan_get(
+        &self,
+        Parameters(input): Parameters<PlanLookupInput>,
+    ) -> Result<String, McpError> {
+        require_nonblank("plan_id", &input.plan_id)?;
+        let plan = self
+            .state
+            .exec_plan(input.plan_id.trim())
+            .await
+            .ok_or_else(|| McpError::invalid_params("unknown plan_id", None))?;
+        Ok(serde_json::to_string(&plan).expect("ExecPlan is JSON serializable"))
+    }
+
+    #[tool(
+        name = "autodev.verification.status",
+        description = "Return a non-authoritative verification projection. MCP cannot mark work verified; trusted evidence and VerificationFabric remain required.",
+        annotations(
+            title = "Get AutoDev verification status",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn verification_status(
+        &self,
+        Parameters(input): Parameters<VerificationStatusInput>,
+    ) -> Result<String, McpError> {
+        let plan_id = match input.plan_id {
+            Some(plan_id) => {
+                require_nonblank("plan_id", &plan_id)?;
+                let plan_id = plan_id.trim().to_string();
+                if self.state.exec_plan(&plan_id).await.is_none() {
+                    return Err(McpError::invalid_params("unknown plan_id", None));
+                }
+                Some(plan_id)
+            }
+            None => None,
+        };
+
+        Ok(json!({
+            "plan_id": plan_id,
+            "verified": false,
+            "authority": "none",
+            "evidence_required": true,
+            "verification_boundary": "verification_fabric",
+            "self_verification_allowed": false
+        })
+        .to_string())
     }
 
     #[tool(
@@ -125,6 +250,95 @@ impl AutoDevMcp {
 
         Ok(serde_json::to_string(&proposal).expect("AgentAction is JSON serializable"))
     }
+
+    #[tool(
+        name = "autodev.test.propose",
+        description = "Propose a bounded verification command as untrusted intent. This tool never starts a process and never marks verification successful.",
+        annotations(
+            title = "Propose AutoDev test run",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn test_propose(
+        &self,
+        Parameters(input): Parameters<TestProposalInput>,
+    ) -> Result<String, McpError> {
+        require_nonblank("task_id", &input.task_id)?;
+        require_nonblank("agent_id", &input.agent_id)?;
+        require_nonblank("reason", &input.reason)?;
+        require_nonblank("command", &input.command)?;
+        if input.command.len() > MAX_TEST_COMMAND_BYTES {
+            return Err(McpError::invalid_params(
+                "command exceeds 4096-byte proposal limit",
+                None,
+            ));
+        }
+
+        Ok(json!({
+            "id": format!("mcp-test-proposal-{}", Uuid::new_v4()),
+            "status": "proposal_only",
+            "proposal_type": "test_run",
+            "task_id": input.task_id,
+            "agent_id": input.agent_id,
+            "reason": input.reason,
+            "command": input.command,
+            "execution_authorized": false,
+            "verified": false,
+            "next_boundary": "forge_core_authorization_and_verification"
+        })
+        .to_string())
+    }
+
+    #[tool(
+        name = "autodev.replan.propose",
+        description = "Propose a new ExecPlan goal without changing lifecycle state or consuming replan budget. ForgeCore plan mutation remains outside MCP authority.",
+        annotations(
+            title = "Propose AutoDev replan",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn replan_propose(
+        &self,
+        Parameters(input): Parameters<ReplanProposalInput>,
+    ) -> Result<String, McpError> {
+        require_nonblank("plan_id", &input.plan_id)?;
+        require_nonblank("agent_id", &input.agent_id)?;
+        require_nonblank("reason", &input.reason)?;
+        require_nonblank("proposed_goal", &input.proposed_goal)?;
+
+        let plan = self
+            .state
+            .exec_plan(input.plan_id.trim())
+            .await
+            .ok_or_else(|| McpError::invalid_params("unknown plan_id", None))?;
+        let budget = plan.budget();
+
+        Ok(json!({
+            "id": format!("mcp-replan-proposal-{}", Uuid::new_v4()),
+            "status": "proposal_only",
+            "proposal_type": "replan",
+            "plan_id": plan.id(),
+            "agent_id": input.agent_id,
+            "reason": input.reason,
+            "current_goal": plan.goal(),
+            "proposed_goal": input.proposed_goal,
+            "budget": {
+                "max_replans": budget.max_replans(),
+                "max_attempts_per_milestone": budget.max_attempts_per_milestone(),
+                "replans_used": budget.replans_used()
+            },
+            "execution_authorized": false,
+            "plan_mutated": false,
+            "next_boundary": "forge_core_exec_plan_replan"
+        })
+        .to_string())
+    }
 }
 
 #[tool_handler]
@@ -175,6 +389,16 @@ fn configured_hosts() -> Vec<String> {
             .map(|host| host.to_string())
             .collect()
     })
+}
+
+fn require_nonblank(name: &str, value: &str) -> Result<(), McpError> {
+    if value.trim().is_empty() {
+        return Err(McpError::invalid_params(
+            format!("{name} is required"),
+            None,
+        ));
+    }
+    Ok(())
 }
 
 fn validate_write_proposal(input: &WriteProposalInput) -> Result<(), McpError> {
