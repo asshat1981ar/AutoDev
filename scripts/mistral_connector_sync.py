@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -97,12 +97,44 @@ def validate_manifest(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def load_manifest(path: str | Path) -> dict[str, Any]:
+def validate_registry(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate the dependency-free registry that enumerates desired manifests."""
+    if not isinstance(data, dict):
+        raise ManifestError("registry must be an object")
+    _reject_inline_secrets(data)
+    if data.get("schema_version") != 1:
+        raise ManifestError("registry schema_version must be 1")
+    connectors = data.get("connectors")
+    if not isinstance(connectors, list) or not connectors:
+        raise ManifestError("registry connectors must be a non-empty list")
+    if len(connectors) != len(set(connectors)):
+        raise ManifestError("registry connector paths must be unique")
+    for item in connectors:
+        if not isinstance(item, str) or not item:
+            raise ManifestError("registry connector paths must be non-empty strings")
+        path = PurePosixPath(item)
+        if path.is_absolute() or ".." in path.parts:
+            raise ManifestError(f"unsafe registry connector path: {item}")
+        if len(path.parts) < 2 or path.parts[0] != "connectors" or path.suffix != ".yaml":
+            raise ManifestError(f"registry connector path must be connectors/*.yaml: {item}")
+    return data
+
+
+def _read_json(path: str | Path) -> Any:
     try:
-        raw = Path(path).read_text(encoding="utf-8")
-        data = json.loads(raw)
+        return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ManifestError(f"cannot load manifest {path}: {exc}") from exc
+
+
+def load_manifest(path: str | Path) -> dict[str, Any]:
+    return validate_manifest(_read_json(path))
+
+
+def load_validation_target(path: str | Path) -> dict[str, Any]:
+    data = _read_json(path)
+    if isinstance(data, dict) and "connectors" in data and "key" not in data:
+        return validate_registry(data)
     return validate_manifest(data)
 
 
@@ -360,10 +392,6 @@ def apply_plan(
     return {"action": action, "changed": True, "remote": remote}
 
 
-def _read_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
 def _print(value: Any) -> None:
     print(json.dumps(sanitize(value), indent=2, sort_keys=True))
 
@@ -388,7 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    validate = sub.add_parser("validate", help="validate a local connector manifest")
+    validate = sub.add_parser("validate", help="validate a local connector manifest or registry")
     validate.add_argument("manifest")
 
     plan = sub.add_parser("plan", help="plan against supplied remote-state JSON")
@@ -418,7 +446,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "validate":
-        _print(load_manifest(args.manifest))
+        _print(load_validation_target(args.manifest))
         return 0
     if args.command == "plan":
         desired = load_manifest(args.manifest)
