@@ -85,6 +85,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install ast-grep
+        run: npm install --global @ast-grep/cli@0.45.0
+      - name: ast-grep rule regressions
+        run: bash tests/test_ast_grep_rules.sh
       - name: Harness drift (docs ↔ CI)
         run: python scripts/check_harness_drift.py --verbose
       - name: Reproducible verification (offline-capable)
