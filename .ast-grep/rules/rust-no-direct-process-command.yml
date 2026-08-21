@@ -23,6 +23,8 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: use std::process::Command as $COMMAND_ALIAS;
+              any:
+                - pattern: use std::process::Command as $COMMAND_ALIAS;
+                - pattern: use std::process::{$$$BEFORE, Command as $COMMAND_ALIAS, $$$AFTER};
 message: Direct process execution in ForgeCore requires trusted-boundary review.
 severity: warning
