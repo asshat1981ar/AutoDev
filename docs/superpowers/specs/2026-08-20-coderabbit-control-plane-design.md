@@ -150,7 +150,7 @@ profiles:
     - kotlin-multiplatform
 policy:
   local:
-    - autodev.forgetcore-boundary
+    - autodev.forgecore-boundary
     - autodev.amcx-provenance
 generation:
   coderabbit: true
