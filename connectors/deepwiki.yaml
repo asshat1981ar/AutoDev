@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "key": "deepwiki",
+  "name": "autodev_deepwiki",
+  "kind": "mcp",
+  "managed": true,
+  "server": "https://mcp.deepwiki.com/mcp",
+  "visibility": "private",
+  "description": "Read-only repository intelligence for AutoDev research and architecture agents",
+  "tool_policy": {
+    "include": [],
+    "exclude": []
+  },
+  "confirmation": {
+    "required": []
+  },
+  "risk": "read_only"
+}
