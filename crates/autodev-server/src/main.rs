@@ -19,3 +19,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, router(state)).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bind_address_defaults_to_localhost_and_allows_explicit_override() {
+        assert_eq!(resolve_bind_addr(None), "127.0.0.1");
+        assert_eq!(resolve_bind_addr(Some("")), "127.0.0.1");
+        assert_eq!(resolve_bind_addr(Some(" 0.0.0.0 ")), "0.0.0.0");
+    }
+}
