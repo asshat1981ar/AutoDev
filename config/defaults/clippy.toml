@@ -1,0 +1,101 @@
+# AutoDev Clippy Configuration
+# Centralized clippy lint rules for all AutoDev Rust code.
+#
+# Usage:
+#   This file is NOT directly used by clippy. Instead, clippy uses
+#   rustc's built-in lint infrastructure. This file documents the
+#   recommended lint levels for AutoDev.
+#
+#   To use these settings, add to your Cargo.toml:
+#   [lints.rust]
+#   unexpected_cfgs = { level = "warn", priority = -1 }
+#
+#   Or use clippy attributes:
+#   #![deny(clippy::unused_variables)]
+#
+# Priority: Component Cargo.toml > Workspace Cargo.toml > This file
+#
+# Trust Boundary Rules (ForgeCore-specific):
+# These rules are CRITICAL for the trusted execution kernel and MUST NOT be weakened.
+
+# =============================================================================
+# CLIPPY CONFIGURATION (for clippy.toml or #![attribute] syntax)
+# =============================================================================
+
+# Method 1: Use as clippy.toml (requires clippy 1.65+)
+# Place this file at the project root or pass with -c flag
+# Method 2: Use as Cargo.toml [lints] section
+# Method 3: Use as inline attributes in Rust code
+
+# Documentation of recommended lint levels for AutoDev
+
+[checks]
+# =============================================================================
+# DEFAULT LINT LEVELS - These are NOT clippy lints but Rust lints
+# =============================================================================
+
+# Rust lints (not clippy) - use in Cargo.toml [lints.rust]
+# warnings = "deny"
+
+# =============================================================================
+# CLIPPY LINTS - Use in Cargo.toml [lints.clippy] or as attributes
+# =============================================================================
+
+# Trust Boundary: Authorization & Execution
+needless_borrow = "deny"
+unnecessary_wraps = "deny"
+wildcard_enum_match_arm = "deny"
+
+# Prevent accidental authority escalation
+unused_variables = "deny"
+used_underscore_bindings = "deny"
+
+# Security & Correctness
+panic = "deny"
+panic_in_result_fn = "deny"
+indexing_slicing = "deny"
+
+# Memory safety
+boxed_local = "deny"
+clone_on_copy = "deny"
+copy_iterator = "deny"
+
+# Error handling
+result_large_err = "deny"
+
+# Note: unwrap_used and expect_used cannot be configured via toml
+# They must be controlled via #![deny] attributes or Cargo.toml [lints]
+
+# =============================================================================
+# STYLE & CLARITY
+# =============================================================================
+
+# Code clarity
+cognitive_complexity = "warn"
+complexity = "warn"
+excessive_precision = "warn"
+redundant_closure_for_method_calls = "warn"
+similar_names = "warn"
+
+# Documentation
+missing_docs_in_public_items = "warn"
+doc_markdown = "warn"
+
+# =============================================================================
+# PERFORMANCE
+# =============================================================================
+
+large_enum_variant = "warn"
+large_types_passed_by_value = "warn"
+needless_pass_by_value = "warn"
+trivially_copy_pass_by_ref = "warn"
+
+# =============================================================================
+# UNDESIRED PATTERNS
+# =============================================================================
+
+# Prevent patterns that weaken security model
+arithmetic_side_effects = "deny"
+float_cmp = "deny"
+float_equality_without_abs = "deny"
+mem_forget = "deny"
