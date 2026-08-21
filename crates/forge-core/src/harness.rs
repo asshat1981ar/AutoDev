@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::too_many_arguments)]
 mod builtins;
 pub use builtins::default_harness_profiles;
 
