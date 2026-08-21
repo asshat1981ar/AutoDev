@@ -134,8 +134,6 @@ class DomainOwnershipMap:
     @classmethod
     def validate_action_authority(cls, domain_id: int, claiming_authority: str) -> bool:
         domain = cls.get_domain(domain_id)
-        # Verify claiming authority matches decision authority
-        expected_authority = domain["decision_authority"].lower()
-        if claiming_authority.lower() in expected_authority or expected_authority in claiming_authority.lower():
-            return True
-        return False
+        expected_authority = domain["decision_authority"].strip().casefold()
+        claimed_authority = claiming_authority.strip().casefold()
+        return bool(claimed_authority) and claimed_authority == expected_authority
