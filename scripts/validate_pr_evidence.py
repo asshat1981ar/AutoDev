@@ -21,10 +21,12 @@ NESTED_BOUNDARY_RE = re.compile(r"^\s{2,}- \[([xX])\] .+changed\s*$", re.MULTILI
 
 
 def _strip_comments(text: str) -> str:
+    """Remove HTML comments before evaluating user-visible PR evidence."""
     return HTML_COMMENT_RE.sub("", text)
 
 
 def _section(body: str, heading: str) -> str | None:
+    """Return the visible Markdown level-three section body for a heading."""
     pattern = re.compile(
         rf"^### {re.escape(heading)}\s*$\n(?P<content>.*?)(?=^#{{1,3}} \S|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -36,6 +38,7 @@ def _section(body: str, heading: str) -> str | None:
 
 
 def _checked(match: re.Match[str] | None) -> bool:
+    """Return whether a matched Markdown checkbox is checked."""
     return bool(match and match.group(1).lower() == "x")
 
 
