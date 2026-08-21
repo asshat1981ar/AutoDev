@@ -13,6 +13,12 @@ pub fn run_test_authorized(
     workspace: &Workspace,
     grant: &AuthorizationGrant,
 ) -> Result<ExecutionResult, ExecutionError> {
+    if action.action_type != crate::ActionType::RunTest {
+        return Err(ExecutionError::UnsupportedAction(
+            action.action_type.as_str().to_string(),
+        ));
+    }
+
     enforce_policy(action, grant)?;
     if !has_required_capability(action) {
         return Err(ExecutionError::CapabilityDenied);
