@@ -38,6 +38,19 @@ require_not_reported() {
   fi
 }
 
+require_diagnostic_count() {
+  local output="$1"
+  local rule_id="$2"
+  local expected="$3"
+  local actual
+  actual="$(grep -Fc "error[$rule_id]" <<<"$output" || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "Expected $expected diagnostics for $rule_id, found $actual" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+}
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -90,7 +103,9 @@ for expected in \
   'execute_run(["observer-imported-run"])'; do
   require_reported "$observer_output" "$expected"
 done
-require_not_reported "$observer_output" 'print("observer-safe")'
+# Relational import diagnostics can include surrounding module lines as context,
+# so prove the safe print is not a target by requiring exactly the 15 unsafe matches.
+require_diagnostic_count "$observer_output" 'observer-no-process-exec' 15
 
 # Python shell=True: detect direct, receiver-alias, imported-function alias, and
 # first/middle/last keyword positions while avoiding unrelated shell parameters.
