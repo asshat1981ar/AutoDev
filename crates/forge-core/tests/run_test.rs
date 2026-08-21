@@ -3,6 +3,7 @@ use forge_core::{
 };
 use serde_json::json;
 
+/// Build the canonical authorized Cargo `RunTest` action used by integration coverage.
 fn run_test_action() -> AgentAction {
     AgentAction {
         id: "run-test-1".to_string(),
