@@ -33,6 +33,16 @@ BASE = {
 }
 
 
+def remote_for(desired=BASE):
+    return {
+        "id": "uuid-1",
+        "name": desired["name"],
+        "server": desired["server"],
+        "visibility": desired["visibility"],
+        "description": desired["description"],
+    }
+
+
 class ManifestTests(unittest.TestCase):
     def test_loads_json_subset_yaml_and_validates(self):
         with TemporaryDirectory() as tmp:
@@ -88,13 +98,7 @@ class ManifestTests(unittest.TestCase):
 class PlanningTests(unittest.TestCase):
     def test_create_noop_update_and_external(self):
         self.assertEqual(plan_reconciliation(BASE, None)["action"], "CREATE")
-        remote = {
-            "id": "uuid-1",
-            "name": BASE["name"],
-            "server": BASE["server"],
-            "visibility": BASE["visibility"],
-            "description": BASE["description"],
-        }
+        remote = remote_for()
         self.assertEqual(plan_reconciliation(BASE, remote)["action"], "NOOP")
         changed = {**remote, "description": "old"}
         update = plan_reconciliation(BASE, changed)
@@ -104,13 +108,7 @@ class PlanningTests(unittest.TestCase):
         self.assertEqual(plan_reconciliation(featured, None)["action"], "EXTERNAL")
 
     def test_visibility_drift_blocks_in_place_update(self):
-        remote = {
-            "id": "uuid-1",
-            "name": BASE["name"],
-            "server": BASE["server"],
-            "visibility": "shared_workspace",
-            "description": BASE["description"],
-        }
+        remote = {**remote_for(), "visibility": "shared_workspace"}
         plan = plan_reconciliation(BASE, remote)
         self.assertEqual(plan["action"], "BLOCKED")
         self.assertIn("visibility", plan["reason"])
@@ -169,6 +167,25 @@ class ClientTests(unittest.TestCase):
         self.assertIn("refresh=true", transport.calls[1][1])
         self.assertIn("pretty=true", transport.calls[1][1])
 
+    def test_direct_tool_call_serializes_documented_endpoint(self):
+        transport = FakeTransport([{"content": [{"type": "text", "text": "ok"}]}])
+        client = MistralConnectorClient("test-key", transport=transport)
+        result = client.call_tool(
+            BASE["name"], "read_wiki_structure", {"repoName": "sqlite/sqlite"}
+        )
+        self.assertEqual(result["content"][0]["text"], "ok")
+        method, url, _, body = transport.calls[0]
+        self.assertEqual(method, "POST")
+        self.assertTrue(
+            url.endswith(
+                "/v1/connectors/autodev_deepwiki/tools/read_wiki_structure/call"
+            )
+        )
+        self.assertEqual(
+            json.loads(body.decode("utf-8")),
+            {"arguments": {"repoName": "sqlite/sqlite"}},
+        )
+
     def test_list_connectors_follows_cursor_pagination(self):
         transport = FakeTransport([
             {"items": [{"id": "1", "name": "one"}], "pagination": {"next_cursor": "next"}},
@@ -179,8 +196,21 @@ class ClientTests(unittest.TestCase):
         self.assertNotIn("cursor=", transport.calls[0][1])
         self.assertIn("cursor=next", transport.calls[1][1])
 
+    def test_apply_create_rereads_remote_state_and_verifies_noop(self):
+        transport = FakeTransport([
+            {"id": "uuid-1", "name": BASE["name"]},
+            remote_for(),
+        ])
+        client = MistralConnectorClient("test-key", transport=transport)
+        plan = plan_reconciliation(BASE, None)
+        result = apply_plan(client, plan)
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["verification"]["action"], "NOOP")
+        self.assertEqual([call[0] for call in transport.calls], ["POST", "GET"])
+        self.assertTrue(transport.calls[1][1].endswith("/v1/connectors/uuid-1"))
+
     def test_apply_only_mutates_create_or_update(self):
-        transport = FakeTransport([{"id": "uuid-1", "name": BASE["name"]}])
+        transport = FakeTransport([])
         client = MistralConnectorClient("test-key", transport=transport)
         result = apply_plan(client, {"action": "NOOP", "desired": BASE})
         self.assertEqual(result["action"], "NOOP")
