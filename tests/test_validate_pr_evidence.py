@@ -6,7 +6,11 @@ from pathlib import Path
 from scripts.validate_pr_evidence import validate_event
 
 
-VALID_BODY = """## Summary
+VALID_EVIDENCE = (
+    "CI run / artifact / output: local verifier output: pull-request evidence: PASS"
+)
+
+VALID_BODY = f"""## Summary
 
 Security guardrail update.
 
@@ -26,7 +30,7 @@ python -m unittest tests.test_validate_pr_evidence
 
 ### Evidence
 
-CI run / artifact / output: https://github.com/example/project/actions/runs/12345
+{VALID_EVIDENCE}
 """
 
 
@@ -51,7 +55,7 @@ class PullRequestEvidenceValidationTests(unittest.TestCase):
 
     def test_rejects_placeholder_evidence(self):
         body = VALID_BODY.replace(
-            "CI run / artifact / output: https://github.com/example/project/actions/runs/12345",
+            VALID_EVIDENCE,
             "CI run / artifact / output:\n<!-- Link the exact-head CI run, artifact, or concise command output that supports the checked claims. -->",
         )
         errors = validate_event(self.event_path(body))
