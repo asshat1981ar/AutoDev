@@ -1,0 +1,8 @@
+{
+  "name": "autodev-ast-grep-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "devDependencies": {
+    "@ast-grep/cli": "0.45.0"
+  }
+}
