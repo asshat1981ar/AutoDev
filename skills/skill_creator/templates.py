@@ -235,7 +235,7 @@ temperature: {temperature}
 # Implementation Templates
 # =============================================================================
 
-AMX_MEMORY_IMPL_TEMPLATE = """#!/usr/bin/env python3
+AMX_MEMORY_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 AMX v1.1 canonical portable memory implementation for {name}.
@@ -295,9 +295,9 @@ class {class_name}:
     def _compute_digest(self, data: Dict[str, Any]) -> str:
         data_str = json.dumps(data, sort_keys=True)
         return hashlib.sha256(data_str.encode('utf-8')).hexdigest()
-"""
+'''
 
-ECM_IMPL_TEMPLATE = """#!/usr/bin/env python3
+ECM_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 ECM collaboration state implementation for {name}.
@@ -340,9 +340,9 @@ class {class_name}:
         self.state.setdefault("tasks", {}).setdefault(task_id, task)
         self._save_state()
         return task
-"""
+'''
 
-EVIDENCE_IMPL_TEMPLATE = """#!/usr/bin/env python3
+EVIDENCE_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 Evidence implementation for {name}.
@@ -384,9 +384,9 @@ class {class_name}:
         self.state["records"].append(record)
         self._save_state()
         return record
-"""
+'''
 
-HOST_ADAPTER_IMPL_TEMPLATE = """#!/usr/bin/env python3
+HOST_ADAPTER_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 Host adapter implementation for {name}.
@@ -404,9 +404,9 @@ class {class_name}:
     def execute(self, action: str, **kwargs) -> Any:
         \"\"\"Execute a host-specific action.\"\"\"
         raise NotImplementedError(f"Action {action} not implemented")
-"""
+'''
 
-MCP_SERVER_IMPL_TEMPLATE = """#!/usr/bin/env python3
+MCP_SERVER_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 MCP server implementation for {name}.
@@ -428,9 +428,9 @@ class {class_name}:
     def read_resource(self, resource_name: str) -> Dict[str, Any]:
         \"\"\"Read a resource.\"\"\"
         raise NotImplementedError(f"Resource {resource_name} not found")
-"""
+'''
 
-GENERAL_IMPL_TEMPLATE = """#!/usr/bin/env python3
+GENERAL_IMPL_TEMPLATE = '''#!/usr/bin/env python3
 \"\"\"{description}
 
 General skill implementation for {name}.
@@ -448,7 +448,7 @@ class {class_name}:
     def execute(self, **kwargs) -> Any:
         \"\"\"Execute the skill.\"\"\"
         raise NotImplementedError("Execute method not implemented")
-"""
+'''
 
 
 # =============================================================================
@@ -468,7 +468,7 @@ __all__ = ["{class_name}"]
 # Test Templates
 # =============================================================================
 
-AMX_MEMORY_TEST_TEMPLATE = """import unittest
+AMX_MEMORY_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -505,9 +505,9 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
-ECM_TEST_TEMPLATE = """import unittest
+ECM_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -537,9 +537,9 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
-EVIDENCE_TEST_TEMPLATE = """import unittest
+EVIDENCE_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -569,9 +569,9 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
-HOST_ADAPTER_TEST_TEMPLATE = """import unittest
+HOST_ADAPTER_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -595,9 +595,9 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
-MCP_SERVER_TEST_TEMPLATE = """import unittest
+MCP_SERVER_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -627,9 +627,9 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
-GENERAL_TEST_TEMPLATE = """import unittest
+GENERAL_TEST_TEMPLATE = '''import unittest
 import sys
 import os
 
@@ -653,7 +653,7 @@ class Test{class_name}(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-"""
+'''
 
 
 
