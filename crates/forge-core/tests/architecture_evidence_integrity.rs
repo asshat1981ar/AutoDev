@@ -21,6 +21,47 @@ fn evidence(id: &str, objective_id: &str, class: EvidenceClass) -> EvidenceRecor
 }
 
 #[test]
+fn public_record_with_empty_id_is_rejected() {
+    let mut record = evidence("ev-1", "obj-w1", EvidenceClass::Documented);
+    record.id.clear();
+
+    assert_eq!(
+        record.validate().unwrap_err(),
+        ArchitectureEvidenceError::EmptyField("id"),
+    );
+}
+
+#[test]
+fn public_record_with_malformed_fingerprint_is_rejected() {
+    let mut record = evidence("ev-1", "obj-w1", EvidenceClass::Documented);
+    record.content_fingerprint = "not-a-sha256".into();
+
+    assert_eq!(
+        record.validate().unwrap_err(),
+        ArchitectureEvidenceError::InvalidFingerprint("not-a-sha256".into()),
+    );
+}
+
+#[test]
+fn renderer_rejects_malformed_public_record() {
+    let mut malformed = evidence("ev-1", "obj-w1", EvidenceClass::Documented);
+    malformed.source_system.clear();
+    let input = ArchitectureReportInput {
+        objective_id: "obj-w1".into(),
+        title: "Malformed evidence".into(),
+        desired_outcome: "Deserialized records cannot bypass invariants".into(),
+        evidence: vec![malformed],
+        decisions: vec![],
+        options: vec![],
+    };
+
+    assert_eq!(
+        render_architecture_report(&input).unwrap_err(),
+        ArchitectureEvidenceError::EmptyField("source_system"),
+    );
+}
+
+#[test]
 fn report_rejects_duplicate_evidence_ids() {
     let input = ArchitectureReportInput {
         objective_id: "obj-w1".into(),

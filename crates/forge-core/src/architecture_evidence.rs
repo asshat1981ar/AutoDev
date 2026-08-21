@@ -110,6 +110,32 @@ impl EvidenceRecord {
         })
     }
 
+    /// Validate a public or deserialized evidence record before trust decisions consume it.
+    pub fn validate(&self) -> Result<(), ArchitectureEvidenceError> {
+        required_ref(&self.id, "id")?;
+        required_ref(&self.objective_id, "objective_id")?;
+        required_ref(&self.claim, "claim")?;
+        required_ref(&self.source_system, "source_system")?;
+        required_ref(&self.source_reference, "source_reference")?;
+        required_ref(&self.invalidation_condition, "invalidation_condition")?;
+        if self.confidence > 100 {
+            return Err(ArchitectureEvidenceError::InvalidConfidence(
+                self.confidence,
+            ));
+        }
+        if self.content_fingerprint.len() != 64
+            || !self
+                .content_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(ArchitectureEvidenceError::InvalidFingerprint(
+                self.content_fingerprint.clone(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether this record can independently contribute to a verified gate.
     pub fn can_satisfy_verified_gate(&self) -> bool {
         self.evidence_class.can_satisfy_verified_gate()
@@ -240,6 +266,8 @@ pub enum ArchitectureEvidenceError {
     EmptyField(&'static str),
     #[error("confidence must be between 0 and 100, got {0}")]
     InvalidConfidence(u8),
+    #[error("invalid SHA-256 content fingerprint {0}")]
+    InvalidFingerprint(String),
     #[error("duplicate evidence id `{0}`")]
     DuplicateEvidenceId(String),
     #[error("{item_kind} `{item_id}` belongs to objective `{actual}`; expected `{expected}`")]
@@ -350,6 +378,7 @@ pub fn render_architecture_report(
 
     let mut evidence_by_id = BTreeMap::new();
     for record in &input.evidence {
+        record.validate()?;
         if record.objective_id != input.objective_id {
             return Err(ArchitectureEvidenceError::ObjectiveMismatch {
                 item_kind: "evidence",

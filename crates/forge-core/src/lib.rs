@@ -8,8 +8,10 @@
 pub mod action;
 pub mod agent;
 pub mod architecture_evidence;
+pub mod architecture_lease;
 pub mod capability_gap;
 pub mod context;
+pub mod current_verification;
 pub mod development_loop;
 pub mod dispatch;
 pub mod envelope;
@@ -45,12 +47,22 @@ pub use architecture_evidence::{
     ArchitectureDecision, ArchitectureEvidenceError, ArchitectureOption, ArchitectureReportInput,
     CriterionScore, DecisionMaturity, EvidenceClass, EvidenceRecord, Reversibility,
 };
+pub use architecture_lease::{
+    attest, evaluate_lease, ApprovalReference, ApprovalReferenceKind, ArchitectureLeaseError,
+    EffectivePolicy, LeaseAttestation, LeaseEvaluation, LeaseEvaluationReason,
+    LeaseEvaluationStatus, LeasePolicyDefinition, LeasePolicyRegistry, LeaseRule, PolicyRelaxation,
+    RefreshProposal, RepositoryApprovalEvidence, RepositoryPolicyOverride, RevalidationMode,
+    RiskTier,
+};
 pub use capability_gap::{
     discover_candidates, evaluate_candidate, propose_candidate_writes, CandidateArtifact,
     CandidateEvaluation, CandidateKind, CapabilityCandidate, CapabilityGapError, GapKind,
     GapObservation, PromotionDecision,
 };
 pub use context::{select_context, ContextFile, ContextItem, ContextPack, ContextPolicy};
+pub use current_verification::{
+    evaluate_current_verification, CurrentVerificationResult, CurrentVerificationStatus,
+};
 pub use development_loop::{
     DevelopmentLoop, DevelopmentLoopError, DevelopmentLoopOutcome, DevelopmentLoopResult,
 };
