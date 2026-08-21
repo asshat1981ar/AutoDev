@@ -205,7 +205,11 @@ impl HarnessRegistry {
 
     pub fn register(&mut self, profile: HarnessProfile) -> Result<(), HarnessError> {
         profile.validate()?;
-        if self.profiles.iter().any(|candidate| candidate.id == profile.id) {
+        if self
+            .profiles
+            .iter()
+            .any(|candidate| candidate.id == profile.id)
+        {
             return Err(HarnessError::DuplicateProfile(profile.id));
         }
         self.profiles.push(profile);
