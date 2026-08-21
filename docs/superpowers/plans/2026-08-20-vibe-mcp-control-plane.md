@@ -23,7 +23,6 @@
 - [x] Run 523 RED — untrusted Origin reached MCP negotiation and returned 406 rather than required 403.
 - [x] Run 524 GREEN — Origin hardening passed Rust format, Clippy, build, tests, container, harness, Kotlin, and Python jobs.
 - [x] Run 525 RED — missing `resolve_bind_addr` after formatting passed.
-- [ ] Final exact-head CI — this is the sole remaining completion gate.
 
 ## Implemented slice
 
@@ -38,12 +37,26 @@
 - [x] Server defaults to localhost with explicit bind override.
 - [x] `docs/integrations/vibe-mcp.md` contains the exact Vibe registration and troubleshooting workflow.
 
+## Verification status
+
+Exact-head CI run 531 has passed these required development gates:
+
+- [x] Rust format.
+- [x] Rust Clippy with warnings denied.
+- [x] Rust workspace build.
+- [x] Rust workspace tests, including the Vibe MCP and localhost-bind regressions.
+- [x] Server container build.
+- [x] Harness drift and reproducible verification.
+- [x] Python 3.10 and 3.11 compile/tests.
+- [x] Kotlin build/tests/ktlint/debug APK.
+- [ ] Historical self-evaluation smoke is still executing; the PR remains draft until that independent job reports a conclusion.
+
 ## Progress
 
 - Branch: `feat/vibe-mcp-control-plane`.
 - Draft PR: #39.
 - Code, tests, security hardening, design, and integration documentation are committed.
-- No completion claim until fresh exact-head CI passes.
+- Core implementation verification is green at run 531; only the independent historical self-evaluation smoke is still in progress.
 
 ## Surprises & discoveries
 
@@ -60,4 +73,4 @@
 
 ## Outcomes & retrospective
 
-The implementation matches the approved architecture and preserves ForgeCore authority. Completion remains gated on the fresh exact-head CI run for this commit.
+The approved Vibe MCP control-plane slice is implemented and its build/test/security gates are passing. PR #39 remains draft solely because the repository's historical self-evaluation smoke job has not yet concluded.
