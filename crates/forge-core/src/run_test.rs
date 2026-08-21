@@ -117,12 +117,8 @@ mod tests {
             "path": "README.md"
         });
 
-        let error = run_test_authorized(
-            &wrong_action,
-            &workspace,
-            &AuthorizationGrant::none(),
-        )
-        .unwrap_err();
+        let error = run_test_authorized(&wrong_action, &workspace, &AuthorizationGrant::none())
+            .unwrap_err();
 
         assert!(matches!(
             error,
