@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Git-authoritative Mistral Studio Connector reconciliation.
 
-Manifests use strict JSON syntax in .yaml files. JSON is a YAML subset and
-keeps this AutoDev integration dependency-free.
+Connector manifests are strict JSON documents stored with ``.yaml`` suffixes.
+JSON is a YAML subset, which keeps this AutoDev integration dependency-free.
 """
 
 from __future__ import annotations
@@ -17,37 +17,42 @@ from typing import Any, Callable
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-
 API_BASE = "https://api.mistral.ai"
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 VISIBILITIES = {"private", "shared_workspace", "shared_org"}
 KINDS = {"mcp", "featured"}
 ACTIONS = {"CREATE", "UPDATE", "NOOP", "EXTERNAL", "BLOCKED"}
-REMOTE_FIELDS = ("name", "description", "server", "visibility", "icon_url", "system_prompt")
-SECRET_MARKERS = {
+REMOTE_FIELDS = (
+    "name",
+    "description",
+    "server",
+    "visibility",
+    "icon_url",
+    "system_prompt",
+)
+SECRET_FRAGMENTS = (
     "authorization",
     "api_key",
     "apikey",
-    "token",
-    "access_token",
-    "refresh_token",
     "password",
     "secret",
-    "client_secret",
-}
+    "token",
+)
 
 
 class ManifestError(ValueError):
-    pass
+    """Raised when desired Connector state is unsafe or malformed."""
+
+
+def _normalized_key(key: str) -> str:
+    return key.lower().replace("-", "_")
 
 
 def _is_secret_key(key: str) -> bool:
-    lowered = key.lower().replace("-", "_")
+    lowered = _normalized_key(key)
     if lowered.endswith("_ref") or lowered.endswith("_reference"):
         return False
-    return lowered in SECRET_MARKERS or any(
-        marker in lowered for marker in ("password", "secret", "token")
-    )
+    return any(fragment in lowered for fragment in SECRET_FRAGMENTS)
 
 
 def _reject_inline_secrets(value: Any, path: str = "$") -> None:
@@ -94,7 +99,8 @@ def validate_manifest(data: dict[str, Any]) -> dict[str, Any]:
 
 def load_manifest(path: str | Path) -> dict[str, Any]:
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = Path(path).read_text(encoding="utf-8")
+        data = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         raise ManifestError(f"cannot load manifest {path}: {exc}") from exc
     return validate_manifest(data)
@@ -123,7 +129,11 @@ def plan_reconciliation(
 ) -> dict[str, Any]:
     desired = validate_manifest(dict(desired))
     if desired["kind"] == "featured" or not desired["managed"]:
-        return {"action": "EXTERNAL", "desired": desired, "reason": "resource is not managed"}
+        return {
+            "action": "EXTERNAL",
+            "desired": desired,
+            "reason": "resource is not managed",
+        }
     if desired["visibility"] == "shared_org" and not allow_org_shared:
         return {
             "action": "BLOCKED",
@@ -132,26 +142,35 @@ def plan_reconciliation(
         }
     if remote is None:
         return {"action": "CREATE", "desired": desired}
+
     changes = {
         field: expected
         for field, expected in _comparable(desired).items()
         if remote.get(field) != expected
     }
     if not changes:
-        return {"action": "NOOP", "desired": desired, "connector_id": remote.get("id")}
+        return {
+            "action": "NOOP",
+            "desired": desired,
+            "connector_id": remote.get("id"),
+        }
     if "visibility" in changes:
         return {
             "action": "BLOCKED",
             "desired": desired,
             "connector_id": remote.get("id"),
-            "reason": "visibility drift cannot be updated in place by the documented Connector update API",
             "changes": changes,
+            "reason": (
+                "visibility drift cannot be updated in place by the documented "
+                "Connector update API"
+            ),
         }
     connector_id = remote.get("id")
     if not connector_id:
         return {
             "action": "BLOCKED",
             "desired": desired,
+            "changes": changes,
             "reason": "remote connector update requires UUID",
         }
     return {
@@ -163,15 +182,17 @@ def plan_reconciliation(
 
 
 def _tool_map(tools: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
+    mapped: dict[str, dict[str, Any]] = {}
     for tool in tools:
         name = tool.get("name")
         if isinstance(name, str) and name:
-            result[name] = sanitize(tool)
-    return result
+            mapped[name] = sanitize(tool)
+    return mapped
 
 
-def diff_tools(previous: list[dict[str, Any]], current: list[dict[str, Any]]) -> dict[str, list[str]]:
+def diff_tools(
+    previous: list[dict[str, Any]], current: list[dict[str, Any]]
+) -> dict[str, list[str]]:
     old = _tool_map(previous)
     new = _tool_map(current)
     old_names = set(old)
@@ -186,14 +207,21 @@ def diff_tools(previous: list[dict[str, Any]], current: list[dict[str, Any]]) ->
 Transport = Callable[[str, str, dict[str, str], bytes | None], Any]
 
 
-def _default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> Any:
+def _default_transport(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: bytes | None,
+) -> Any:
     request = Request(url=url, data=body, method=method, headers=headers)
-    with urlopen(request, timeout=30) as response:  # nosec - target is explicit Mistral API base
+    with urlopen(request, timeout=30) as response:  # nosec B310 - fixed API base by CLI
         payload = response.read()
     return json.loads(payload.decode("utf-8")) if payload else {}
 
 
 class MistralConnectorClient:
+    """Small REST adapter around the documented beta Connector endpoints."""
+
     def __init__(
         self,
         api_key: str,
@@ -207,7 +235,12 @@ class MistralConnectorClient:
         self._base_url = base_url.rstrip("/")
         self._transport = transport or _default_transport
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> Any:
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Accept": "application/json",
@@ -215,7 +248,9 @@ class MistralConnectorClient:
         body = None
         if payload is not None:
             headers["Content-Type"] = "application/json"
-            body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            body = json.dumps(
+                payload, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
         return self._transport(method, f"{self._base_url}{path}", headers, body)
 
     def list_connectors(self, *, page_size: int = 100) -> list[dict[str, Any]]:
@@ -228,7 +263,7 @@ class MistralConnectorClient:
             response = self._request("GET", f"/v1/connectors?{urlencode(params)}")
             if isinstance(response, list):
                 items.extend(response)
-                break
+                return items
             page_items = response.get("items", response.get("data", []))
             if not isinstance(page_items, list):
                 raise ValueError("unexpected connector list response")
@@ -236,25 +271,37 @@ class MistralConnectorClient:
             pagination = response.get("pagination") or {}
             cursor = pagination.get("next_cursor") or response.get("next_cursor")
             if not cursor:
-                break
-        return items
+                return items
 
     def get_connector(self, connector_id_or_name: str) -> dict[str, Any]:
-        return self._request("GET", f"/v1/connectors/{quote(connector_id_or_name, safe='')}")
+        return self._request(
+            "GET", f"/v1/connectors/{quote(connector_id_or_name, safe='')}"
+        )
 
     def create_connector(self, desired: dict[str, Any]) -> dict[str, Any]:
         validate_manifest(desired)
         if desired["kind"] != "mcp" or not desired["managed"]:
             raise ValueError("only managed MCP connectors can be created")
-        allowed = ("name", "description", "server", "visibility", "icon_url", "system_prompt")
+        allowed = (
+            "name",
+            "description",
+            "server",
+            "visibility",
+            "icon_url",
+            "system_prompt",
+        )
         payload = {field: desired[field] for field in allowed if field in desired}
         return self._request("POST", "/v1/connectors", payload)
 
-    def update_connector(self, connector_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+    def update_connector(
+        self, connector_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
         allowed = {"name", "description", "server", "icon_url", "system_prompt"}
         unsupported = set(changes) - allowed
         if unsupported:
-            raise ValueError(f"unsupported connector update fields: {sorted(unsupported)}")
+            raise ValueError(
+                f"unsupported connector update fields: {sorted(unsupported)}"
+            )
         return self._request(
             "PATCH",
             f"/v1/connectors/{quote(connector_id, safe='')}",
@@ -300,18 +347,17 @@ def apply_plan(
         return {"action": "NOOP", "changed": False}
     if action in {"BLOCKED", "EXTERNAL"}:
         raise ValueError(f"refusing non-mutable reconciliation action: {action}")
+
     desired = validate_manifest(plan["desired"])
     if desired["visibility"] == "shared_org" and not allow_org_shared:
         raise ValueError("shared_org mutation requires explicit elevation")
     if action == "CREATE":
-        return {"action": action, "changed": True, "remote": client.create_connector(desired)}
-    if action == "UPDATE":
-        return {
-            "action": action,
-            "changed": True,
-            "remote": client.update_connector(plan["connector_id"], plan["changes"]),
-        }
-    raise ValueError(f"mutation not implemented for action: {action}")
+        remote = client.create_connector(desired)
+    elif action == "UPDATE":
+        remote = client.update_connector(plan["connector_id"], plan["changes"])
+    else:
+        raise ValueError(f"mutation not implemented for action: {action}")
+    return {"action": action, "changed": True, "remote": remote}
 
 
 def _read_json(path: str | Path) -> Any:
@@ -329,8 +375,13 @@ def _client_from_env() -> MistralConnectorClient:
     return MistralConnectorClient(key)
 
 
-def _find_remote(client: MistralConnectorClient, name: str) -> dict[str, Any] | None:
-    return next((item for item in client.list_connectors() if item.get("name") == name), None)
+def _find_remote(
+    client: MistralConnectorClient, name: str
+) -> dict[str, Any] | None:
+    return next(
+        (item for item in client.list_connectors() if item.get("name") == name),
+        None,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -340,25 +391,25 @@ def build_parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate", help="validate a local connector manifest")
     validate.add_argument("manifest")
 
-    plan = sub.add_parser("plan", help="plan against a supplied remote-state fixture")
+    plan = sub.add_parser("plan", help="plan against supplied remote-state JSON")
     plan.add_argument("manifest")
     plan.add_argument("--remote-file")
     plan.add_argument("--allow-org-shared", action="store_true")
 
-    live = sub.add_parser("live-plan", help="read live Mistral state and calculate a non-mutating plan")
+    live = sub.add_parser("live-plan", help="calculate a non-mutating live plan")
     live.add_argument("manifest")
     live.add_argument("--allow-org-shared", action="store_true")
 
-    apply_cmd = sub.add_parser("apply", help="apply CREATE/UPDATE after explicit opt-in")
+    apply_cmd = sub.add_parser("apply", help="apply a CREATE/UPDATE plan")
     apply_cmd.add_argument("manifest")
     apply_cmd.add_argument("--apply", action="store_true", required=True)
     apply_cmd.add_argument("--allow-org-shared", action="store_true")
 
-    tools = sub.add_parser("tools", help="list/refresh tools for one live connector")
+    tools = sub.add_parser("tools", help="list tools for one live connector")
     tools.add_argument("connector")
     tools.add_argument("--refresh", action="store_true")
 
-    drift = sub.add_parser("diff-tools", help="compare two sanitized tool snapshots")
+    drift = sub.add_parser("diff-tools", help="compare sanitized tool snapshots")
     drift.add_argument("previous")
     drift.add_argument("current")
     return parser
@@ -372,7 +423,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         desired = load_manifest(args.manifest)
         remote = _read_json(args.remote_file) if args.remote_file else None
-        _print(plan_reconciliation(desired, remote, allow_org_shared=args.allow_org_shared))
+        _print(
+            plan_reconciliation(
+                desired,
+                remote,
+                allow_org_shared=args.allow_org_shared,
+            )
+        )
         return 0
     if args.command == "diff-tools":
         _print(diff_tools(_read_json(args.previous), _read_json(args.current)))
@@ -385,12 +442,22 @@ def main(argv: list[str] | None = None) -> int:
 
     desired = load_manifest(args.manifest)
     remote = _find_remote(client, desired["name"])
-    plan = plan_reconciliation(desired, remote, allow_org_shared=args.allow_org_shared)
+    plan = plan_reconciliation(
+        desired,
+        remote,
+        allow_org_shared=args.allow_org_shared,
+    )
     if args.command == "live-plan":
         _print(plan)
         return 0
     if args.command == "apply":
-        _print(apply_plan(client, plan, allow_org_shared=args.allow_org_shared))
+        _print(
+            apply_plan(
+                client,
+                plan,
+                allow_org_shared=args.allow_org_shared,
+            )
+        )
         return 0
     raise SystemExit(f"unsupported command: {args.command}")
 
