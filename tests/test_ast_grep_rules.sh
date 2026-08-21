@@ -131,4 +131,10 @@ grep -Fq -- '- [ ] No trusted execution or authorization changes' "$ROOT/.github
 grep -Fq -- '- [ ] Trusted-boundary impact present' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
 grep -Fq -- '  - [ ] ForgeCore / Workspace / AuthorizationGrant changed' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
 
+# Verification claims must carry executable evidence rather than checkbox-only assertions.
+grep -Fq '### Commands run' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
+grep -Fq '### Evidence' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
+grep -Fq 'bash tests/test_ast_grep_rules.sh' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
+grep -Fq 'CI run / artifact / output:' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
+
 echo "ast-grep rule regression tests: PASS"
