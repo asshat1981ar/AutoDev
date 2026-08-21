@@ -32,7 +32,7 @@ def _section(body: str, heading: str) -> str | None:
     match = pattern.search(body)
     if not match:
         return None
-    return _strip_comments(match.group("content")).strip()
+    return match.group("content").strip()
 
 
 def _checked(match: re.Match[str] | None) -> bool:
@@ -44,20 +44,21 @@ def validate_body(body: str | None) -> list[str]:
     if not isinstance(body, str) or not body.strip():
         return ["Pull-request body is required for verification evidence."]
 
+    visible_body = _strip_comments(body)
     errors: list[str] = []
-    no_impact = TOP_LEVEL_NO_IMPACT_RE.search(body)
-    impact = TOP_LEVEL_IMPACT_RE.search(body)
+    no_impact = TOP_LEVEL_NO_IMPACT_RE.search(visible_body)
+    impact = TOP_LEVEL_IMPACT_RE.search(visible_body)
     checked_states = int(_checked(no_impact)) + int(_checked(impact))
     if checked_states != 1:
         errors.append("Trust-boundary impact must select exactly one top-level declaration.")
-    if _checked(no_impact) and NESTED_BOUNDARY_RE.search(body):
+    if _checked(no_impact) and NESTED_BOUNDARY_RE.search(visible_body):
         errors.append("No-impact declaration cannot be combined with checked boundary categories.")
 
-    commands = _section(body, "Commands run")
+    commands = _section(visible_body, "Commands run")
     if not commands:
         errors.append("Commands run section must contain the exact verification commands executed.")
 
-    evidence = _section(body, "Evidence")
+    evidence = _section(visible_body, "Evidence")
     if not evidence:
         errors.append("Evidence section must contain CI, artifact, or command-output evidence.")
     else:
