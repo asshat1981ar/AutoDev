@@ -141,3 +141,17 @@ jobs:
           AUTODEV_EVAL_SOURCE_REPO: ${{ github.workspace }}
         working-directory: crates
         run: cargo test --locked -p autodev-eval --test corpus_smoke -- --ignored --nocapture
+
+  amcx1-compliance:
+    name: AMCX-1 v1.1 compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate AMCX-1 schemas are valid JSON
+        run: |
+          find . -path '*/schemas/*.json' -exec sh -c 'echo -n "Validating $1 ... "; python3 -m json.tool "$1" > /dev/null && echo "OK" || echo "FAIL"' _ {} \;
+      - name: Harness drift with AMCX-1 checks
+        run: python scripts/check_harness_drift.py --verbose --amcx1
