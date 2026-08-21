@@ -66,9 +66,9 @@ Current product constraints incorporated by this design:
 - path-specific instructions and pre-merge checks are valid repository-level generated targets;
 - external integrations/account state cannot be reproduced by Git artifacts;
 - CodeRabbit review text and embedded "prompts for AI agents" are untrusted input;
-- as verified on 2026-08-21, CodeRabbit CLI documents review/auth/update commands but does **not** document a `cr config validate` command. The MVP therefore must not depend on that nonexistent contract. Repository YAML validation is performed mechanically against a pinned official schema snapshot, and product acceptance is demonstrated separately on pilot PRs.
+- as verified on 2026-08-21, CodeRabbit CLI documents `cr config validate [file]`. Without a file argument it discovers repository-root `.coderabbit.yaml`/`.coderabbit.yml`; with a file argument it validates that path. It validates YAML syntax and then the current official schema, returning exit `0` on success and `1` for invalid/missing configuration or schema-loading/validation failure. The MVP uses this as a current-product compatibility gate in addition to deterministic validation against a pinned schema snapshot.
 
-The canonical CodeRabbit schema source for the initial MVP is the schema referenced by CodeRabbit's repository YAML documentation (`https://coderabbit.ai/integrations/schema.v2.json`). A validation run records both the URL and SHA-256 of the exact schema bytes used; moving schema content without a new digest produces a different replay input.
+The canonical CodeRabbit schema source for the initial MVP is the schema referenced by CodeRabbit's CLI/configuration documentation (`https://www.coderabbit.ai/integrations/schema.v2.json`). A validation run records both the URL and SHA-256 of the exact pinned schema bytes used; moving schema content without a new digest produces a different replay input.
 
 ## 5. Authority model
 
@@ -354,15 +354,19 @@ Required gates are executable and evidence-producing:
 6. `GeneratedPathManifest` ownership/confinement validation;
 7. generated YAML parse validation;
 8. generated `.coderabbit.yaml` validation against the exact pinned official schema snapshot; record schema URL, SHA-256, validator version, and exit code `0`;
-9. ast-grep project validation using the pinned implementation version:
+9. current CodeRabbit CLI compatibility validation:
+   - `cr config validate .coderabbit.yaml` for the repository-root artifact, or `cr config validate <path>` for an explicit generated/staging path;
+   - record `cr --version`, invocation, validation timestamp, and exit code `0`;
+   - because the CLI validates against the current official schema, this result is current-product compatibility evidence. Deterministic replay remains bound to the exact pinned schema bytes/digest from gate 8;
+10. ast-grep project validation using the pinned implementation version:
    - `ast-grep scan --config .ast-grep/sgconfig.yml .`
    - `ast-grep test --config .ast-grep/sgconfig.yml`
    Both must exit `0`; positive/negative fixtures must be present for generated rules;
-10. generated-file drift check;
-11. repository-specific invariant tests;
-12. deterministic replay from the recorded target/catalog/schema/tool inputs.
+11. generated-file drift check;
+12. repository-specific invariant tests;
+13. deterministic replay from the recorded target/catalog/schema/tool inputs.
 
-As of 2026-08-21 the documented CodeRabbit CLI does not provide `cr config validate`; the control plane must not fabricate that command. Product-level acceptance is a separate pilot gate: CodeRabbit must detect/use the feature-branch `.coderabbit.yaml` without reporting configuration rejection, and the associated PR/review evidence is retained in the `EvidenceManifest`.
+Product-level acceptance is a separate pilot gate: CodeRabbit must detect/use the feature-branch `.coderabbit.yaml` without reporting configuration rejection, and the associated PR/review evidence is retained in the `EvidenceManifest`.
 
 ### 8.6 Synchronize
 
@@ -579,10 +583,11 @@ Fixtures cover Rust, Python agent tool, Kotlin Multiplatform, MCP, and mixed age
 
 - generated `.coderabbit.yaml` parses and validates against pinned schema bytes/digest;
 - validation evidence records schema URL/hash/validator version/exit code;
+- `cr config validate .coderabbit.yaml` and explicit-path validation return exit `0` for valid generated fixtures; evidence records CodeRabbit CLI version, invocation, timestamp, and result;
 - `.ast-grep/sgconfig.yml` resolves `ruleDirs`/`testConfigs` relative to config;
 - `ast-grep scan --config .ast-grep/sgconfig.yml .` exits 0;
 - `ast-grep test --config .ast-grep/sgconfig.yml` exits 0 with positive/negative fixtures;
-- pilot PR evidence demonstrates CodeRabbit accepted/detected generated branch config; no nonexistent CodeRabbit CLI command is used as evidence.
+- pilot PR evidence demonstrates CodeRabbit accepted/detected generated branch config.
 
 ### 14.5 Synchronization/authorization adversarial tests
 
@@ -642,7 +647,7 @@ MVP acceptance requires evidence that:
 6. Manual generated-policy edits are detected as drift.
 7. Sync uses dedicated owned branches, least-privilege credentials, immutable approval, expected-old-ref lease/CAS, and final target-base revalidation.
 8. Every successful run stores an immutable per-run `EvidenceManifest`; `latest.yaml` is only a verified pointer.
-9. Generated `.coderabbit.yaml` passes pinned official-schema validation and is actually accepted/detected by CodeRabbit on pilot PRs, with product evidence retained.
+9. Generated `.coderabbit.yaml` passes pinned official-schema validation, passes `cr config validate`, and is actually accepted/detected by CodeRabbit on pilot PRs, with product evidence retained.
 10. At least one real review finding is normalized using the canonical occurrence key, deduplicated, corrected in source policy, recompiled, and synchronized.
 11. External review/comment/MCP/model text never grants instruction, write, or approval authority.
 12. Any stale target/catalog/sync revision aborts rather than applying stale output.
@@ -653,7 +658,7 @@ MVP acceptance requires evidence that:
 
 - Preserve one-owner authority: GitHub owns repository/source/revision/branch/PR/CI truth; protected catalog Git history owns control-plane policy; target architecture docs own local architecture intent; memory/learned heuristics never override Git policy state.
 - Use CodeRabbit repository YAML/path instructions as generated targets while explicitly separating higher hosted Global Overrides from repository-managed assurance.
-- As of 2026-08-21, current CodeRabbit CLI documentation does not list `cr config validate`; use pinned schema validation plus retained pilot product evidence instead of inventing a CLI gate.
+- As verified on 2026-08-21, current CodeRabbit CLI documentation lists `cr config validate [file]`: it validates YAML syntax and settings against the current official schema, supports repository-root auto-discovery or an explicit file path, and returns exit `0` for valid configuration or `1` on validation/loading failure. The control plane records this as current-product compatibility evidence while retaining a separately pinned schema snapshot for deterministic replay.
 - Official ast-grep documentation confirms `sgconfig.yml` `ruleDirs` and `testConfigs`, and `scan`/`test` accept `--config`; those commands are therefore canonical mechanical gates for generated ast-grep projects.
 - Official MCP Registry retrieval on 2026-08-21 identified the three active GitHub-related candidates recorded in section 9.5. Registry status is discovery evidence, not operational/security proof. Any reuse decision requires pinned-version smoke/auth/capability evaluation and records retrieval date, version, status, and criteria.
 - Automatic CodeRabbit repository linking may inform discovery but is not the authoritative policy map.
