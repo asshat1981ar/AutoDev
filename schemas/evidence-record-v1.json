@@ -1,0 +1,296 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autodev.dev/schemas/amcx1/evidence-record-v1.json",
+  "title": "AMCX-1 Evidence Record",
+  "description": "Schema for AMCX-1 v1.1 Evidence records. The Evidence/verification subsystem owns verification results and freshness. Evidence records capture verification outputs, test results, observations, and other proof artifacts.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "evidence_type",
+    "timestamp",
+    "checksum",
+    "source",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version identifier",
+      "enum": ["evidence-record-v1"],
+      "default": "evidence-record-v1"
+    },
+    "evidence_id": {
+      "type": "string",
+      "description": "Unique identifier for this evidence record",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "minLength": 1,
+      "examples": ["test-amx-memory-schema-exists", "vibe-todo-extension-001"]
+    },
+    "evidence_type": {
+      "type": "string",
+      "description": "Type of evidence",
+      "enum": [
+        "test:unit",
+        "test:integration",
+        "test:regression",
+        "test:property",
+        "build:compile",
+        "build:link",
+        "lint:format",
+        "lint:style",
+        "lint:security",
+        "verification:schema",
+        "verification:harness",
+        "verification:ci",
+        "verification:drift",
+        "security:scan",
+        "security:audit",
+        "observation:tool-output",
+        "observation:manual",
+        "manual:review",
+        "manual:approval"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this evidence was recorded",
+      "format": "date-time"
+    },
+    "checksum": {
+      "type": "string",
+      "description": "SHA-256 checksum of the evidence data for integrity verification",
+      "pattern": "^[0-9a-f]{64}$",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "source": {
+      "type": "string",
+      "description": "Source of the evidence (tool, process, or agent that produced it)",
+      "minLength": 1,
+      "examples": [
+        "python:-m:unittest",
+        "cargo:test",
+        "bash:script",
+        "vibe:tool:bash",
+        "human:reviewer"
+      ]
+    },
+    "result": {
+      "type": "string",
+      "description": "Result of the evidence check",
+      "enum": ["passed", "failed", "skipped", "error", "warning", "inconclusive"]
+    },
+    "result_details": {
+      "type": "object",
+      "description": "Detailed result information",
+      "properties": {
+        "passed_count": {
+          "type": "integer",
+          "description": "Number of passed checks (for aggregate evidence)",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "description": "Number of failed checks",
+          "minimum": 0
+        },
+        "skipped_count": {
+          "type": "integer",
+          "description": "Number of skipped checks",
+          "minimum": 0
+        },
+        "error_count": {
+          "type": "integer",
+          "description": "Number of errors",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer",
+          "description": "Number of warnings",
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": "number",
+          "description": "Duration of the evidence check in seconds",
+          "minimum": 0
+        },
+        "exit_code": {
+          "type": "integer",
+          "description": "Exit code if applicable"
+        }
+      },
+      "additionalProperties": false
+    },
+    "freshness_timestamp": {
+      "type": "string",
+      "description": "ISO 8601 timestamp for freshness validation. This is used to determine if evidence is still valid or stale.",
+      "format": "date-time"
+    },
+    "freshness_policy": {
+      "type": "object",
+      "description": "Freshness policy for this evidence type",
+      "properties": {
+        "max_age_seconds": {
+          "type": "integer",
+          "description": "Maximum age in seconds before evidence is considered stale",
+          "minimum": 0,
+          "default": 3600
+        },
+        "refresh_strategy": {
+          "type": "string",
+          "description": "Strategy for refreshing stale evidence",
+          "enum": ["re_run", "manual_review", "skip", "warn"]
+        },
+        "required_freshness": {
+          "type": "string",
+          "description": "Freshness requirement level",
+          "enum": ["strict", "recommended", "optional"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object",
+      "description": "The actual evidence data/content",
+      "properties": {
+        "raw_output": {
+          "type": "string",
+          "description": "Raw output from the evidence source"
+        },
+        "formatted_output": {
+          "type": "string",
+          "description": "Formatted output for human review"
+        },
+        "structured_data": {
+          "type": "object",
+          "description": "Structured data extracted from the evidence",
+          "additionalProperties": true
+        },
+        "attachments": {
+          "type": "array",
+          "description": "List of file attachments or related artifacts",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uri": {"type": "string", "minLength": 1},
+              "checksum": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "mime_type": {"type": "string"},
+              "size_bytes": {"type": "integer", "minimum": 0}
+            },
+            "required": ["uri"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "description": "Context in which this evidence was collected",
+      "properties": {
+        "repository_revision": {
+          "type": "string",
+          "description": "Git commit SHA of the repository when evidence was collected",
+          "pattern": "^[0-9a-f]+$"
+        },
+        "repository_path": {
+          "type": "string",
+          "description": "Path to the repository root",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "description": "Git branch name"
+        },
+        "worktree_id": {
+          "type": "string",
+          "description": "Worktree identifier"
+        },
+        "environment": {
+          "type": "object",
+          "description": "Environment information",
+          "properties": {
+            "os": {"type": "string"},
+            "architecture": {"type": "string"},
+            "python_version": {"type": "string"},
+            "rust_version": {"type": "string"}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "related_entities": {
+      "type": "object",
+      "description": "Entities this evidence is related to",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Task ID this evidence relates to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "attempt_id": {
+          "type": "string",
+          "description": "Attempt ID this evidence relates to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "memory_id": {
+          "type": "string",
+          "description": "AMX memory ID this evidence validates or relates to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "artifact_ids": {
+          "type": "array",
+          "description": "List of artifact IDs referenced by this evidence",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "description": "Verification information for this evidence",
+      "properties": {
+        "verified_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when evidence was verified",
+          "format": "date-time"
+        },
+        "verified_by": {
+          "type": "string",
+          "description": "Agent or process that verified this evidence",
+          "minLength": 1
+        },
+        "verification_method": {
+          "type": "string",
+          "description": "Method used for verification",
+          "enum": ["automated", "manual", "cryptographic", "cross-referenced"]
+        },
+        "verification_level": {
+          "type": "string",
+          "description": "Level of verification confidence",
+          "enum": ["none", "low", "medium", "high", "absolute"]
+        },
+        "cross_references": {
+          "type": "array",
+          "description": "List of other evidence IDs that cross-reference this one",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional evidence metadata",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
