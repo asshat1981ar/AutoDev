@@ -102,3 +102,27 @@ fn promotion_requires_at_least_one_efficiency_improvement() {
         HarnessPromotionDecision::RejectNoEfficiencyImprovement
     );
 }
+
+#[test]
+fn promotion_rejects_resource_regression_even_when_duration_improves() {
+    let mut candidate = evaluation();
+    candidate.candidate_duration_ms = candidate.baseline_duration_ms - 1;
+    candidate.candidate_resource_units = candidate.baseline_resource_units * 10;
+
+    assert_eq!(
+        evaluate_harness_candidate(&profile(), &candidate),
+        HarnessPromotionDecision::RejectNoEfficiencyImprovement
+    );
+}
+
+#[test]
+fn promotion_rejects_duration_regression_even_when_resources_improve() {
+    let mut candidate = evaluation();
+    candidate.candidate_duration_ms = candidate.baseline_duration_ms * 10;
+    candidate.candidate_resource_units = candidate.baseline_resource_units - 1;
+
+    assert_eq!(
+        evaluate_harness_candidate(&profile(), &candidate),
+        HarnessPromotionDecision::RejectNoEfficiencyImprovement
+    );
+}
