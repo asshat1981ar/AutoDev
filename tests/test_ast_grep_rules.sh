@@ -210,15 +210,33 @@ grep -Fq 'bash tests/test_ast_grep_rules.sh' "$ROOT/.github/PULL_REQUEST_TEMPLAT
 grep -Fq 'CI run / artifact / output:' "$ROOT/.github/PULL_REQUEST_TEMPLATE.md"
 grep -Fq 'python scripts/validate_pr_evidence.py "$GITHUB_EVENT_PATH"' "$ROOT/.github/workflows/ci.yml"
 
-# ast-grep installation must be integrity-backed; global ad-hoc npm installation
-# is forbidden. The GREEN implementation may use a lockfile or a verified release.
+# ast-grep installation must be specifically tied to the committed lockfile and
+# local binary used by the harness; unrelated npm/checksum steps do not count.
 if grep -Fq 'npm install --global @ast-grep/cli' "$ROOT/.github/workflows/ci.yml"; then
   echo "CI still uses ad-hoc global ast-grep installation" >&2
   exit 1
 fi
-if ! grep -Eq 'npm ci|sha256sum .*check|sha256sum -c|sha256sum --check' "$ROOT/.github/workflows/ci.yml"; then
-  echo "CI must use a lock-backed or checksum-verified ast-grep installation" >&2
-  exit 1
-fi
+grep -Fq 'working-directory: tools/ast-grep' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'run: npm ci --no-audit --no-fund' "$ROOT/.github/workflows/ci.yml"
+grep -Fq 'tools/ast-grep/node_modules/.bin/ast-grep' "$ROOT/.github/workflows/ci.yml"
+python - "$ROOT/tools/ast-grep/package.json" "$ROOT/tools/ast-grep/package-lock.json" <<'PY'
+import json
+import sys
+
+package_path, lock_path = sys.argv[1:]
+with open(package_path, encoding="utf-8") as handle:
+    package = json.load(handle)
+with open(lock_path, encoding="utf-8") as handle:
+    lock = json.load(handle)
+
+expected = "0.45.0"
+if package.get("devDependencies", {}).get("@ast-grep/cli") != expected:
+    raise SystemExit("tools/ast-grep/package.json must exactly pin @ast-grep/cli 0.45.0")
+entry = lock.get("packages", {}).get("node_modules/@ast-grep/cli", {})
+if entry.get("version") != expected:
+    raise SystemExit("tools/ast-grep/package-lock.json does not lock @ast-grep/cli 0.45.0")
+if not str(entry.get("integrity", "")).startswith("sha512-"):
+    raise SystemExit("tools/ast-grep/package-lock.json lacks ast-grep integrity metadata")
+PY
 
 echo "ast-grep rule regression tests: PASS"
