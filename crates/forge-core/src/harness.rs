@@ -11,8 +11,12 @@ use serde::{Deserialize, Serialize};
 
 #[allow(clippy::too_many_arguments)]
 mod builtins;
+mod evaluation;
 mod routing;
 pub use builtins::default_harness_profiles;
+pub use evaluation::{
+    evaluate_harness_candidate, HarnessEvaluation, HarnessPromotionDecision,
+};
 pub use routing::{route_harness, HarnessRoute, HarnessRoutingEvidence};
 
 /// Broad family of a development harness.
