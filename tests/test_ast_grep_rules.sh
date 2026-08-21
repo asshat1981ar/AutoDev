@@ -107,6 +107,38 @@ done
 # so prove the safe print is not a target by requiring exactly the 15 unsafe matches.
 require_diagnostic_count "$observer_output" 'observer-no-process-exec' 15
 
+# Compound Python imports must preserve binding-aware coverage for later items.
+mkdir -p "$TMP/observer-compound/scripts"
+cat >"$TMP/observer-compound/scripts/autodev-cli.py" <<'PY'
+import subprocess as sp, os
+import os as operating_system, subprocess
+from subprocess import run as execute, call as invoke
+from subprocess import Popen, check_output as output
+from os import system as execute_system, popen as open_pipe
+
+sp.run(["module-compound"])
+operating_system.system("module-compound")
+execute(["from-compound"])
+invoke(["from-compound-call"])
+Popen(["from-direct-compound"])
+output(["from-alias-compound"])
+execute_system("os-from-compound")
+open_pipe("os-from-compound-popen")
+PY
+observer_compound_output="$(scan_rule ".ast-grep/rules/observer-no-process-exec.yml" "scripts/autodev-cli.py" "$TMP/observer-compound")"
+for expected in \
+  'sp.run(["module-compound"])' \
+  'operating_system.system("module-compound")' \
+  'execute(["from-compound"])' \
+  'invoke(["from-compound-call"])' \
+  'Popen(["from-direct-compound"])' \
+  'output(["from-alias-compound"])' \
+  'execute_system("os-from-compound")' \
+  'open_pipe("os-from-compound-popen")'; do
+  require_reported "$observer_compound_output" "$expected"
+done
+require_diagnostic_count "$observer_compound_output" 'observer-no-process-exec' 8
+
 # Python shell=True: detect direct, receiver-alias, imported-function alias, and
 # first/middle/last keyword positions while avoiding unrelated shell parameters.
 mkdir -p "$TMP/python/scripts"
@@ -135,8 +167,8 @@ done
 require_not_reported "$python_output" 'safe-shell-false'
 require_not_reported "$python_output" 'safe-unrelated'
 
-# ForgeCore process creation: qualified, direct import, grouped import, and renamed
-# import bindings report without flagging an unrelated local Command type.
+# ForgeCore process creation: qualified, direct, grouped, renamed, and grouped-
+# alias imports report without flagging an unrelated local Command type.
 mkdir -p "$TMP/rust/crates/forge-core/src"
 cat >"$TMP/rust/crates/forge-core/src/qualified.rs" <<'RS'
 fn qualified() {
@@ -161,6 +193,12 @@ fn renamed() {
     let _ = ProcessCommand::new("renamed-git").output();
 }
 RS
+cat >"$TMP/rust/crates/forge-core/src/grouped_alias.rs" <<'RS'
+use std::process::{Child, Command as ProcessCommand, Stdio};
+fn grouped_alias() {
+    let _ = ProcessCommand::new("grouped-alias-git").output();
+}
+RS
 cat >"$TMP/rust/crates/forge-core/src/safe.rs" <<'RS'
 struct Command;
 impl Command {
@@ -175,6 +213,7 @@ require_reported "$rust_output" 'std::process::Command::new("qualified-git")'
 require_reported "$rust_output" 'Command::new("imported-git")'
 require_reported "$rust_output" 'Command::new("grouped-git")'
 require_reported "$rust_output" 'ProcessCommand::new("renamed-git")'
+require_reported "$rust_output" 'ProcessCommand::new("grouped-alias-git")'
 require_not_reported "$rust_output" 'local-command-type'
 
 # ForgeCore unchecked-result rule: unwrap/expect report, safe propagation does not.
