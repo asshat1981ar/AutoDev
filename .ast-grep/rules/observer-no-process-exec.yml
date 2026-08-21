@@ -12,9 +12,13 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              any:
-                - pattern: import subprocess as $SUBPROCESS_MODULE
-                - pattern: import $$$BEFORE, subprocess as $SUBPROCESS_MODULE, $$$AFTER
+              all:
+                - kind: import_statement
+                - has:
+                    field: name
+                    pattern:
+                      context: import subprocess as $SUBPROCESS_MODULE
+                      selector: aliased_import
     - all:
         - pattern: $SUBPROCESS_METHOD($$$ARGS)
         - inside:
@@ -22,7 +26,14 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: from subprocess import $SUBPROCESS_METHOD
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^subprocess$
+                - has:
+                    field: name
+                    pattern: $SUBPROCESS_METHOD
     - all:
         - pattern: $SUBPROCESS_ALIAS($$$ARGS)
         - inside:
@@ -30,60 +41,16 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
-    - all:
-        - pattern: run($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from subprocess import $$$BEFORE, run, $$$AFTER
-    - all:
-        - pattern: call($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from subprocess import $$$BEFORE, call, $$$AFTER
-    - all:
-        - pattern: Popen($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from subprocess import $$$BEFORE, Popen, $$$AFTER
-    - all:
-        - pattern: check_call($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from subprocess import $$$BEFORE, check_call, $$$AFTER
-    - all:
-        - pattern: check_output($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from subprocess import $$$BEFORE, check_output, $$$AFTER
-    - all:
-        - pattern: $SUBPROCESS_LIST_ALIAS($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              any:
-                - pattern: from subprocess import $$$BEFORE, run as $SUBPROCESS_LIST_ALIAS, $$$AFTER
-                - pattern: from subprocess import $$$BEFORE, call as $SUBPROCESS_LIST_ALIAS, $$$AFTER
-                - pattern: from subprocess import $$$BEFORE, Popen as $SUBPROCESS_LIST_ALIAS, $$$AFTER
-                - pattern: from subprocess import $$$BEFORE, check_call as $SUBPROCESS_LIST_ALIAS, $$$AFTER
-                - pattern: from subprocess import $$$BEFORE, check_output as $SUBPROCESS_LIST_ALIAS, $$$AFTER
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^subprocess$
+                - has:
+                    field: name
+                    pattern:
+                      context: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
+                      selector: aliased_import
     - pattern: os.$OS_METHOD($$$ARGS)
     - all:
         - pattern: $OS_MODULE.$OS_METHOD($$$ARGS)
@@ -92,9 +59,13 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              any:
-                - pattern: import os as $OS_MODULE
-                - pattern: import $$$BEFORE, os as $OS_MODULE, $$$AFTER
+              all:
+                - kind: import_statement
+                - has:
+                    field: name
+                    pattern:
+                      context: import os as $OS_MODULE
+                      selector: aliased_import
     - all:
         - pattern: $OS_METHOD($$$ARGS)
         - inside:
@@ -102,7 +73,14 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: from os import $OS_METHOD
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^os$
+                - has:
+                    field: name
+                    pattern: $OS_METHOD
     - all:
         - pattern: $OS_ALIAS($$$ARGS)
         - inside:
@@ -110,33 +88,16 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              pattern: from os import $OS_ORIGINAL as $OS_ALIAS
-    - all:
-        - pattern: system($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from os import $$$BEFORE, system, $$$AFTER
-    - all:
-        - pattern: popen($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              pattern: from os import $$$BEFORE, popen, $$$AFTER
-    - all:
-        - pattern: $OS_LIST_ALIAS($$$ARGS)
-        - inside:
-            kind: module
-            stopBy: end
-            has:
-              stopBy: end
-              any:
-                - pattern: from os import $$$BEFORE, system as $OS_LIST_ALIAS, $$$AFTER
-                - pattern: from os import $$$BEFORE, popen as $OS_LIST_ALIAS, $$$AFTER
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^os$
+                - has:
+                    field: name
+                    pattern:
+                      context: from os import $OS_ORIGINAL as $OS_ALIAS
+                      selector: aliased_import
 constraints:
   SUBPROCESS_METHOD:
     regex: ^(run|call|Popen|check_call|check_output)$
