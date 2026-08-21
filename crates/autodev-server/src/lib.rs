@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, Request, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode, Uri},
     middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -25,6 +25,7 @@ mod mcp;
 
 type HmacSha256 = Hmac<Sha256>;
 const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
+const DEFAULT_MCP_ORIGIN_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "::1", "autodev-server"];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectiveRequest {
@@ -149,9 +150,66 @@ pub fn router(state: AppState) -> Router {
     let mcp = Router::new()
         .nest_service("/mcp", mcp::service(state.clone()))
         .layer(DefaultBodyLimit::max(mcp::MCP_MAX_BODY_BYTES))
+        .layer(middleware::from_fn(require_mcp_origin))
         .layer(middleware::from_fn_with_state(state, require_mcp_bearer));
 
     api.merge(mcp)
+}
+
+async fn require_mcp_origin(request: Request, next: Next) -> Response {
+    let Some(origin) = request
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return next.run(request).await;
+    };
+
+    if !mcp_origin_allowed(origin) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "untrusted MCP Origin"})),
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
+
+fn mcp_origin_allowed(origin: &str) -> bool {
+    let Ok(uri) = origin.parse::<Uri>() else {
+        return false;
+    };
+    if !matches!(uri.scheme_str(), Some("http" | "https")) {
+        return false;
+    }
+    let Some(authority) = uri.authority() else {
+        return false;
+    };
+
+    configured_mcp_origin_hosts()
+        .iter()
+        .any(|allowed| authority.host().eq_ignore_ascii_case(allowed))
+}
+
+fn configured_mcp_origin_hosts() -> Vec<String> {
+    std::env::var("AUTODEV_MCP_ALLOWED_HOSTS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|host| !host.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .filter(|hosts| !hosts.is_empty())
+        .unwrap_or_else(|| {
+            DEFAULT_MCP_ORIGIN_HOSTS
+                .iter()
+                .map(|host| host.to_string())
+                .collect()
+        })
 }
 
 async fn require_mcp_bearer(
@@ -346,6 +404,14 @@ mod tests {
         let expected = mcp_bearer_tag("secret-token");
         assert!(verify_mcp_bearer(&expected, "secret-token"));
         assert!(!verify_mcp_bearer(&expected, "wrong-token"));
+    }
+
+    #[test]
+    fn mcp_origin_hosts_allow_local_origins_and_reject_untrusted_hosts() {
+        assert!(mcp_origin_allowed("http://localhost:8080"));
+        assert!(mcp_origin_allowed("https://127.0.0.1:9443"));
+        assert!(!mcp_origin_allowed("https://evil.example"));
+        assert!(!mcp_origin_allowed("null"));
     }
 
     #[tokio::test]
