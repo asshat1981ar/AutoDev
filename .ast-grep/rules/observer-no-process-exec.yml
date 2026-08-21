@@ -4,12 +4,64 @@ files:
   - scripts/autodev-cli.py
 rule:
   any:
-    - pattern: subprocess.run($$$ARGS)
-    - pattern: subprocess.call($$$ARGS)
-    - pattern: subprocess.Popen($$$ARGS)
-    - pattern: subprocess.check_call($$$ARGS)
-    - pattern: subprocess.check_output($$$ARGS)
-    - pattern: os.system($CMD)
-    - pattern: os.popen($CMD)
+    - pattern: subprocess.$SUBPROCESS_METHOD($$$ARGS)
+    - all:
+        - pattern: $SUBPROCESS_MODULE.$SUBPROCESS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: import subprocess as $SUBPROCESS_MODULE
+    - all:
+        - pattern: $SUBPROCESS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $SUBPROCESS_METHOD
+    - all:
+        - pattern: $SUBPROCESS_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
+    - pattern: os.$OS_METHOD($$$ARGS)
+    - all:
+        - pattern: $OS_MODULE.$OS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: import os as $OS_MODULE
+    - all:
+        - pattern: $OS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from os import $OS_METHOD
+    - all:
+        - pattern: $OS_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from os import $OS_ORIGINAL as $OS_ALIAS
+constraints:
+  SUBPROCESS_METHOD:
+    regex: ^(run|call|Popen|check_call|check_output)$
+  SUBPROCESS_ORIGINAL:
+    regex: ^(run|call|Popen|check_call|check_output)$
+  OS_METHOD:
+    regex: ^(system|popen)$
+  OS_ORIGINAL:
+    regex: ^(system|popen)$
 message: Observer CLI must not gain arbitrary process execution authority.
 severity: error
