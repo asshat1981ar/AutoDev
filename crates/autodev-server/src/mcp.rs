@@ -202,3 +202,118 @@ fn validate_write_proposal(input: &WriteProposalInput) -> Result<(), McpError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use crate::ObjectiveRequest;
+
+    use super::*;
+
+    async fn state_with_plan() -> (AppState, String) {
+        let state = AppState::new(None);
+        let record = state
+            .enqueue(ObjectiveRequest {
+                repository: "owner/repo".to_string(),
+                description: "Develop through Vibe".to_string(),
+                branch: None,
+            })
+            .await
+            .expect("objective");
+        (state, record.id)
+    }
+
+    #[tokio::test]
+    async fn project_status_reports_counts_and_no_authority() {
+        let (state, _) = state_with_plan().await;
+        let mcp = AutoDevMcp::new(state);
+
+        let status: Value = serde_json::from_str(&mcp.project_status().await).expect("status JSON");
+        assert_eq!(status["objective_count"], 1);
+        assert_eq!(status["exec_plan_count"], 1);
+        assert_eq!(status["authority"], "none");
+        assert_eq!(status["trusted_execution_boundary"], "forge_core");
+    }
+
+    #[tokio::test]
+    async fn execplan_get_returns_typed_plan_projection() {
+        let (state, plan_id) = state_with_plan().await;
+        let mcp = AutoDevMcp::new(state);
+
+        let result = mcp
+            .execplan_get(Parameters(PlanLookupInput {
+                plan_id: plan_id.clone(),
+            }))
+            .await
+            .expect("plan projection");
+        let plan: Value = serde_json::from_str(&result).expect("plan JSON");
+
+        assert_eq!(plan["id"], plan_id);
+        assert_eq!(plan["budget"]["replans_used"], 0);
+    }
+
+    #[tokio::test]
+    async fn verification_status_never_self_verifies() {
+        let (state, plan_id) = state_with_plan().await;
+        let mcp = AutoDevMcp::new(state);
+
+        let result = mcp
+            .verification_status(Parameters(VerificationStatusInput {
+                plan_id: Some(plan_id),
+            }))
+            .await
+            .expect("verification projection");
+        let status: Value = serde_json::from_str(&result).expect("verification JSON");
+
+        assert_eq!(status["verified"], false);
+        assert_eq!(status["authority"], "none");
+        assert_eq!(status["verification_boundary"], "verification_fabric");
+    }
+
+    #[tokio::test]
+    async fn test_proposal_is_non_executing_intent() {
+        let (state, _) = state_with_plan().await;
+        let mcp = AutoDevMcp::new(state);
+
+        let result = mcp
+            .test_propose(Parameters(TestProposalInput {
+                task_id: "task-1".to_string(),
+                agent_id: "vibe".to_string(),
+                reason: "verify server".to_string(),
+                command: "cargo test -p autodev-server".to_string(),
+            }))
+            .await
+            .expect("test proposal");
+        let proposal: Value = serde_json::from_str(&result).expect("proposal JSON");
+
+        assert_eq!(proposal["status"], "proposal_only");
+        assert_eq!(proposal["proposal_type"], "test_run");
+        assert_eq!(proposal["execution_authorized"], false);
+        assert_eq!(proposal["command"], "cargo test -p autodev-server");
+    }
+
+    #[tokio::test]
+    async fn replan_proposal_does_not_consume_budget_or_mutate_plan() {
+        let (state, plan_id) = state_with_plan().await;
+        let before = state.exec_plan(&plan_id).await.expect("plan before");
+        let mcp = AutoDevMcp::new(state.clone());
+
+        let result = mcp
+            .replan_propose(Parameters(ReplanProposalInput {
+                plan_id: plan_id.clone(),
+                agent_id: "vibe".to_string(),
+                reason: "new evidence".to_string(),
+                proposed_goal: "Refine Vibe integration".to_string(),
+            }))
+            .await
+            .expect("replan proposal");
+        let proposal: Value = serde_json::from_str(&result).expect("proposal JSON");
+        let after = state.exec_plan(&plan_id).await.expect("plan after");
+
+        assert_eq!(proposal["status"], "proposal_only");
+        assert_eq!(proposal["execution_authorized"], false);
+        assert_eq!(before, after);
+        assert_eq!(after.budget().replans_used(), 0);
+    }
+}
