@@ -2,7 +2,7 @@
 """Git-authoritative Mistral Studio Connector reconciliation.
 
 Connector manifests are strict JSON documents stored with ``.yaml`` suffixes.
-JSON is a YAML subset, which keeps this AutoDev integration dependency-free.
+JSON is a YAML subset, keeping this AutoDev integration dependency-free.
 """
 
 from __future__ import annotations
@@ -252,7 +252,7 @@ def _default_transport(
 
 
 class MistralConnectorClient:
-    """Small REST adapter around the documented beta Connector endpoints."""
+    """Small REST adapter around the documented Connector endpoints."""
 
     def __init__(
         self,
@@ -365,6 +365,24 @@ class MistralConnectorClient:
             raise ValueError("unexpected connector tools response")
         return tools
 
+    def call_tool(
+        self,
+        connector_id_or_name: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> Any:
+        if not connector_id_or_name or not tool_name:
+            raise ValueError("connector and tool names are required")
+        if not isinstance(arguments, dict):
+            raise ValueError("tool arguments must be an object")
+        connector = quote(connector_id_or_name, safe="")
+        tool = quote(tool_name, safe="")
+        return self._request(
+            "POST",
+            f"/v1/connectors/{connector}/tools/{tool}/call",
+            {"arguments": arguments},
+        )
+
 
 def apply_plan(
     client: MistralConnectorClient,
@@ -372,6 +390,7 @@ def apply_plan(
     *,
     allow_org_shared: bool = False,
 ) -> dict[str, Any]:
+    """Apply one safe mutation and prove the resulting state reconciles to NOOP."""
     action = plan.get("action")
     if action not in ACTIONS:
         raise ValueError(f"unknown reconciliation action: {action}")
@@ -383,13 +402,34 @@ def apply_plan(
     desired = validate_manifest(plan["desired"])
     if desired["visibility"] == "shared_org" and not allow_org_shared:
         raise ValueError("shared_org mutation requires explicit elevation")
+
     if action == "CREATE":
-        remote = client.create_connector(desired)
+        mutation = client.create_connector(desired)
+        identifier = mutation.get("id") if isinstance(mutation, dict) else None
     elif action == "UPDATE":
-        remote = client.update_connector(plan["connector_id"], plan["changes"])
+        mutation = client.update_connector(plan["connector_id"], plan["changes"])
+        identifier = plan["connector_id"]
     else:
         raise ValueError(f"mutation not implemented for action: {action}")
-    return {"action": action, "changed": True, "remote": remote}
+
+    identifier = str(identifier or desired["name"])
+    refreshed = client.get_connector(identifier)
+    verification = plan_reconciliation(
+        desired,
+        refreshed,
+        allow_org_shared=allow_org_shared,
+    )
+    if verification["action"] != "NOOP":
+        raise RuntimeError(
+            "post-apply verification failed: "
+            + json.dumps(sanitize(verification), sort_keys=True)
+        )
+    return {
+        "action": action,
+        "changed": True,
+        "remote": sanitize(refreshed),
+        "verification": verification,
+    }
 
 
 def _print(value: Any) -> None:
@@ -416,7 +456,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    validate = sub.add_parser("validate", help="validate a local connector manifest or registry")
+    validate = sub.add_parser(
+        "validate", help="validate a local connector manifest or registry"
+    )
     validate.add_argument("manifest")
 
     plan = sub.add_parser("plan", help="plan against supplied remote-state JSON")
@@ -428,7 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("manifest")
     live.add_argument("--allow-org-shared", action="store_true")
 
-    apply_cmd = sub.add_parser("apply", help="apply a CREATE/UPDATE plan")
+    apply_cmd = sub.add_parser("apply", help="apply and verify a CREATE/UPDATE plan")
     apply_cmd.add_argument("manifest")
     apply_cmd.add_argument("--apply", action="store_true", required=True)
     apply_cmd.add_argument("--allow-org-shared", action="store_true")
