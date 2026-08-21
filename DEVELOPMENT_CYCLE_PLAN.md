@@ -130,13 +130,13 @@ source in 74765df; propagation to `kotlin/` pending.
 **Agents**: Builder, Verifier, Config Manager, Reviewer
 
 ### Milestone 5: Documentation & Verification (Day 5)
-**Target**: 2026-08-26
+**Target**: 2026-08-26 — **completed early 2026-08-21**
 
-- [ ] Create `docs/architecture/KOTLIN_CONFIG_INTEGRATION.md`
-- [ ] Document the pattern for future modules
-- [ ] Run full verification suite
-- [ ] Review with Security agent
-- [ ] Generate completion evidence
+- [x] Create `docs/architecture/KOTLIN_CONFIG_INTEGRATION.md` *(implemented-pattern doc incl. constraints table)*
+- [x] Document the pattern for future modules *(copy-propagation + JDK discovery rules)*
+- [x] Run full verification suite *(validate/drift/py_compile/unittest×2/node/cargo-fmt green on merged HEAD)*
+- [x] Review with Security agent *(VERDICT: PASS — all 5 boundary checks; findings fixed: dedupe kotlin.version, native-targets flag, stray script removed)*
+- [x] Generate completion evidence
 
 **Success Criteria**:
 - ✅ Documentation complete
@@ -147,13 +147,13 @@ source in 74765df; propagation to `kotlin/` pending.
 **Agents**: Architect, Reviewer, Security, Config Manager
 
 ### Milestone 6: Merge & Cleanup (Day 6-7)
-**Target**: 2026-08-27 to 2026-08-28
+**Target**: 2026-08-27 to 2026-08-28 — **completed early 2026-08-21**
 
-- [ ] Merge `feat/team-dev-1` into primary branch
-- [ ] Resolve any merge conflicts
-- [ ] Run final validation
-- [ ] Clean up worktree (optional)
-- [ ] Generate cycle completion evidence
+- [x] Merge `feat/team-dev-1` into primary branch *(merge commit 81e4e1d)*
+- [x] Resolve any merge conflicts *(no content conflicts; one git lock race recovered)*
+- [x] Run final validation *(mpp-core jvmTest + server/ui/codegraph assemble SUCCESSFUL on merged tree)*
+- [ ] Clean up worktree (optional — retained for future cycles)
+- [x] Generate cycle completion evidence
 
 **Success Criteria**:
 - ✅ Code merged to main development branch
