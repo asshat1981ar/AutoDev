@@ -8,6 +8,8 @@ use crate::{
     ExecutionResult, Workspace,
 };
 
+/// Execute a typed `RunTest` action after enforcing adapter ownership, policy,
+/// capability, runner allow-list, and the existing fail-closed process boundary.
 pub fn run_test_authorized(
     action: &AgentAction,
     workspace: &Workspace,
@@ -46,6 +48,7 @@ mod tests {
     use crate::{ActionType, Capability, RiskLevel};
     use serde_json::json;
 
+    /// Build a baseline `RunTest` action with caller-selected capabilities.
     fn action(capabilities: Vec<Capability>) -> AgentAction {
         AgentAction {
             id: "run-test-1".into(),
