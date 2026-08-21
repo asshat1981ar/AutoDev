@@ -92,6 +92,10 @@ jobs:
         env:
           AST_GREP_BIN: ${{ github.workspace }}/tools/ast-grep/node_modules/.bin/ast-grep
         run: bash tests/test_ast_grep_rules.sh
+      - name: CodeRabbit follow-up regressions
+        env:
+          AST_GREP_BIN: ${{ github.workspace }}/tools/ast-grep/node_modules/.bin/ast-grep
+        run: bash tests/test_coderabbit_followups.sh
       - name: Validate submitted PR evidence
         if: github.event_name == 'pull_request'
         run: python scripts/validate_pr_evidence.py "$GITHUB_EVENT_PATH"
