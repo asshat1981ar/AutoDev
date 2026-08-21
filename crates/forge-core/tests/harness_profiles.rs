@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use forge_core::{
-    default_harness_profiles, route_harness, DevelopmentContract, HarnessAssetKind, HarnessAssetRef,
-    HarnessError, HarnessKind, HarnessProfile, HarnessRegistry, HarnessStage,
+    default_harness_profiles, route_harness, DevelopmentContract, HarnessAssetKind,
+    HarnessAssetRef, HarnessError, HarnessKind, HarnessProfile, HarnessRegistry, HarnessStage,
 };
 
 fn asset(id: &str) -> HarnessAssetRef {
@@ -228,7 +228,9 @@ fn routing_uses_contract_acceptance_criteria_and_constraints() {
     request
         .acceptance_criteria
         .push("reduce build time".to_string());
-    request.constraints.push("measure the bottleneck".to_string());
+    request
+        .constraints
+        .push("measure the bottleneck".to_string());
 
     let route = route_harness(&default_harness_profiles(), &request, 1);
     let selected = route.selected.first().expect("optimizer route");
@@ -244,7 +246,9 @@ fn routing_ties_break_by_stable_profile_id() {
     for id in ["z-profile", "a-profile"] {
         let mut candidate = profile();
         candidate.id = id.to_string();
-        registry.register(candidate).expect("register tie candidate");
+        registry
+            .register(candidate)
+            .expect("register tie candidate");
     }
 
     let route = route_harness(&registry, &contract("feature"), 2);
