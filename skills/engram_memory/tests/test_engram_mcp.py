@@ -6,7 +6,7 @@ import shutil
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ..engram_mcp import EngramMemory
+from engram_mcp import EngramMemory
 
 
 class TestEngramMemory(unittest.TestCase):

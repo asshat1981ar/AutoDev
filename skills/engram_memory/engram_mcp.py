@@ -163,7 +163,48 @@ class EngramMemory:
         """Start MCP HTTP server."""
         self.host = host
         self.port = port
-        self._server = HTTPServer((host, port), self._MCPHandler(self))
+        engram_ref = self
+        class _Handler(BaseHTTPRequestHandler):
+            """MCP HTTP request handler (closure-bound)."""
+            engram = engram_ref
+            def do_GET(self):
+                parsed = urllib.parse.urlparse(self.path)
+                if parsed.path == "/memory/list":
+                    memories = self.engram.query(limit=100)
+                    self._send_json({"memories": memories})
+                elif parsed.path == "/memory/search":
+                    query = urllib.parse.parse_qs(parsed.query)
+                    memory_type = query.get("type", [None])[0]
+                    limit = int(query.get("limit", [10])[0])
+                    results = self.engram.query(memory_type=memory_type, limit=limit)
+                    self._send_json({"results": results})
+                elif parsed.path.startswith("/memory/"):
+                    logical_id = parsed.path.replace("/memory/", "")
+                    memory = self.engram.retrieve(logical_id)
+                    if memory:
+                        self._send_json(memory)
+                    else:
+                        self.send_error(404, "Memory not found: " + logical_id)
+                else:
+                    self.send_error(404, "Resource not found: " + parsed.path)
+            def do_POST(self):
+                parsed = urllib.parse.urlparse(self.path)
+                if parsed.path == "/memory/store":
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length)
+                    memory = json.loads(body)
+                    logical_id = self.engram.store(memory)
+                    self._send_json({"logical_identity": logical_id, "status": "stored"})
+                else:
+                    self.send_error(404, "Resource not found: " + parsed.path)
+            def _send_json(self, data):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(data).encode('utf-8'))
+            def log_message(self, format, *args):
+                pass
+        self._server = HTTPServer((host, port), _Handler)
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
             daemon=True
@@ -179,59 +220,3 @@ class EngramMemory:
         if self._server_thread:
             self._server_thread.join(timeout=1.0)
             self._server_thread = None
-    
-    class _MCPHandler(BaseHTTPRequestHandler):
-        """MCP HTTP request handler."""
-        
-        def __init__(self, engram_server, *args, **kwargs):
-            self.engram = engram_server
-            super().__init__(*args, **kwargs)
-        
-        def do_GET(self):
-            """Handle GET requests for MCP resources."""
-            parsed = urllib.parse.urlparse(self.path)
-            
-            if parsed.path == "/memory/list":
-                memories = self.engram.query(limit=100)
-                self._send_json({"memories": memories})
-            
-            elif parsed.path.startswith("/memory/"):
-                logical_id = parsed.path.replace("/memory/", "")
-                memory = self.engram.retrieve(logical_id)
-                if memory:
-                    self._send_json(memory)
-                else:
-                    self.send_error(404, "Memory not found: " + logical_id)
-            
-            elif parsed.path == "/memory/search":
-                query = urllib.parse.parse_qs(parsed.query)
-                memory_type = query.get("type", [None])[0]
-                limit = int(query.get("limit", [10])[0])
-                results = self.engram.query(memory_type=memory_type, limit=limit)
-                self._send_json({"results": results})
-            
-            else:
-                self.send_error(404, "Resource not found: " + parsed.path)
-        
-        def do_POST(self):
-            """Handle POST requests for MCP operations."""
-            parsed = urllib.parse.urlparse(self.path)
-            
-            if parsed.path == "/memory/store":
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_length)
-                memory = json.loads(body)
-                logical_id = self.engram.store(memory)
-                self._send_json({"logical_identity": logical_id, "status": "stored"})
-            
-            else:
-                self.send_error(404, "Resource not found: " + parsed.path)
-        
-        def _send_json(self, data):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode('utf-8'))
-        
-        def log_message(self, format, *args):
-            pass  # Suppress default logging
