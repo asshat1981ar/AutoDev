@@ -1,0 +1,12 @@
+{
+  "primary": [
+    "crates/forge-core/src",
+    ".cline",
+    "scripts",
+    "skills",
+    ".vibe"
+  ],
+  "team-1": [
+    "kotlin/mpp-core"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "evidence_id": "baseline-assessment-2026-08-21",
+  "type": "baseline",
+  "result": "passed",
+  "checks": {
+    "python_py_compile": "pass",
+    "python_unittest": "pass (23/23)",
+    "node_termux_launcher": "pass",
+    "harness_drift": "pass",
+    "forge_core_modules_mapped": "35 modules",
+    "kotlin_modules_mapped": "5 modules",
+    "python_fabric_mapped": "10 scripts, 31 .cline files, 100% stdlib-only"
+  },
+  "team": {
+    "forge-core-engineer": "completed",
+    "kotlin-engineer": "completed",
+    "python-fabric-engineer": "completed",
+    "harness-verification-engineer": "completed"
+  },
+  "git": {
+    "branch": "feat/coderabbit-config",
+    "revision": "32b183873976",
+    "modified_files": [
+      ".github/workflows/ci.yml",
+      "scripts/check_harness_drift.py"
+    ],
+    "untracked_additions": [
+      ".vibe/",
+      ".wex/",
+      "skills/",
+      "docs/architecture/CONFIG_ARCHITECTURE.md",
+      "scripts/wex-cli.py"
+    ]
+  },
+  "wex_version": "1.0.0",
+  "_wex_source": "primary",
+  "_wex_pushed_at": "2026-08-21T13:52:37.258855+00:00"
+}
