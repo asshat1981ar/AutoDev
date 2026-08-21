@@ -1,200 +1,83 @@
 # Vibe MCP Control Plane Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make AutoDev's existing Rust MCP adapter directly usable from Mistral Vibe for durable development observation and proposal workflows without widening execution authority.
 
-**Architecture:** Extend `crates/autodev-server` only. Streamable HTTP remains the canonical transport; ForgeCore typed state backs durable plan projections, while MCP mutation-shaped operations remain proposals. Add localhost-by-default binding and Origin validation around the existing Host allowlist and bearer authentication.
-
-**Tech Stack:** Rust stable, Axum 0.7, rmcp 3.1.2 Streamable HTTP server, ForgeCore ExecPlan types, Tokio, serde/serde_json, GitHub Actions CI.
+**Architecture:** Extend `crates/autodev-server` only. Streamable HTTP remains canonical; ForgeCore typed state backs durable plan projections; MCP mutation-shaped operations remain proposals. Local transport defaults to `127.0.0.1`, present browser Origins are validated, and bearer authentication remains fail-closed.
 
 **Spec:** `docs/superpowers/specs/2026-08-20-vibe-mcp-control-plane-design.md`
 
-## Global Constraints
+## Global constraints
 
 - ForgeCore remains the sole trusted execution authority.
-- No MCP handler may mint `AuthorizationGrant`, execute a process, directly mutate the workspace, or mark work verified.
-- Canonical MCP endpoint is `/mcp` over Streamable HTTP.
-- Default local bind is `127.0.0.1`; `AUTODEV_BIND_ADDR` is the only widening mechanism in this slice.
-- Bearer authentication remains fail-closed.
+- No MCP handler mints `AuthorizationGrant`, executes a process, directly mutates the workspace, widens capabilities, or marks work verified.
+- Canonical endpoint is `/mcp` over Streamable HTTP.
+- Default bind is `127.0.0.1`; only explicit `AUTODEV_BIND_ADDR` widens it.
 - `max_replans = 3`; `max_attempts_per_milestone = 3`; initial milestone ID is `objective`.
 - No new root Cargo, Python, or Node manifest.
-- Rust verification runs from `crates/`.
 
----
+## Task 1 — Durable ExecPlan projection
 
-### Task 1: Red tests for Vibe tool contract and durable plan projection
+- [x] Add RED acceptance test for objective → observable typed ExecPlan.
+- [x] Verify RED: CI run 519 failed because `AppState::exec_plan` did not exist.
+- [x] Add `exec_plans` state, `exec_plan()` read accessor, `PlanBudget::new(3, 3)`, and initial `objective` milestone.
+- [x] Verify GREEN: CI run 520 passed Rust format, Clippy, build, and tests.
 
-**Files:**
-- Create: `crates/autodev-server/tests/vibe_mcp.rs`
+## Task 2 — Vibe observation and proposal tools
 
-**Interfaces:**
-- Consumes: public `autodev_server::{router, AppState, ObjectiveRequest}` and HTTP `/mcp`.
-- Produces: executable acceptance tests for plan creation, MCP initialization/tool listing, unknown-plan rejection, proposal-only replan behavior, and bearer compatibility.
+- [x] Add RED tests for project status, typed plan lookup, non-authoritative verification, inert test proposals, and non-mutating replan proposals.
+- [x] Verify RED: CI run 521 compiled only after the absent Vibe handlers/types were identified as the failure.
+- [x] Implement `autodev.project.status`.
+- [x] Implement `autodev.execplan.get` with unknown-plan fail-closed behavior.
+- [x] Implement `autodev.verification.status` with `verified=false`, `authority=none`, and no self-verification.
+- [x] Implement `autodev.test.propose` as bounded inert intent; no process spawning.
+- [x] Implement `autodev.replan.propose` without calling `ExecPlan::replan` or consuming budget.
+- [x] Preserve existing `autodev.action.propose`, `autodev.objectives.list`, and `autodev.gaps.scan` semantics.
+- [x] Verify GREEN: CI run 522 passed Rust format, Clippy, build, and tests.
 
-- [ ] **Step 1: Write failing tests**
+## Task 3 — Transport hardening
 
-Create integration tests that POST an objective, assert a durable plan projection exists through the new public read accessor, initialize MCP with bearer auth, list tools, and assert the six-tool slice includes `autodev.project.status`, `autodev.execplan.get`, `autodev.verification.status`, `autodev.action.propose`, `autodev.test.propose`, and `autodev.replan.propose`.
+- [x] Add RED integration test requiring an untrusted browser Origin to receive HTTP 403.
+- [x] Verify RED: CI run 523 observed HTTP 406 from MCP negotiation instead of a pre-dispatch 403.
+- [x] Add Origin-host validation against the configured MCP host policy while allowing non-browser requests with no Origin header.
+- [x] Verify Origin GREEN: CI run 524 passed Rust format, Clippy, build, tests, container build, harness, Kotlin, and Python jobs.
+- [x] Add RED test requiring localhost as the default bind and explicit bind override support.
+- [x] Verify bind RED: CI run 525 passed formatting and failed Clippy specifically because `resolve_bind_addr` was absent.
+- [x] Implement `resolve_bind_addr`, `AUTODEV_BIND_ADDR`, and default `127.0.0.1` binding.
+- [ ] Record bind GREEN from CI run 526 after its Rust test/container steps finish.
 
-Add a test that calls `autodev.replan.propose`, reads the plan before and after, and proves `replans_used()` is unchanged.
+## Task 4 — Vibe integration documentation and final verification
 
-- [ ] **Step 2: Push tests and verify RED**
-
-Expected CI failure: missing public plan accessor/new MCP tools or equivalent compile/assertion failure caused by the absent feature, not unrelated infrastructure.
-
-- [ ] **Step 3: Record RED evidence**
-
-Record exact failing workflow/job and head SHA before implementation.
-
----
-
-### Task 2: Implement durable plan projection and Vibe MCP tools
-
-**Files:**
-- Modify: `crates/autodev-server/src/lib.rs`
-- Modify: `crates/autodev-server/src/mcp.rs`
-
-**Interfaces:**
-- Consumes: `forge_core::{ExecPlan, PlanBudget, PlanMilestone}`.
-- Produces: `AppState::exec_plan(plan_id) -> Option<ExecPlan>` plus five new/retained tool behaviors in the spec.
-
-- [ ] **Step 1: Create typed plan state on objective intake**
-
-Add `exec_plans: Arc<RwLock<BTreeMap<String, ExecPlan>>>` to `AppState`. On successful objective intake, create `ExecPlan::new(id.clone(), description, PlanBudget::new(3, 3))`, add `PlanMilestone::new("objective", "Complete objective")`, and store it under the objective ID. Do not start or complete the plan automatically.
-
-- [ ] **Step 2: Add read accessor**
-
-Add a public async accessor returning a cloned `ExecPlan` by ID solely for observation/testing.
-
-- [ ] **Step 3: Implement MCP inputs and handlers**
-
-Add schema-validated inputs for `plan_id`, test proposals, and replan proposals. Implement:
-
-- `autodev.project.status`: JSON projection with counts and authority markers.
-- `autodev.execplan.get`: serialized typed plan; invalid-params on unknown ID.
-- `autodev.verification.status`: explicit non-authoritative status and required verification boundary.
-- `autodev.test.propose`: JSON proposal with `execution_authorized=false`; never spawn.
-- `autodev.replan.propose`: JSON proposal with current plan budget projection and `execution_authorized=false`; never mutate the plan.
-
-Keep `autodev.action.propose` unchanged except for refactors required by compilation.
-
-- [ ] **Step 4: Verify GREEN for targeted Rust tests**
-
-Run in CI/local environment:
-
-```bash
-cd crates
-cargo test -p autodev-server
-```
-
-Expected: PASS.
-
----
-
-### Task 3: Red tests then implement transport hardening
-
-**Files:**
-- Modify: `crates/autodev-server/src/lib.rs`
-- Modify: `crates/autodev-server/src/main.rs`
-- Test: `crates/autodev-server/tests/vibe_mcp.rs`
-
-**Interfaces:**
-- Produces: localhost default bind resolution and Origin rejection before MCP dispatch.
-
-- [ ] **Step 1: Add failing Origin/bind tests**
-
-Add tests proving an unapproved Origin receives `403`, requests without Origin remain eligible for bearer authentication, and bind resolution defaults to `127.0.0.1` while accepting an explicit `AUTODEV_BIND_ADDR` value through a pure resolver function.
-
-- [ ] **Step 2: Verify RED**
-
-Expected: test failure because Origin enforcement/bind resolver is absent.
-
-- [ ] **Step 3: Implement minimal hardening**
-
-Add MCP middleware validating present `Origin` hostnames against the same configured host policy used for DNS-rebinding protection, returning `403` on mismatch. Add a pure `resolve_bind_addr(Option<&str>) -> &str` or owned equivalent and use `AUTODEV_BIND_ADDR`, default `127.0.0.1`, in `main.rs`.
-
-- [ ] **Step 4: Verify targeted GREEN**
-
-```bash
-cd crates
-cargo test -p autodev-server
-```
-
-Expected: PASS.
-
----
-
-### Task 4: Vibe usage documentation and full repository verification
-
-**Files:**
-- Modify: `README.md`
-- Modify: `docs/superpowers/plans/2026-08-20-vibe-mcp-control-plane.md`
-
-**Interfaces:**
-- Produces: copy/paste `vibe mcp add autodev ...` registration instructions and durable progress/evidence record.
-
-- [ ] **Step 1: Document exact Vibe command**
-
-Add:
-
-```bash
-export AUTODEV_MCP_BEARER_TOKEN='replace-me'
-vibe mcp add autodev \
-  --transport streamable-http \
-  --url http://127.0.0.1:8080/mcp \
-  --api-key-env AUTODEV_MCP_BEARER_TOKEN \
-  --api-key-header Authorization \
-  --api-key-format "Bearer {token}" \
-  --no-login \
-  --startup-timeout-sec 10 \
-  --tool-timeout-sec 120
-```
-
-State that `autodev` is the required positional `NAME` argument.
-
-- [ ] **Step 2: Run full Rust and harness gates**
-
-```bash
-cd crates
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo build --workspace
-cargo test --workspace
-cd ..
-python scripts/check_harness_drift.py
-```
-
-Expected: all PASS at exact branch head.
-
-- [ ] **Step 3: Review diff for authority regressions**
-
-Reject any code path that executes shell/filesystem effects, creates an `AuthorizationGrant`, mutates replan budget from `autodev.replan.propose`, or lets MCP self-declare verification.
-
-- [ ] **Step 4: Update living plan evidence**
-
-Append Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective with exact commit/CI evidence. Do not claim completion without passing checks.
-
----
+- [x] Add `docs/integrations/vibe-mcp.md` with exact server start and `vibe mcp add autodev ...` commands.
+- [x] Document that `autodev` is the required positional `NAME` that fixes `vibe mcp add: error: the following arguments are required: NAME`.
+- [x] Document bearer, bind, Origin, and authority behavior.
+- [x] Review changed code for direct shell/filesystem execution, `AuthorizationGrant` creation, replan mutation, or MCP self-verification; none are part of the implemented handlers.
+- [ ] Require the final exact-head CI run after this evidence update to pass before marking the slice complete.
 
 ## Progress
 
-- Design approved by user.
-- Spec committed on `feat/vibe-mcp-control-plane`.
-- Implementation plan committed on the same branch.
-- Next observable milestone: failing Vibe MCP contract tests on CI.
+- Branch: `feat/vibe-mcp-control-plane`.
+- Draft PR: #39, `feat(mcp): add Vibe development control plane`.
+- TDD evidence recorded through RED runs 519/521/523/525 and GREEN runs 520/522/524.
+- Functional implementation and Vibe usage documentation are committed.
+- Remaining gate: exact-head CI after the living-plan reconciliation.
 
-## Surprises & Discoveries
+## Surprises & discoveries
 
-- Current AutoDev already uses `rmcp` Streamable HTTP and bearer authentication, so no new MCP runtime is needed.
-- Current executable binds `0.0.0.0`; MCP transport guidance recommends localhost for local servers.
-- This session cannot clone GitHub directly due DNS isolation, so GitHub Actions is the executable RED/GREEN verifier.
+- AutoDev already had the correct architectural anchor: `rmcp` Streamable HTTP plus fail-closed bearer auth. A parallel Python/Node MCP server would have duplicated protocol and weakened the single authority boundary.
+- The existing server bound `0.0.0.0`, which was broader than needed for local Vibe use; localhost is now the default with an explicit deployment override.
+- Invalid browser Origins previously reached MCP content negotiation and returned 406; a dedicated pre-dispatch Origin policy now returns 403.
+- GitHub Actions served as the executable RED/GREEN verifier because this session does not have a local clone capable of running Cargo against the repository.
 
-## Decision Log
+## Decision log
 
-- Extend `autodev-server`; reject parallel MCP runtimes to preserve one authority boundary.
-- Use GitHub Actions for TDD verification because the working container has no GitHub network resolution.
-- Keep replan/test operations proposal-only in this slice.
+- Extend `autodev-server`; reject parallel MCP runtimes.
+- Keep all new mutation-shaped tools proposal-only.
+- Store durable ExecPlan coordination state in `AppState`, but do not automatically start, complete, authorize, or verify plans.
+- Reuse `AUTODEV_MCP_ALLOWED_HOSTS` as the hostname policy for present browser Origin headers so Host/Origin deployment configuration cannot drift independently in this slice.
+- Put Vibe commands in `docs/integrations/vibe-mcp.md` instead of duplicating canonical repository build-command blocks in README.
 
-## Outcomes & Retrospective
+## Outcomes & retrospective
 
-Not yet populated. Completion requires exact-head CI evidence.
+The implementation now provides a Vibe-facing development control plane with typed durable plan observation, explicit verification non-authority, inert test/replan proposals, bearer authentication, Origin rejection, and localhost-by-default binding. The design maintained ForgeCore as the sole trusted execution boundary. Completion is intentionally not claimed until the final exact-head CI run reports all required checks passing.
