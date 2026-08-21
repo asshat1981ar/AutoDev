@@ -1,0 +1,44 @@
+{
+  "worktrees": {
+    "primary": {
+      "identity": {
+        "wex_version": "1.0.0",
+        "worktree_id": "primary",
+        "branch": "feat/coderabbit-config",
+        "revision": "f1deaadc12d0",
+        "purpose": "AMCX-1 Integration",
+        "created_at": "2026-08-21T13:18:00.779835+00:00",
+        "last_updated": "2026-08-21T13:53:00+00:00"
+      },
+      "heartbeat": {
+        "worktree_id": "primary",
+        "last_seen": "2026-08-21T13:54:24.580120+00:00",
+        "task": "Team development with Cline - config integration",
+        "status": "active",
+        "milestone": "WEX evidence pushed - 22 files, 3668 lines",
+        "revision": "f1deaadc12d0",
+        "wex_version": "1.0.0"
+      }
+    },
+    "team-1": {
+      "identity": {
+        "wex_version": "1.0.0",
+        "worktree_id": "team-1",
+        "branch": "feat/team-dev-1",
+        "revision": "f1deaadc12d0",
+        "purpose": "development",
+        "created_at": "2026-08-21T14:04:55.474365+00:00",
+        "last_updated": "2026-08-21T14:04:55.474410+00:00"
+      },
+      "heartbeat": {
+        "worktree_id": "team-1",
+        "last_seen": "2026-08-21T14:06:46.346106+00:00",
+        "task": "Kotlin MPP module - implementing mpp-core with centralized config",
+        "status": "active",
+        "milestone": "Phase 1: Module scaffold",
+        "revision": "f1deaadc12d0",
+        "wex_version": "1.0.0"
+      }
+    }
+  }
+}

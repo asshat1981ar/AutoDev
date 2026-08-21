@@ -1,0 +1,29 @@
+{
+  "evidence_id": "team-1-mpp-core-scaffold-2026-08-21",
+  "type": "development",
+  "result": "in_progress",
+  "description": "Kotlin MPP core module scaffold with centralized config integration",
+  "worktree": "team-1",
+  "branch": "feat/team-dev-1",
+  "reserved_paths": [
+    "kotlin/mpp-core"
+  ],
+  "checks": {
+    "config_validation": "pass (0 errors, 5 warnings)",
+    "harness_drift": "pass",
+    "path_reservation": "kotlin/mpp-core reserved",
+    "collision_check": "pass (no collisions)"
+  },
+  "next_steps": [
+    "Integrate config/kotlin/gradle.properties into mpp-core/build.gradle.kts",
+    "Verify ktlint rules from config/kotlin/ktlint/.ktlint.yaml",
+    "Test with ./gradlew :mpp-core:assemble --no-daemon"
+  ],
+  "config_used": {
+    "gradle_properties": "config/kotlin/gradle.properties",
+    "ktlint_yaml": "config/kotlin/ktlint/.ktlint.yaml"
+  },
+  "wex_version": "1.0.0",
+  "_wex_source": "team-1",
+  "_wex_pushed_at": "2026-08-21T14:08:17.351551+00:00"
+}
