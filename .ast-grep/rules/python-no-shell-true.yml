@@ -1,0 +1,10 @@
+id: python-no-shell-true
+language: Python
+files:
+  - bootstrap_cline_mcp.py
+  - .cline/**/*.py
+  - scripts/**/*.py
+rule:
+  pattern: subprocess.$METHOD($$$BEFORE, shell=True, $$$AFTER)
+message: Avoid shell=True in agent-facing Python code.
+severity: error

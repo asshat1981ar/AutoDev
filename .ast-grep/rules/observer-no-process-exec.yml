@@ -1,0 +1,12 @@
+id: observer-no-process-exec
+language: Python
+files:
+  - scripts/autodev-cli.py
+rule:
+  any:
+    - pattern: subprocess.run($$$ARGS)
+    - pattern: subprocess.call($$$ARGS)
+    - pattern: subprocess.Popen($$$ARGS)
+    - pattern: os.system($CMD)
+message: Observer CLI must not gain arbitrary process execution authority.
+severity: error

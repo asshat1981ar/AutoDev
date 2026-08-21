@@ -1,0 +1,8 @@
+id: forgecore-no-direct-process-command
+language: Rust
+files:
+  - crates/forge-core/src/**/*.rs
+rule:
+  pattern: std::process::Command::new($PROGRAM)
+message: Direct process execution in ForgeCore requires trusted-boundary review.
+severity: warning
