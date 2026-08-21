@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use forge_core::TaskGraph;
+use forge_core::{ExecPlan, PlanBudget, PlanMilestone, TaskGraph};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -47,6 +47,7 @@ pub struct ObjectiveRecord {
 #[derive(Clone)]
 pub struct AppState {
     objectives: Arc<RwLock<BTreeMap<String, ObjectiveRecord>>>,
+    exec_plans: Arc<RwLock<BTreeMap<String, ExecPlan>>>,
     events: broadcast::Sender<String>,
     github_webhook_secret: Option<String>,
     mcp_bearer_tag: Option<Arc<Vec<u8>>>,
@@ -57,6 +58,7 @@ impl AppState {
         let (events, _) = broadcast::channel(256);
         Self {
             objectives: Arc::new(RwLock::new(BTreeMap::new())),
+            exec_plans: Arc::new(RwLock::new(BTreeMap::new())),
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
             mcp_bearer_tag: None,
@@ -78,6 +80,11 @@ impl AppState {
         self
     }
 
+    /// Return a cloned durable coordination plan without granting execution authority.
+    pub async fn exec_plan(&self, plan_id: &str) -> Option<ExecPlan> {
+        self.exec_plans.read().await.get(plan_id).cloned()
+    }
+
     async fn enqueue(&self, request: ObjectiveRequest) -> Result<ObjectiveRecord, &'static str> {
         if request.repository.trim().is_empty() {
             return Err("repository is required");
@@ -87,24 +94,30 @@ impl AppState {
         }
 
         let id = Uuid::new_v4().to_string();
+        let description = request.description.trim().to_string();
         let branch = request
             .branch
             .filter(|branch| !branch.trim().is_empty())
             .unwrap_or_else(|| format!("autodev/objective-{}", &id[..8]));
-        let graph = TaskGraph::single(&format!("Objective {id}"), request.description.trim());
+        let graph = TaskGraph::single(&format!("Objective {id}"), &description);
         let record = ObjectiveRecord {
             id: id.clone(),
             repository: request.repository.trim().to_string(),
-            description: request.description.trim().to_string(),
+            description: description.clone(),
             branch,
             status: "queued".to_string(),
             graph,
         };
 
+        let mut plan = ExecPlan::new(id.clone(), description, PlanBudget::new(3, 3));
+        plan.add_milestone(PlanMilestone::new("objective", "Complete objective"))
+            .map_err(|_| "failed to initialize exec plan")?;
+
         self.objectives
             .write()
             .await
             .insert(id.clone(), record.clone());
+        self.exec_plans.write().await.insert(id.clone(), plan);
         let _ = self.events.send(
             json!({
                 "type": "objective_queued",
