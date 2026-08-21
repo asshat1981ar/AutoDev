@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "default_for_external_mutation": "require_confirmation",
+  "always_confirm": [
+    "pull_request_merge",
+    "branch_delete",
+    "repository_settings_change",
+    "release_publish",
+    "deployment_trigger",
+    "shared_document_write",
+    "external_message_send",
+    "issue_delete",
+    "project_delete",
+    "credential_change",
+    "connector_delete",
+    "organization_visibility_change"
+  ],
+  "linear_confirm": [
+    "issue_create",
+    "issue_update",
+    "issue_state_change",
+    "comment_create"
+  ],
+  "read_only_default": "no_confirmation",
+  "unknown_tool": "deny"
+}
