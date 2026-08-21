@@ -16,6 +16,8 @@ rule:
                 - pattern: use std::process::Command;
                 - pattern: use std::process::{Command};
                 - pattern: use std::process::{$$$BEFORE, Command, $$$AFTER};
+                - pattern: use std::{process::Command};
+                - pattern: use std::{$$$BEFORE, process::Command, $$$AFTER};
     - all:
         - pattern: $COMMAND_ALIAS::new($PROGRAM)
         - inside:
@@ -26,5 +28,7 @@ rule:
               any:
                 - pattern: use std::process::Command as $COMMAND_ALIAS;
                 - pattern: use std::process::{$$$BEFORE, Command as $COMMAND_ALIAS, $$$AFTER};
+                - pattern: use std::{process::Command as $COMMAND_ALIAS};
+                - pattern: use std::{$$$BEFORE, process::Command as $COMMAND_ALIAS, $$$AFTER};
 message: Direct process execution in ForgeCore requires trusted-boundary review.
 severity: warning
