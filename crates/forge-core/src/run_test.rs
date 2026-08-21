@@ -104,4 +104,29 @@ mod tests {
         .unwrap_err();
         assert!(matches!(error, ExecutionError::ProcessSandboxRequired));
     }
+
+    #[test]
+    fn non_run_test_action_is_rejected_before_policy_and_process_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(dir.path(), 4096).unwrap();
+        let mut wrong_action = action(vec![Capability::ReadFile]);
+        wrong_action.action_type = ActionType::ReadFile;
+        wrong_action.payload = json!({
+            "runner": "cargo",
+            "args": ["test"],
+            "path": "README.md"
+        });
+
+        let error = run_test_authorized(
+            &wrong_action,
+            &workspace,
+            &AuthorizationGrant::none(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ExecutionError::UnsupportedAction(ref action_type) if action_type == "read_file"
+        ));
+    }
 }
