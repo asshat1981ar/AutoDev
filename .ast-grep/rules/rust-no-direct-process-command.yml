@@ -3,6 +3,15 @@ language: Rust
 files:
   - crates/forge-core/src/**/*.rs
 rule:
-  pattern: std::process::Command::new($PROGRAM)
+  any:
+    - pattern: std::process::Command::new($PROGRAM)
+    - all:
+        - pattern: Command::new($PROGRAM)
+        - inside:
+            kind: source_file
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: use std::process::Command;
 message: Direct process execution in ForgeCore requires trusted-boundary review.
 severity: warning
