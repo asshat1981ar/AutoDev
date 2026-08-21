@@ -22,9 +22,7 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              any:
-                - pattern: from subprocess import $SUBPROCESS_METHOD
-                - pattern: from subprocess import $$$BEFORE, $SUBPROCESS_METHOD, $$$AFTER
+              pattern: from subprocess import $SUBPROCESS_METHOD
     - all:
         - pattern: $SUBPROCESS_ALIAS($$$ARGS)
         - inside:
@@ -32,9 +30,60 @@ rule:
             stopBy: end
             has:
               stopBy: end
+              pattern: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
+    - all:
+        - pattern: run($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $$$BEFORE, run, $$$AFTER
+    - all:
+        - pattern: call($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $$$BEFORE, call, $$$AFTER
+    - all:
+        - pattern: Popen($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $$$BEFORE, Popen, $$$AFTER
+    - all:
+        - pattern: check_call($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $$$BEFORE, check_call, $$$AFTER
+    - all:
+        - pattern: check_output($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from subprocess import $$$BEFORE, check_output, $$$AFTER
+    - all:
+        - pattern: $SUBPROCESS_LIST_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
               any:
-                - pattern: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
-                - pattern: from subprocess import $$$BEFORE, $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS, $$$AFTER
+                - pattern: from subprocess import $$$BEFORE, run as $SUBPROCESS_LIST_ALIAS, $$$AFTER
+                - pattern: from subprocess import $$$BEFORE, call as $SUBPROCESS_LIST_ALIAS, $$$AFTER
+                - pattern: from subprocess import $$$BEFORE, Popen as $SUBPROCESS_LIST_ALIAS, $$$AFTER
+                - pattern: from subprocess import $$$BEFORE, check_call as $SUBPROCESS_LIST_ALIAS, $$$AFTER
+                - pattern: from subprocess import $$$BEFORE, check_output as $SUBPROCESS_LIST_ALIAS, $$$AFTER
     - pattern: os.$OS_METHOD($$$ARGS)
     - all:
         - pattern: $OS_MODULE.$OS_METHOD($$$ARGS)
@@ -53,9 +102,7 @@ rule:
             stopBy: end
             has:
               stopBy: end
-              any:
-                - pattern: from os import $OS_METHOD
-                - pattern: from os import $$$BEFORE, $OS_METHOD, $$$AFTER
+              pattern: from os import $OS_METHOD
     - all:
         - pattern: $OS_ALIAS($$$ARGS)
         - inside:
@@ -63,9 +110,33 @@ rule:
             stopBy: end
             has:
               stopBy: end
+              pattern: from os import $OS_ORIGINAL as $OS_ALIAS
+    - all:
+        - pattern: system($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from os import $$$BEFORE, system, $$$AFTER
+    - all:
+        - pattern: popen($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: from os import $$$BEFORE, popen, $$$AFTER
+    - all:
+        - pattern: $OS_LIST_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
               any:
-                - pattern: from os import $OS_ORIGINAL as $OS_ALIAS
-                - pattern: from os import $$$BEFORE, $OS_ORIGINAL as $OS_ALIAS, $$$AFTER
+                - pattern: from os import $$$BEFORE, system as $OS_LIST_ALIAS, $$$AFTER
+                - pattern: from os import $$$BEFORE, popen as $OS_LIST_ALIAS, $$$AFTER
 constraints:
   SUBPROCESS_METHOD:
     regex: ^(run|call|Popen|check_call|check_output)$
