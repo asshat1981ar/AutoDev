@@ -1,4 +1,6 @@
-use super::{HarnessAssetKind, HarnessAssetRef, HarnessKind, HarnessProfile, HarnessRegistry, HarnessStage};
+use super::{
+    HarnessAssetKind, HarnessAssetRef, HarnessKind, HarnessProfile, HarnessRegistry, HarnessStage,
+};
 
 const BUILTIN_VERSION: &str = "builtin-v1";
 const PROFILE_VERSION: &str = "0.1.0";
