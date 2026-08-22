@@ -85,9 +85,27 @@ cargo run -p autodev-eval -- compare --baseline baseline.json --candidate candid
 
 `validate` loads all curated JSON fixtures and prints deterministic task and verifier fingerprints.
 
-`smoke` requires a source checkout containing full history. It succeeds only when every task's base state fails its fixed verifier and every accepted/reference state passes the same verifier.
+`smoke` requires a source checkout containing full history. It succeeds only when every task's base state fails its fixed verifier and every accepted/reference state passes the same verifier. **An empty corpus fails the smoke gate** — the runner refuses to report healthy on `results == []` because a hostile or accidental clear of `fixtures/` must not silently pass.
 
-`compare` prints a typed comparison. It exits successfully when comparison itself is computed; `improved`, `no_improvement`, `safety_regression`, or `incomparable` remains data for the caller.
+`compare` prints a typed comparison. The exit code reflects only whether the comparison could be computed; it does **not** signal that the candidate was `improved`. A successful exit with a `no_improvement` decision still means "the candidate did not improve on the baseline". A CI gate that wants to enforce improvement must inspect the printed `decision` field, not the exit code.
+
+### Fixture-asset integrity
+
+Hidden verifier assets live under `crates/autodev-eval/fixture-assets/`. Every
+`verifier_overlay` entry in a fixture declares the SHA-256 of the asset it
+overlays, and `apply_verifier_overlays` re-hashes the asset on disk before
+copying it into the runner checkout. **A drift between the asset on disk and
+the digest declared in the fixture fails the smoke gate with an integrity
+error.** This makes "swap the probe to make the base state pass" structurally
+impossible without also editing the fixture and the asset, and editing the
+fixture to match is a visible PR change.
+
+The integrity model assumes **PR-reviewer approval** is the human gate for
+new or modified fixture assets. Any change to `fixture-assets/**` is by
+definition a change to the verifier identity; reviewers must treat
+modifications to those files with the same scrutiny as a change to a unit
+test fixture. Verifier steps are *host code execution* and should never be
+treated as advisory.
 
 ## Comparison rules
 
