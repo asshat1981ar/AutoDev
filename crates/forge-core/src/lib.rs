@@ -19,6 +19,7 @@ pub mod evidence;
 pub mod exec_plan;
 pub mod execute;
 mod git;
+pub mod harness;
 pub mod hybrid_simulation;
 pub mod model;
 pub mod model_assignment;
@@ -76,6 +77,11 @@ pub use exec_plan::{
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
+pub use harness::{
+    default_harness_profiles, evaluate_harness_candidate, route_harness, HarnessAssetKind,
+    HarnessAssetRef, HarnessError, HarnessEvaluation, HarnessKind, HarnessProfile,
+    HarnessPromotionDecision, HarnessRegistry, HarnessRoute, HarnessRoutingEvidence, HarnessStage,
+};
 pub use hybrid_simulation::{
     pareto_frontier, simulate_hybrid_topologies, simulate_hybrid_traces, strongest_candidate,
     HybridSimulationConfig, HybridSimulationSummary, HybridSimulationTrace, HybridTopology,
