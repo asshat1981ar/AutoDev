@@ -134,6 +134,16 @@ class RoleLeaseManager:
         expires_at = datetime.fromisoformat(info["expires_at"])
         return now < expires_at
 
+    def is_assignment_valid(self, lease_id: str, task_id: str, role: str, agent_id: str) -> bool:
+        if not self.is_lease_valid(lease_id):
+            return False
+        info = self._leases[lease_id]
+        return (
+            info["task_id"] == task_id
+            and info["role"] == role
+            and info["holder_agent_id"] == agent_id
+        )
+
     def release_lease(self, lease_id: str) -> None:
         if lease_id in self._leases:
             del self._leases[lease_id]
@@ -146,7 +156,8 @@ class MessageRouter:
     VALID_ROLES = ["SUPERVISOR", "PLANNER", "ORCHESTRATOR", "CODER", "REVIEWER", "RESEARCHER", "PEER_REVIEWER", "META_AGENT"]
     VALID_KINDS = ["PROPOSAL", "CHALLENGE", "REVIEW_DECISION", "SPEC_CORRECTION", "HEARTBEAT"]
 
-    def __init__(self):
+    def __init__(self, lease_manager: RoleLeaseManager):
+        self._lease_manager = lease_manager
         self._messages: List[Dict[str, Any]] = []
 
     def dispatch_message(
@@ -155,12 +166,18 @@ class MessageRouter:
         sender_role: str,
         message_kind: str,
         content: str,
+        agent_id: str,
+        lease_id: str,
         references: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         if sender_role not in self.VALID_ROLES:
             raise ECMTaskError(f"Invalid sender role: {sender_role}")
         if message_kind not in self.VALID_KINDS:
             raise ECMTaskError(f"Invalid message kind: {message_kind}")
+        if not self._lease_manager.is_assignment_valid(lease_id, task_id, sender_role, agent_id):
+            raise ECMTaskError(
+                "Message sender is not authorized by an active lease for the supplied task and role"
+            )
 
         msg = {
             "message_id": str(uuid.uuid4()),
