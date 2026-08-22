@@ -69,6 +69,17 @@ fn dispatch(args: &[String]) -> Result<i32, CliError> {
 fn validate_command(args: &[String]) -> Result<i32, CliError> {
     let fixtures = single_option(args, "--fixtures", "validate --fixtures <dir>")?;
     let corpus = load_corpus(fixtures).map_err(runtime)?;
+    // Fail fast on asset drift: every overlay source file on disk must hash
+    // to the digest declared in the matching fixture. Catching this at
+    // `validate` time means a contributor sees the failure before the
+    // smoke gate (which only runs the full historical pipeline) ever
+    // executes.
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for fixture in &corpus {
+        if !fixture.verifier_overlay.is_empty() {
+            verify_overlay_assets(&crate_root, &fixture.verifier_overlay).map_err(runtime)?;
+        }
+    }
     let mut tasks = Vec::with_capacity(corpus.len());
     for fixture in corpus {
         let key = fixture.task.key().map_err(runtime)?;

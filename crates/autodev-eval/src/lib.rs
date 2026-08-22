@@ -16,5 +16,5 @@ pub use fixture::{load_corpus, load_fixture, EvalFixture, FixtureError, Verifier
 pub use runner::{
     smoke_fixture, AttemptDriver, AttemptMetadata, EvaluationRunner, ReferenceSmokeResult,
 };
-pub use verifier::{apply_verifier_overlays, run_verifier, StepExecution};
+pub use verifier::{apply_verifier_overlays, run_verifier, verify_overlay_assets, StepExecution};
 pub use workspace::{changed_paths, materialize_checkout, IsolatedCheckout};
