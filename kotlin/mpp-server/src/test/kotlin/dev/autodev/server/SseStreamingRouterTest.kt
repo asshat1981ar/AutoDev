@@ -13,6 +13,8 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.flowOf
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -72,14 +74,14 @@ class SseStreamingRouterTest {
       sseRoutes(SseStreamingRouter(flowOf("ready")))
     }
     val response = client.post("/api/v1/objectives") {
-      // Wrap the body in TextContent to bypass the client's
-      // ContentNegotiation polymorphic dispatch. Without this, a raw
-      // String body with contentType(Json) triggers
-      // AbstractPolymorphicSerializer.kt:102 because the client cannot
-      // infer the target type. The production server uses
-      // call.receiveText() and does not inspect the request content type,
-      // so a text body exercises the same accept path.
-      setBody(TextContent("hello world", ContentType.Application.Json))
+      // Use a JsonObject as the body so the client's ContentNegotiation
+      // plugin has a concrete type to serialize (avoiding
+      // AbstractPolymorphicSerializer.kt:102 on a raw String). The
+      // production server uses call.receiveText() and does not inspect
+      // the request content type, so any non-empty body that is not
+      // oversized exercises the same accept path.
+      contentType(ContentType.Application.Json)
+      setBody(JsonObject(mapOf("description" to JsonPrimitive("hello"))))
     }
     assertEquals(HttpStatusCode.Accepted, response.status)
     val body = response.bodyAsText()
