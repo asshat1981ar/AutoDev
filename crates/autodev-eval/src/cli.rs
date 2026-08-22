@@ -5,7 +5,7 @@ use forge_core::{compare_reports, EvalReport};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{load_corpus, smoke_fixture};
+use crate::{load_corpus, smoke_fixture, verify_overlay_assets};
 
 #[derive(Debug, Error)]
 enum CliError {
