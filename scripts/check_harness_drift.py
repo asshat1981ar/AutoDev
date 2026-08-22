@@ -341,27 +341,6 @@ def check_scripts_syntax(errors: list[str], verbose: bool) -> None:
             elif verbose:
                 print(f"[ok] Node syntax: {termux.relative_to(ROOT)}")
 
-def check_amcx1_compliance(errors: list[str], verbose: bool) -> None:
-    """Check AMCX-1 v1.1 compliance when .vibe directories exist."""
-    import json
-
-    vibe_dirs = list(ROOT.glob(".vibe"))
-    worktree_vibe = list(ROOT.glob(".worktrees/**/.vibe"))
-    if not vibe_dirs and not worktree_vibe:
-        if verbose:
-            print("[skip] No .vibe directories found; AMCX-1 checks skipped")
-        return
-
-    schema_dir = ROOT / "schemas"
-    if not schema_dir.is_dir():
-        candidates = list(ROOT.glob(".worktrees/**/schemas"))
-        schema_dir = candidates[0] if candidates else None
-
-    amx_state_paths = list(ROOT.glob(".vibe/amcx-memory/state.json"))
-    amx_state_paths += list(ROOT.glob(".worktrees/**/.vibe/amcx-memory/state.json"))
-    ecm_state_paths = list(ROOT.glob(".vibe/ecm-state.json"))
-    ecm_state_paths += list(ROOT.glob(".worktrees/**/.vibe/ecm-state.json"))
-
 def _check_amx_state(state_path: Path, errors: list[str], verbose: bool) -> None:
     """Validate AMX memory state file."""
     import json
@@ -407,23 +386,49 @@ def _check_ecm_state(state_path: Path, errors: list[str], verbose: bool) -> None
         if isinstance(tasks, dict):
             tasks = list(tasks.values())
         seen_tasks = {}
+        invalid_ids = 0
         for entry in tasks:
             task_id = None
             if isinstance(entry, dict):
                 task = entry.get("task", entry)
                 if isinstance(task, dict):
                     task_id = task.get("id")
-            if task_id and task_id in seen_tasks:
+            # The ECM schema requires id to be a non-empty string; reject
+            # missing, empty, non-string, and unhashable ids explicitly so
+            # malformed records cannot silently skip duplicate detection.
+            if not isinstance(task_id, str) or not task_id.strip():
+                invalid_ids += 1
+                errors.append(
+                    f"AMCX-1: Invalid task id {task_id!r} (must be non-empty string) in "
+                    f"{state_path.relative_to(ROOT)}"
+                )
+                continue
+            if task_id in seen_tasks:
                 errors.append(
                     f"AMCX-1: Duplicate task_id '{task_id}' in "
                     f"{state_path.relative_to(ROOT)}"
                 )
-            if task_id:
-                seen_tasks[task_id] = True
+            seen_tasks[task_id] = True
         if verbose and not any("AMCX-1" in e for e in errors):
             print(f"[ok] AMCX-1: {state_path.relative_to(ROOT)} — {len(tasks)} tasks, clean")
     except (json.JSONDecodeError, OSError) as exc:
         errors.append(f"AMCX-1: Cannot read {state_path.relative_to(ROOT)}: {exc}")
+
+
+def check_amcx1_compliance(errors: list[str], verbose: bool) -> None:
+    """Check AMCX-1 v1.1 compliance when .vibe directories exist."""
+    vibe_dirs = list(ROOT.glob(".vibe"))
+    worktree_vibe = list(ROOT.glob(".worktrees/**/.vibe"))
+    if not vibe_dirs and not worktree_vibe:
+        if verbose:
+            print("[skip] No .vibe directories found; AMCX-1 checks skipped")
+        return
+
+    amx_state_paths = list(ROOT.glob(".vibe/amcx-memory/state.json"))
+    amx_state_paths += list(ROOT.glob(".worktrees/**/.vibe/amcx-memory/state.json"))
+    ecm_state_paths = list(ROOT.glob(".vibe/ecm-state.json"))
+    ecm_state_paths += list(ROOT.glob(".worktrees/**/.vibe/ecm-state.json"))
+
     if not amx_state_paths and not ecm_state_paths:
         if verbose:
             print("[skip] No AMX or ECM state files found")
@@ -434,6 +439,7 @@ def _check_ecm_state(state_path: Path, errors: list[str], verbose: bool) -> None
 
     for state_path in ecm_state_paths:
         _check_ecm_state(state_path, errors, verbose)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check harness drift for AutoDev")
