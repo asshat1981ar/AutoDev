@@ -33,6 +33,18 @@ class TestNeutralContractRegistry(unittest.TestCase):
         with self.assertRaises(ContractRegistryError):
             self.registry.get_schema("malicious.schema.v999.json")
 
+    def test_returned_schema_cannot_mutate_canonical_registry_state(self):
+        schema_name = "amx.record.v1.json"
+        first = self.registry.get_schema(schema_name)
+        original_title = first.get("title")
+
+        first["title"] = "attacker-mutated-title"
+        first.setdefault("properties", {})["attacker_injected"] = {"type": "string"}
+
+        second = self.registry.get_schema(schema_name)
+        self.assertEqual(second.get("title"), original_title)
+        self.assertNotIn("attacker_injected", second.get("properties", {}))
+
     def test_schema_activation_authority_boundary(self):
         # Runtime agents CANNOT activate schemas
         self.assertFalse(self.registry.validate_schema_activation_authority("RUNTIME_AGENT"))
