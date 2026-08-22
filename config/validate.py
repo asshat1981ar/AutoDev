@@ -197,7 +197,6 @@ class ConfigValidator:
         configs_to_check = [
             (CONFIG_DIR / "defaults" / "rustfmt.toml", "max_width"),
             (CONFIG_DIR / "defaults" / "common" / ".editorconfig", "max_line_length"),
-            (CONFIG_DIR / "kotlin" / "ktlint" / ".ktlint.yaml", "max_line_length"),
         ]
 
         for config_path, setting in configs_to_check:

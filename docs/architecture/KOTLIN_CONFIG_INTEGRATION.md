@@ -13,8 +13,12 @@
    centralized file (Gradle only reads properties from the project root /
    gradle user home — an arbitrary include mechanism does not exist for this
    file). When the centralized file changes, re-copy and commit.
-3. **Consumption by symlink.** `kotlin/.ktlint.yaml → ../config/kotlin/ktlint/.ktlint.yaml`
-   (relative symlink, works within any worktree checkout).
+3. **Consumption by editorconfig discovery.** The repo-root `.editorconfig`
+   (symlink to `config/defaults/common/.editorconfig`, marked `root = true`)
+   carries ktlint properties (`ktlint_code_style = official` etc.). ktlint 12.x
+   discovers it hierarchically from every linted source file. The former
+   `config/kotlin/ktlint/.ktlint.yaml` was retired in ADR-004: ktlint never
+   read YAML; the file was documentation-only.
 4. **JDK discovery.** Never set `org.gradle.java.home` to an unexpanded env var.
    Let Gradle auto-detect installed JDKs, export `JAVA_HOME`, or pass
    `-Dorg.gradle.java.installations.paths=...`.
@@ -46,13 +50,11 @@ ktlintCheck across all modules ✅ · mpp-server/mpp-ui/mpp-codegraph assemble �
 
 ## Known limitations / follow-ups
 
-- `config/kotlin/ktlint/.ktlint.yaml` uses YAML syntax, but ktlint 12.x reads
-  `.editorconfig`. The YAML file currently serves as documentation; actual lint
-  rules are ktlint defaults. Converting to a shared `.editorconfig` is proposed
-  as a follow-up ADR.
-- Copy-based propagation can silently drift from source; consider a drift check
-  (`diff config/kotlin/gradle.properties kotlin/gradle.properties`) in
-  `check_harness_drift.py`.
+- ~~`config/kotlin/ktlint/.ktlint.yaml` is documentation-only~~ **Resolved in
+  ADR-004**: retired in favor of the root `.editorconfig` carrying real ktlint
+  properties.
+- Copy-based propagation can silently drift from source; enforced since
+  2026-08-22 by `check_config_parity` in `scripts/check_harness_drift.py`.
 
 ## References
 

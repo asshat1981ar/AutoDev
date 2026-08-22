@@ -55,11 +55,16 @@ indent_size = 2
 max_line_length = 120
 
 # =============================================================================
-# KOTLIN SPECIFIC
+# KOTLIN SPECIFIC (incl. ktlint 12.x properties - see ADR-004)
 # =============================================================================
 
 [*.{kt,kts}]
 indent_size = 2
+ktlint_code_style = ktlint_official
+
+# Allow wildcard imports in test sources only
+[**/*Test.kt]
+ktlint_standard_no-wildcard-imports = disabled
 
 # =============================================================================
 # PYTHON SPECIFIC
