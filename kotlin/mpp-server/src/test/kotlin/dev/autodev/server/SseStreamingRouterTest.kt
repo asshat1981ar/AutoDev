@@ -71,8 +71,12 @@ class SseStreamingRouterTest {
       sseRoutes(SseStreamingRouter(flowOf("ready")))
     }
     val response = client.post("/api/v1/objectives") {
-      contentType(ContentType.Application.Json)
-      setBody("""{"description":"hello"}""")
+      // Use a plain text body (not a JSON-looking string) so the
+      // ContentNegotiation client plugin does not try to apply polymorphic
+      // JSON serialization. The production server uses receiveText() and
+      // does not inspect the request content type, so a text body works
+      // and exercises the same accept path.
+      setBody("hello world")
     }
     assertEquals(HttpStatusCode.Accepted, response.status)
     val body = response.bodyAsText()
