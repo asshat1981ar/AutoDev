@@ -1,13 +1,28 @@
-from typing import Dict, Any, List, Optional
+from types import MappingProxyType
+from typing import Any, Dict, Mapping, Optional
+
 
 class TrustBoundaryViolation(Exception):
     pass
+
+
+def _freeze_domain_registry(
+    registry: Dict[int, Dict[str, str]],
+) -> Mapping[int, Mapping[str, str]]:
+    return MappingProxyType(
+        {
+            domain_id: MappingProxyType(dict(domain))
+            for domain_id, domain in registry.items()
+        }
+    )
+
 
 class DomainOwnershipMap:
     """
     Enforces the 18 Canonical Domain Ownership Boundaries from AMCX-1 §5 (ADR-004).
     """
-    DOMAINS = {
+
+    DOMAINS = _freeze_domain_registry({
         1: {
             "name": "Plan and step lifecycle",
             "canonical_history": "ExecPlan",
@@ -116,11 +131,11 @@ class DomainOwnershipMap:
             "decision_authority": "ECM orchestrator/policy",
             "execution_materialization": "Scheduler/adapters"
         }
-    }
+    })
 
     @classmethod
-    def get_domain(cls, domain_id: int) -> Dict[str, str]:
-        if domain_id not in cls.DOMAINS:
+    def get_domain(cls, domain_id: int) -> Mapping[str, str]:
+        if type(domain_id) is not int or domain_id not in cls.DOMAINS:
             raise TrustBoundaryViolation(f"Invalid domain ID {domain_id}")
         return cls.DOMAINS[domain_id]
 
@@ -134,6 +149,8 @@ class DomainOwnershipMap:
     @classmethod
     def validate_action_authority(cls, domain_id: int, claiming_authority: str) -> bool:
         domain = cls.get_domain(domain_id)
+        if not isinstance(claiming_authority, str):
+            return False
         expected_authority = domain["decision_authority"].strip().casefold()
         claimed_authority = claiming_authority.strip().casefold()
         return bool(claimed_authority) and claimed_authority == expected_authority
