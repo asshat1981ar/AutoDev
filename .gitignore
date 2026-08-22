@@ -76,8 +76,8 @@ docs/workflow-blueprint.md
 wiki/
 memory/
 .cline/candidates/
-.cline/skills/*/
 !.cline/skills/.gitkeep
+!.cline/skills/superpowers/
 
 # AMCX-1 integration worktrees
 .worktrees/
