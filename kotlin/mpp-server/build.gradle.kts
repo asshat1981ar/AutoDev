@@ -30,7 +30,7 @@ application {
 }
 
 kotlin {
-  jvmToolchain(17)
+  jvmToolchain(rootProject.extra["jvm.target"].toString().toInt())
 }
 
 tasks.named<Test>("test") {

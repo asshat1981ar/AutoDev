@@ -22,6 +22,27 @@
 4. **JDK discovery.** Never set `org.gradle.java.home` to an unexpanded env var.
    Let Gradle auto-detect installed JDKs, export `JAVA_HOME`, or pass
    `-Dorg.gradle.java.installations.paths=...`.
+5. **Plugin-version resolution (in `settings.gradle.kts`).** `kotlin/settings.gradle.kts`'s
+   `pluginManagement.resolutionStrategy.eachPlugin { ... }` block reads
+   `kotlin.version`, `ktlint.version`, and `agp.version` from
+   `gradle.properties` via `providers.gradleProperty(...).getOrElse(...)` with
+   hard-coded fallbacks, then calls `useVersion(...)` for each plugin id. The
+   root `kotlin/build.gradle.kts` declares plugins without inline `version`
+   literals (`id("com.android.application") apply false`). The fallbacks
+   exist only so a freshly-cloned repo with a missing `gradle.properties`
+   still configures; under normal conditions the property is authoritative.
+   **Why not in `build.gradle.kts`?** The `plugins { }` block in a Gradle
+   Kotlin DSL build script is evaluated in an isolated compilation context
+   and cannot see top-level script bindings or `rootProject`; the
+   `pluginManagement` block in settings is the documented way to centralize
+   plugin versions.
+6. **JVM target propagation.** The root build writes the `jvm.target`
+   property into the root project's `extra` map
+   (`extra["jvm.target"] = providers.gradleProperty("jvm.target").getOrElse("17")`).
+   Module build scripts must read it as
+   `jvmToolchain(rootProject.extra["jvm.target"].toString().toInt())` so the
+   centralized `jvm.target=17` controls the toolchain. Hard-coding
+   `jvmToolchain(17)` in any module is a drift hazard and forbidden.
 
 ## Hard-won constraints (do not regress)
 
@@ -31,6 +52,8 @@
 | No Groovy/Kotlin expressions | `.properties` is plain java.util.Properties; blocks parse as garbage keys |
 | No duplicate keys | Silent last-wins; drift between intent and behavior |
 | `android.enableBuildCache` forbidden | Removed in AGP 7.0; fails configuration of android modules outright |
+| Hard-coded `version "X.Y.Z"` in `plugins { ... apply false }` (in `build.gradle.kts`) | Bypasses the centralized `kotlin.version`/`ktlint.version`/`agp.version` pins; resolution must happen in `settings.gradle.kts` `pluginManagement.resolutionStrategy.eachPlugin` |
+| Hard-coded `jvmToolchain(17)` in module build scripts | Bypasses the centralized `jvm.target` pin; the four MPP modules must read it from `rootProject.extra["jvm.target"]` |
 | Low-RAM hosts need `-Dorg.gradle.jvmargs=-Xmx900m --max-workers=2` | 3.5 GB hosts OOM-kill the default `-Xmx2g` build silently mid-configuration |
 
 ## Verification recipe

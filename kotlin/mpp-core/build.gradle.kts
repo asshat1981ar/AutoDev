@@ -6,7 +6,7 @@ plugins {
 }
 
 kotlin {
-  jvmToolchain(17)
+  jvmToolchain(rootProject.extra["jvm.target"].toString().toInt())
   jvm()
   iosX64()
   iosArm64()
