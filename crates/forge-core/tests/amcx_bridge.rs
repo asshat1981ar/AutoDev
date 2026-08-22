@@ -1,7 +1,7 @@
 use chrono::Utc;
 use forge_core::amcx_bridge::{
     project_context, project_evidence, project_plan, project_verification, AmcxBridgeError,
-    AmcxSourceIdentity,
+    AmcxSourceIdentity, VerifiedArtifactRef,
 };
 use forge_core::{
     ContextItem, ContextPack, Evidence, ExecPlan, ExecutionRecord, ExecutionStatus, Finding,
@@ -9,6 +9,7 @@ use forge_core::{
     VerificationResult, VerificationStatus, VerificationVerdict,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 fn source() -> AmcxSourceIdentity {
     AmcxSourceIdentity {
@@ -16,6 +17,15 @@ fn source() -> AmcxSourceIdentity {
         revision: "deadbeef".into(),
         worktree: ".worktrees/amcx-bridge".into(),
     }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn verified_artifact(reference: &str, bytes: &[u8]) -> VerifiedArtifactRef {
+    let digest = sha256_hex(bytes);
+    VerifiedArtifactRef::from_bytes(reference, bytes, &digest).unwrap()
 }
 
 fn evidence() -> Evidence {
@@ -64,6 +74,7 @@ fn plan_projection_retains_identity_without_mutating_plan() {
 
     let projected = project_plan(source(), &plan, &checkpoint).unwrap();
 
+    assert_eq!(projected.source, source());
     assert_eq!(projected.plan_id, "plan-1");
     assert_eq!(projected.checkpoint_id, "checkpoint-1");
     assert_eq!(projected.status, "running");
@@ -87,34 +98,49 @@ fn evidence_projection_requires_verified_fingerprint() {
 }
 
 #[test]
+fn verified_artifact_handle_binds_reference_digest_and_bytes() {
+    let bytes = br#"{"verdict":"pass"}"#;
+    let digest = sha256_hex(bytes);
+    let artifact = VerifiedArtifactRef::from_bytes("evidence:verification-report-1", bytes, &digest)
+        .unwrap();
+
+    assert_eq!(artifact.reference(), "evidence:verification-report-1");
+    assert_eq!(artifact.sha256(), digest);
+
+    assert_eq!(
+        VerifiedArtifactRef::from_bytes(
+            "evidence:verification-report-1",
+            bytes,
+            &"b".repeat(64),
+        ),
+        Err(AmcxBridgeError::InvalidArtifactDigest)
+    );
+    assert_eq!(
+        VerifiedArtifactRef::from_bytes("", bytes, &digest),
+        Err(AmcxBridgeError::MissingArtifactReference)
+    );
+}
+
+#[test]
 fn verification_projection_preserves_provenance_without_authority() {
     let report = verification_report();
-    let digest = "b".repeat(64);
-    let projected =
-        project_verification(source(), &report, "evidence:verification-report-1", &digest).unwrap();
+    let report_bytes = serde_json::to_vec(&report).unwrap();
+    let artifact = verified_artifact("evidence:verification-report-1", &report_bytes);
+    let projected = project_verification(source(), &report, &artifact).unwrap();
     assert_eq!(projected.verdict, "pass");
     assert_eq!(projected.checks, vec!["unit_tests"]);
     assert_eq!(projected.report_ref, "evidence:verification-report-1");
-    assert_eq!(projected.report_sha256, digest);
+    assert_eq!(projected.report_sha256, artifact.sha256());
     assert_eq!(projected.completed_at, report.completed_at.to_rfc3339());
 
     let json = serde_json::to_value(projected).unwrap();
     assert!(json.get("authorization").is_none());
     assert!(json.get("approval").is_none());
     assert!(json.get("approval_ref").is_none());
-
-    assert_eq!(
-        project_verification(source(), &report, "", &"b".repeat(64)),
-        Err(AmcxBridgeError::MissingArtifactReference)
-    );
-    assert_eq!(
-        project_verification(source(), &report, "evidence:verification-report-1", "bad"),
-        Err(AmcxBridgeError::InvalidArtifactDigest)
-    );
 }
 
 #[test]
-fn context_projection_is_reference_only_and_requires_sha256() {
+fn context_projection_is_reference_only_and_requires_bound_artifact() {
     let pack = ContextPack {
         query: "amcx bridge".into(),
         items: vec![ContextItem {
@@ -125,45 +151,40 @@ fn context_projection_is_reference_only_and_requires_sha256() {
         }],
         total_bytes: 40,
     };
-    let digest = "a".repeat(64);
+    let artifact_bytes = b"immutable context artifact bytes";
+    let artifact = verified_artifact("cas:context-1", artifact_bytes);
 
-    let projected = project_context(source(), &pack, "cas:context-1", &digest).unwrap();
+    let projected = project_context(source(), &pack, &artifact).unwrap();
     assert_eq!(projected.query, "amcx bridge");
     assert_eq!(projected.item_count, 1);
     assert_eq!(projected.total_bytes, 40);
     assert_eq!(projected.artifact_ref, "cas:context-1");
-    assert_eq!(projected.artifact_sha256, digest);
+    assert_eq!(projected.artifact_sha256, artifact.sha256());
 
     let serialized = serde_json::to_string(&projected).unwrap();
     assert!(!serialized.contains("sensitive source body"));
-
-    assert_eq!(
-        project_context(source(), &pack, "cas:context-1", "abc123"),
-        Err(AmcxBridgeError::InvalidArtifactDigest)
-    );
 }
 
 #[test]
 fn blank_source_identity_fails_closed() {
-    let mut blank = source();
-    blank.repository = "   ".into();
-    assert_eq!(
-        project_verification(
-            blank,
-            &verification_report(),
-            "evidence:verification-report-1",
-            &"b".repeat(64),
-        ),
-        Err(AmcxBridgeError::MissingIdentity)
-    );
+    let report = verification_report();
+    let report_bytes = serde_json::to_vec(&report).unwrap();
+    let report_artifact = verified_artifact("evidence:verification-report-1", &report_bytes);
 
-    let pack = ContextPack {
-        query: "x".into(),
-        items: vec![],
-        total_bytes: 0,
-    };
-    assert_eq!(
-        project_context(source(), &pack, "", &"a".repeat(64)),
-        Err(AmcxBridgeError::MissingArtifactReference)
-    );
+    for mutate in ["repository", "revision", "worktree"] {
+        let mut blank = source();
+        match mutate {
+            "repository" => blank.repository = "   ".into(),
+            "revision" => blank.revision = "   ".into(),
+            "worktree" => blank.worktree = "   ".into(),
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            project_verification(blank, &report, &report_artifact),
+            Err(AmcxBridgeError::MissingIdentity)
+        );
+    }
 }
+
+if __name__ == '__main__':
+    unittest.main()
