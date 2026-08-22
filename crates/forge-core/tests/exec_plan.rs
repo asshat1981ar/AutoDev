@@ -357,7 +357,31 @@ fn verified_orchestrator_state_rejects_persisted_corruption() {
     // Round-trip a known-good envelope through the deserializer; the
     // resulting state must validate.
     let mut envelopes = BTreeMap::new();
-    let json = serde_json::to_string(&ExecutionEnvelope::default()).unwrap();
+    let json = serde_json::json!({
+        "operation_id": "op-1",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "action": {
+            "id": "a",
+            "task_id": "task-1",
+            "agent_id": "ag",
+            "type": "read_file",
+            "reason": "test",
+            "risk": "low",
+            "payload": null,
+            "expected": null,
+        },
+        "policy": {
+            "risk": "low",
+            "requires_approval": false,
+        },
+        "lifecycle": {
+            "attempt": 1,
+            "max_attempts": 1,
+            "state": "planned",
+        },
+    })
+    .to_string();
     let restored: ExecutionEnvelope = serde_json::from_str(&json).unwrap();
     envelopes.insert("task-1".to_string(), restored);
     let state = VerifiedOrchestratorState { envelopes };
