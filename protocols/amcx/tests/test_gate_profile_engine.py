@@ -14,6 +14,7 @@ class TestGateProfileEngine(unittest.TestCase):
         self.gate = GateProfileEngine(
             profile_id="gate-skill-prompts-v1",
             subject_kind="SKILL",
+            candidate_producer_id="producer-agent",
             required_evidence_kinds=["UNIT_TEST_RECEIPT", "BENCHMARK_RESULT"],
             min_reviewer_quorum=2
         )
@@ -44,6 +45,11 @@ class TestGateProfileEngine(unittest.TestCase):
         # Promote to production
         self.gate.promote_to_production()
         self.assertEqual(self.gate.candidate_state, "PROMOTED")
+
+    def test_candidate_producer_cannot_approve_own_candidate(self):
+        with self.assertRaises(GateProfileError):
+            self.gate.add_reviewer_approval("producer-agent")
+        self.assertEqual(self.gate.reviewer_approvals, set())
 
     def test_duplicate_evidence_kind_does_not_satisfy_multi_kind_requirement(self):
         self.gate.submit_for_evaluation()
