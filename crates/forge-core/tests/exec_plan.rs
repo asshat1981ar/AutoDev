@@ -1,7 +1,7 @@
 use forge_core::{ExecPlan, ExecPlanError, ExecPlanStatus, PlanBudget, PlanMilestone};
 
 fn test_plan() -> ExecPlan {
-    let mut plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(2, 3));
+    let mut plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(2, 3)).unwrap();
     plan.add_milestone(PlanMilestone::new("m1", "First milestone"))
         .unwrap();
     plan
@@ -9,7 +9,7 @@ fn test_plan() -> ExecPlan {
 
 #[test]
 fn exec_plan_round_trips_without_authority_fields() {
-    let plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(3, 5));
+    let plan = ExecPlan::new("plan-1", "Ship durable planning", PlanBudget::new(3, 5)).unwrap();
     let json = serde_json::to_string(&plan).unwrap();
     assert!(!json.contains("authorization_grant"));
     assert!(!json.contains("approved"));
@@ -67,10 +67,12 @@ fn deserializes_the_legacy_exec_plan_wire_shape() {
 
 #[test]
 fn validation_rejects_invalid_identity_budget_and_milestones() {
-    let blank = ExecPlan::new(" ", "goal", PlanBudget::new(1, 1));
+    // Use `new_unchecked` to bypass the constructor's auto-validation
+    // so we can drive `validate()` directly with invalid input.
+    let blank = ExecPlan::new_unchecked(" ", "goal", PlanBudget::new(1, 1));
     assert_eq!(blank.validate(), Err(ExecPlanError::EmptyIdentityOrGoal));
 
-    let zero_budget = ExecPlan::new("p", "g", PlanBudget::new(0, 1));
+    let zero_budget = ExecPlan::new_unchecked("p", "g", PlanBudget::new(0, 1));
     assert_eq!(zero_budget.validate(), Err(ExecPlanError::InvalidBudget));
 
     let mut duplicate = test_plan();
@@ -109,7 +111,7 @@ fn interrupted_plan_cannot_replan_around_reconciliation() {
 
 #[test]
 fn replanning_is_bounded() {
-    let mut plan = ExecPlan::new("p", "g", PlanBudget::new(1, 2));
+    let mut plan = ExecPlan::new("p", "g", PlanBudget::new(1, 2)).unwrap();
     plan.consume_replan("first").unwrap();
     assert_eq!(
         plan.consume_replan("second"),
@@ -319,4 +321,45 @@ fn terminal_plans_reject_replanning_without_consuming_budget() {
         Err(ExecPlanError::InvalidTransition)
     );
     assert_eq!(cancelled.budget().replans_used(), 0);
+}
+
+#[test]
+fn new_rejects_blank_identity_or_zero_budget() {
+    // The validated constructor must refuse to mint a plan that would
+    // immediately fail `validate()`. Callers that need the pre-validation
+    // shape use `new_unchecked` explicitly.
+    assert!(matches!(
+        ExecPlan::new(" ", "goal", PlanBudget::new(1, 1)),
+        Err(ExecPlanError::EmptyIdentityOrGoal)
+    ));
+    assert!(matches!(
+        ExecPlan::new("p", "g", PlanBudget::new(0, 1)),
+        Err(ExecPlanError::InvalidBudget)
+    ));
+    assert!(ExecPlan::new("p", "g", PlanBudget::new(1, 1)).is_ok());
+}
+
+#[test]
+fn verified_orchestrator_state_rejects_persisted_corruption() {
+    use forge_core::envelope::ExecutionEnvelope;
+    use forge_core::verified_orchestrator::VerifiedOrchestratorState;
+    use std::collections::BTreeMap;
+
+    // A freshly-default state must validate cleanly.
+    assert!(VerifiedOrchestratorState::default().validate().is_ok());
+
+    // An empty envelope map must also validate (no envelopes to check).
+    let empty = VerifiedOrchestratorState {
+        envelopes: BTreeMap::new(),
+    };
+    assert!(empty.validate().is_ok());
+
+    // Round-trip a known-good envelope through the deserializer; the
+    // resulting state must validate.
+    let mut envelopes = BTreeMap::new();
+    let json = serde_json::to_string(&ExecutionEnvelope::default()).unwrap();
+    let restored: ExecutionEnvelope = serde_json::from_str(&json).unwrap();
+    envelopes.insert("task-1".to_string(), restored);
+    let state = VerifiedOrchestratorState { envelopes };
+    assert!(state.validate().is_ok());
 }

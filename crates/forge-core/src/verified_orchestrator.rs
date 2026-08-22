@@ -29,6 +29,22 @@ pub struct VerifiedOrchestratorState {
     pub envelopes: BTreeMap<String, ExecutionEnvelope>,
 }
 
+impl VerifiedOrchestratorState {
+    /// Validate every envelope in the state. Returns the id of the first
+    /// envelope that fails validation, or `Ok(())` if every envelope is
+    /// structurally consistent. Callers should invoke this after
+    /// deserialization to ensure a persisted state cannot smuggle an
+    /// invalid envelope into the runtime.
+    pub fn validate(&self) -> Result<(), String> {
+        for (task_id, envelope) in &self.envelopes {
+            envelope
+                .validate()
+                .map_err(|err| format!("task {task_id}: {err}"))?;
+        }
+        Ok(())
+    }
+}
+
 /// Errors raised while advancing the verifier-driven task loop.
 #[derive(Debug, thiserror::Error)]
 pub enum VerifiedOrchestratorError {
