@@ -106,9 +106,13 @@ fn smoke_command(args: &[String]) -> Result<i32, CliError> {
         });
     }
     results.sort_by(|left, right| left.task_id.cmp(&right.task_id));
-    let healthy = results
-        .iter()
-        .all(|result| !result.base_passed && result.reference_passed);
+    // An empty corpus must not be silently healthy. Without this check, a
+    // contributor (or a hostile PR) who empties fixtures/ would still
+    // exit 0 because the vacuous `all` over an empty slice is `true`.
+    let healthy = !results.is_empty()
+        && results
+            .iter()
+            .all(|result| !result.base_passed && result.reference_passed);
     print_json(&SmokeSummary { results })?;
     Ok(if healthy { 0 } else { 1 })
 }

@@ -52,6 +52,7 @@ impl EvidenceClass {
 
 /// A connector-neutral architecture finding with provenance and invalidation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceRecord {
     pub id: String,
     pub objective_id: String,
@@ -164,6 +165,7 @@ impl DecisionMaturity {
 
 /// An evidence-linked architecture decision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureDecision {
     pub id: String,
     pub objective_id: String,
@@ -302,6 +304,7 @@ pub struct CriterionScore {
 
 /// One candidate architecture with deterministic weighted scoring.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureOption {
     pub name: String,
     pub description: String,
@@ -331,6 +334,7 @@ pub fn rank_options(options: &[ArchitectureOption]) -> Vec<ArchitectureOption> {
 
 /// Complete deterministic input for a W1 Markdown report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureReportInput {
     pub objective_id: String,
     pub title: String,
