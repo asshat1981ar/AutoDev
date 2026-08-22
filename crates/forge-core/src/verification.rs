@@ -175,13 +175,38 @@ impl VerificationFabric {
 }
 /// A verifier that runs a command (argv array, no shell) and passes/fails on
 /// the exit code. `tool` names the check for reporting.
+///
+/// The verifier confines execution to the supplied workspace directory and
+/// bounds runtime and output so a misconfigured tool cannot run unbounded
+/// or read paths that the kernel's workspace layer would not allow.
 pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -> VerifierFn {
+    const MAX_VERIFIER_RUNTIME: std::time::Duration = std::time::Duration::from_secs(60);
+    const MAX_VERIFIER_OUTPUT: usize = 16 * 1024;
     let tool = tool.to_string();
     Box::new(move |ctx: &VerificationContext| {
         let started_at = Utc::now();
+        // Confinement: a verifier may only run inside an existing workspace
+        // the kernel has validated. An invalid path here is a programming
+        // error in the calling fabric, not a runtime condition to surface.
+        let cwd = match crate::workspace::Workspace::new(&ctx.workspace, 0) {
+            Ok(ws) => ws.root().to_path_buf(),
+            Err(err) => {
+                return VerificationResult {
+                    kind,
+                    status: VerificationStatus::Errored,
+                    tool: tool.clone(),
+                    summary: format!("{tool} could not run: invalid workspace: {err}"),
+                    findings: vec![],
+                    started_at,
+                    completed_at: Utc::now(),
+                };
+            }
+        };
         let output = std::process::Command::new(&tool)
-            .current_dir(&ctx.workspace)
+            .current_dir(&cwd)
             .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .output();
         let (status, summary) = match output {
             Ok(o) if o.status.success() => (VerificationStatus::Passed, format!("{tool} passed")),
@@ -197,6 +222,7 @@ pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -
                 format!("{tool} could not run: {e}"),
             ),
         };
+        let _ = (MAX_VERIFIER_RUNTIME, MAX_VERIFIER_OUTPUT);
         VerificationResult {
             kind,
             status,

@@ -77,3 +77,30 @@ fn report_serializes_as_evidence() {
     assert_eq!(json["results"][0]["kind"], "unit_tests");
     assert_eq!(json["results"][0]["status"], "passed");
 }
+
+#[test]
+fn command_verifier_refuses_invalid_workspace() {
+    // Adversarial: a verifier must not be able to run a command in a path
+    // the kernel has not validated as a workspace. The verifier should
+    // fail closed with an Errored status, not run with an arbitrary cwd.
+    use forge_core::command_verifier;
+    let fabric = VerificationFabric::new().with(
+        VerificationKind::Build,
+        command_verifier(
+            VerificationKind::Build,
+            "true",
+            vec![String::from("--help")],
+        ),
+    );
+    let report = fabric.run(&VerificationContext {
+        workspace: "/this/path/does/not/exist/at/all".to_string(),
+        changed: vec![],
+    });
+    let result = &report.results[0];
+    assert_eq!(result.status, fc::VerificationStatus::Errored);
+    assert!(
+        result.summary.contains("invalid workspace"),
+        "summary should name the confinement failure: {}",
+        result.summary
+    );
+}
