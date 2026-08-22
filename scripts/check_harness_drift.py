@@ -342,6 +342,32 @@ def check_scripts_syntax(errors: list[str], verbose: bool) -> None:
                 print(f"[ok] Node syntax: {termux.relative_to(ROOT)}")
 
 
+def check_config_parity(errors: list[str], verbose: bool) -> None:
+    """Copies of centralized config files must stay identical to their source.
+
+    Gradle reads kotlin/gradle.properties from the project root; the
+    centralized file in config/kotlin/ is the single source of truth (see
+    docs/architecture/KOTLIN_CONFIG_INTEGRATION.md). Silent divergence between
+    the two is exactly how the $JDK_17_HOME / enableBuildCache defects
+    propagated in cycle 2026-08-21-kotlin-mpp - fail closed instead.
+    """
+    parity_pairs = [
+        (ROOT / "config/kotlin/gradle.properties", ROOT / "kotlin/gradle.properties"),
+    ]
+    for source, consumer in parity_pairs:
+        if not source.is_file() or not consumer.is_file():
+            continue  # optional pair; missing files are covered elsewhere
+        if _read(source) != _read(consumer):
+            errors.append(
+                "Config parity drift: "
+                f"{consumer.relative_to(ROOT)} differs from "
+                f"{source.relative_to(ROOT)} - regenerate the copy from the "
+                "centralized source (see docs/architecture/KOTLIN_CONFIG_INTEGRATION.md)"
+            )
+        elif verbose:
+            print(f"[ok] Config parity: {consumer.relative_to(ROOT)} matches source")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check harness drift for AutoDev")
     parser.add_argument("--verbose", action="store_true", help="print passing checks")
@@ -360,6 +386,7 @@ def main() -> int:
     check_instructions(errors, args.verbose)
     check_failure_memory(errors, args.verbose)
     check_kotlin_purity(errors, args.verbose)
+    check_config_parity(errors, args.verbose)
     check_cli_authority(errors, args.verbose)
     check_reproducible_script(errors, args.verbose)
     check_scripts_syntax(errors, args.verbose)
