@@ -1208,11 +1208,28 @@ class {class_name}:
         data_str = json.dumps(data, sort_keys=True)
         return hashlib.sha256(data_str.encode('utf-8')).hexdigest()
     
+    def _bound_handler_class(self):
+        """Return a request-handler class bound to this server instance.
+
+        HTTPServer requires a handler *class*: it instantiates the class once
+        per request with (request, client_address, server). Passing an
+        instance instead raises TypeError before the server can serve.
+        """
+        engram = self
+        parent = self._MCPHandler
+
+        class _BoundMCPHandler(parent):
+            def __init__(self, request, client_address, server):
+                self.engram = engram
+                BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+
+        return _BoundMCPHandler
+
     def start_server(self, host="127.0.0.1", port=8080):
         """Start MCP HTTP server."""
         self.host = host
         self.port = port
-        self._server = HTTPServer((host, port), self._MCPHandler(self))
+        self._server = HTTPServer((host, port), self._bound_handler_class())
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
             daemon=True
@@ -1404,6 +1421,16 @@ class Test{class_name}(unittest.TestCase):
         results = engram.query(memory_type="episode", limit=3)
         self.assertEqual(len(results), 3)
     
+    def test_start_server_binds_and_serves(self):
+        """start_server must bind HTTPServer with a handler class, not an instance."""
+        engram = {class_name}(db_path=self.db_path)
+        engram.start_server(host="127.0.0.1", port=0)
+        try:
+            self.assertIsNotNone(engram._server)
+            self.assertTrue(engram._server_thread.is_alive())
+        finally:
+            engram.stop_server()
+
     def test_compute_digest(self):
         """Should compute SHA-256 digest."""
         engram = {class_name}(db_path=self.db_path)
