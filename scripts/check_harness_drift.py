@@ -446,6 +446,36 @@ def check_amcx1(errors: list[str], verbose: bool) -> None:
             print(f"[ok] AMCX-1: {ecm_state.relative_to(ROOT)} - {len(entries)} entries")
 
 
+def check_workspace_members(errors: list[str], verbose: bool) -> None:
+    """AGENTS.md must document every Rust workspace crate member.
+
+    Fails closed when crates/Cargo.toml is unreadable or has no parseable
+    members array, so a restructured workspace cannot silently escape docs.
+    """
+    cargo = ROOT / "crates/Cargo.toml"
+    if not cargo.is_file():
+        errors.append("Harness drift: crates/Cargo.toml is missing")
+        return
+    text = _read(cargo)
+    match = re.search(r"^members\s*=\s*\[(.*?)\]", text, re.S | re.M)
+    if not match:
+        errors.append("Harness drift: crates/Cargo.toml has no parseable workspace.members array")
+        return
+    members = re.findall(r'"([^"]+)"', match.group(1))
+    agents_text = _read(AGENTS)
+    for member in members:
+        name = member.split("/")[0].strip()
+        if not name:
+            continue
+        if f"`{name}`" not in agents_text:
+            errors.append(
+                f"Harness drift: Rust workspace member '{member}' is not documented "
+                "in AGENTS.md (section 4, Rust bullet)"
+            )
+        elif verbose:
+            print(f"[ok] workspace member documented in AGENTS.md: {name}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check harness drift for AutoDev")
     parser.add_argument("--verbose", action="store_true", help="print passing checks")
@@ -465,6 +495,7 @@ def main() -> int:
     check_plans_contract(errors, args.verbose)
     check_referenced_files_exist(errors, args.verbose)
     check_forbidden_files(errors, args.verbose)
+    check_workspace_members(errors, args.verbose)
     check_instructions(errors, args.verbose)
     check_failure_memory(errors, args.verbose)
     check_kotlin_purity(errors, args.verbose)

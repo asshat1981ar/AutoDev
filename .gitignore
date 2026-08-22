@@ -91,3 +91,21 @@ memory/
 .vibe/
 skills/*/.vibe/
 
+
+# Ruflo local secrets and runtime data
+.env.local
+.env.*.local
+.claude-flow/
+.swarm/
+
+# Ruflo vector/swarm runtime databases
+ruvector.db
+ruvector.db-*
+
+# Local agent-tooling instruction/state files (Ruflo / Claude Code / MCP)
+# Never versioned: CLAUDE.md conflicts with AGENTS.md harness law (AGENTS.md §8),
+# .mcp.json contains machine-specific absolute paths.
+.agents/
+.claude/
+.mcp.json
+CLAUDE.md
