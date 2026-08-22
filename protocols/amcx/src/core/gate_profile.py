@@ -21,7 +21,7 @@ class GateProfileEngine:
         self.required_evidence_kinds = required_evidence_kinds
         self.min_reviewer_quorum = min_reviewer_quorum
         self.candidate_state = "DRAFT"
-        self.evidence_receipts: List[str] = []
+        self.evidence_receipts: Dict[str, List[str]] = {}
         self.reviewer_approvals: Set[str] = set()
 
     def submit_for_evaluation(self) -> None:
@@ -32,7 +32,7 @@ class GateProfileEngine:
     def attach_evidence(self, evidence_kind: str, receipt_id: str) -> None:
         if evidence_kind not in self.required_evidence_kinds:
             raise GateProfileError(f"Evidence kind '{evidence_kind}' not required by profile.")
-        self.evidence_receipts.append(receipt_id)
+        self.evidence_receipts.setdefault(evidence_kind, []).append(receipt_id)
 
     def add_reviewer_approval(self, reviewer_id: str) -> None:
         self.reviewer_approvals.add(reviewer_id)
@@ -44,8 +44,15 @@ class GateProfileEngine:
             raise GateProfileError(
                 f"Quorum failure: {len(self.reviewer_approvals)} approvals, minimum {self.min_reviewer_quorum} required."
             )
-        if len(self.evidence_receipts) < len(self.required_evidence_kinds):
-            raise GateProfileError("Missing required evidence receipts.")
+        missing_kinds = [
+            evidence_kind
+            for evidence_kind in self.required_evidence_kinds
+            if not self.evidence_receipts.get(evidence_kind)
+        ]
+        if missing_kinds:
+            raise GateProfileError(
+                f"Missing required evidence receipts for: {', '.join(missing_kinds)}."
+            )
         self.candidate_state = "CANARY"
 
     def promote_to_production(self) -> None:
