@@ -13,16 +13,24 @@ class GateProfileEngine:
         self,
         profile_id: str,
         subject_kind: str,
+        candidate_producer_id: str,
         required_evidence_kinds: List[str],
         min_reviewer_quorum: int = 2
     ):
+        if not isinstance(candidate_producer_id, str) or not candidate_producer_id.strip():
+            raise GateProfileError("candidate_producer_id must be a non-blank identity")
         self.profile_id = profile_id
         self.subject_kind = subject_kind
+        self._candidate_producer_id = candidate_producer_id
         self.required_evidence_kinds = required_evidence_kinds
         self.min_reviewer_quorum = min_reviewer_quorum
         self.candidate_state = "DRAFT"
         self.evidence_receipts: Dict[str, List[str]] = {}
         self.reviewer_approvals: Set[str] = set()
+
+    @property
+    def candidate_producer_id(self) -> str:
+        return self._candidate_producer_id
 
     def submit_for_evaluation(self) -> None:
         if self.candidate_state != "DRAFT":
@@ -35,6 +43,8 @@ class GateProfileEngine:
         self.evidence_receipts.setdefault(evidence_kind, []).append(receipt_id)
 
     def add_reviewer_approval(self, reviewer_id: str) -> None:
+        if reviewer_id == self._candidate_producer_id:
+            raise GateProfileError("Candidate producer cannot approve their own candidate")
         self.reviewer_approvals.add(reviewer_id)
 
     def promote_to_canary(self) -> None:
