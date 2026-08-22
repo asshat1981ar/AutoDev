@@ -57,5 +57,41 @@ class TestTrustBoundariesADR004(unittest.TestCase):
             )
         )
 
+    def test_authority_validation_rejects_non_string_claims(self):
+        for malformed_claim in (None, 11, True, 1.0, object()):
+            with self.subTest(claim=malformed_claim):
+                self.assertFalse(
+                    DomainOwnershipMap.validate_action_authority(
+                        11,
+                        malformed_claim,
+                    )
+                )
+
+    def test_domain_lookup_rejects_non_integer_and_out_of_range_ids(self):
+        for malformed_id in (0, 19, -1, True, 1.0, "1", None):
+            with self.subTest(domain_id=malformed_id):
+                with self.assertRaises(TrustBoundaryViolation):
+                    DomainOwnershipMap.get_domain(malformed_id)
+
+    def test_domain_registry_and_returned_records_are_immutable(self):
+        domain = DomainOwnershipMap.get_domain(11)
+        canonical_authority = domain["decision_authority"]
+
+        with self.assertRaises(TypeError):
+            domain["decision_authority"] = "attacker-controlled authority"
+
+        with self.assertRaises(TypeError):
+            DomainOwnershipMap.DOMAINS[11] = {
+                "name": "tampered",
+                "canonical_history": "tampered",
+                "decision_authority": "tampered",
+                "execution_materialization": "tampered",
+            }
+
+        self.assertEqual(
+            DomainOwnershipMap.get_domain(11)["decision_authority"],
+            canonical_authority,
+        )
+
 if __name__ == '__main__':
     unittest.main()
