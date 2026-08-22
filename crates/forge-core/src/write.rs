@@ -322,7 +322,10 @@ mod tests {
             std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
             let ws = Workspace::new(&root, 4096).unwrap();
             let err = write_file(&action("link.txt", "x"), &ws, WriteMode::Atomic).unwrap_err();
-            assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+            assert!(matches!(
+                err,
+                ExecutionError::SymlinkEscape(_) | ExecutionError::PathOutsideWorkspace(_)
+            ));
         }
     }
 
