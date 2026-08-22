@@ -45,6 +45,32 @@ class TestGateProfileEngine(unittest.TestCase):
         self.gate.promote_to_production()
         self.assertEqual(self.gate.candidate_state, "PROMOTED")
 
+    def test_duplicate_evidence_kind_does_not_satisfy_multi_kind_requirement(self):
+        self.gate.submit_for_evaluation()
+        self.gate.attach_evidence("UNIT_TEST_RECEIPT", "rcpt-001")
+        self.gate.attach_evidence("UNIT_TEST_RECEIPT", "rcpt-002")
+        self.gate.add_reviewer_approval("reviewer-alice")
+        self.gate.add_reviewer_approval("reviewer-bob")
+
+        with self.assertRaises(GateProfileError):
+            self.gate.promote_to_canary()
+
+        self.gate.attach_evidence("BENCHMARK_RESULT", "rcpt-003")
+        self.gate.promote_to_canary()
+        self.assertEqual(self.gate.candidate_state, "CANARY")
+
+    def test_unrequired_evidence_kind_is_rejected(self):
+        with self.assertRaises(GateProfileError):
+            self.gate.attach_evidence("VIBE_CHECK", "rcpt-999")
+
+    def test_cannot_skip_canary_stage(self):
+        with self.assertRaises(GateProfileError):
+            self.gate.promote_to_production()
+
+        self.gate.submit_for_evaluation()
+        with self.assertRaises(GateProfileError):
+            self.gate.promote_to_production()
+
     def test_rollback(self):
         self.gate.submit_for_evaluation()
         self.gate.rollback("Degradation detected in benchmark")
