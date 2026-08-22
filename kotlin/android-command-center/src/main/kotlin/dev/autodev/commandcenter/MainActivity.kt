@@ -58,7 +58,6 @@ data class CommandCenterState(
   val connected: Boolean = false,
   val status: String = "Disconnected",
   val events: List<String> = emptyList(),
-  val pendingActions: List<PendingAction> = emptyList(),
 )
 
 class CommandCenterViewModel : ViewModel() {
@@ -134,9 +133,10 @@ class CommandCenterViewModel : ViewModel() {
         actionType = actionType,
         payload = payload,
       )
+    // Single source of truth: pendingActionsFlow is the only mutable store
+    // for queued actions. The UI derives its view from this flow; do not
+    // mirror it onto mutableState to avoid drift.
     pendingActionsFlow.update { it + pending }
-    mutableState.update { it.copy(pendingActions = pendingActionsFlow.value) }
-    // If already connected, attempt immediate replay; otherwise keep queued for later
     if (mutableState.value.connected) {
       replayPending(mutableState.value.endpoint)
     }
@@ -165,10 +165,11 @@ class CommandCenterViewModel : ViewModel() {
           }
         if (!success) remaining.add(action)
       }
+      // Single source of truth: update the flow first, then mirror the
+      // derived status to mutableState so the two cannot disagree.
       pendingActionsFlow.value = remaining
       mutableState.update {
         it.copy(
-          pendingActions = remaining,
           status =
             if (remaining.isEmpty()) {
               "Replayed ${pending.size} queued"
@@ -215,6 +216,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel()) {
   val state by viewModel.state.collectAsState()
+  // The pending-action list has its own single source of truth in
+  // `pendingActionsState`. Reading it here ensures the UI never observes
+  // a stale mirror of the queue.
+  val pending by viewModel.pendingActionsState.collectAsState()
   var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
 
   Column(
@@ -247,9 +252,9 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
       Column(modifier = Modifier.padding(12.dp)) {
         Text("Status", style = MaterialTheme.typography.labelLarge)
         Text(state.status)
-        if (state.pendingActions.isNotEmpty()) {
+        if (pending.isNotEmpty()) {
           Text(
-            "${state.pendingActions.size} queued (offline)",
+            "${pending.size} queued (offline)",
             style = MaterialTheme.typography.labelSmall,
           )
         }
@@ -257,7 +262,7 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
     }
 
     // Offline queue — production hardening G5: survives SSE drops, replays on reconnect
-    if (state.pendingActions.isNotEmpty()) {
+    if (pending.isNotEmpty()) {
       Card(modifier = Modifier.fillMaxWidth()) {
         Column(
           modifier = Modifier.padding(12.dp),
@@ -270,19 +275,19 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
             Text("Queued actions", style = MaterialTheme.typography.titleSmall)
             Button(onClick = {
               viewModel.replayPending(state.endpoint)
-            }, enabled = state.pendingActions.isNotEmpty()) {
-              Text("Replay ${state.pendingActions.size}")
+            }, enabled = pending.isNotEmpty()) {
+              Text("Replay ${pending.size}")
             }
           }
-          state.pendingActions.forEach { pending ->
+          pending.forEach { queued ->
             Card(modifier = Modifier.fillMaxWidth()) {
               Column(modifier = Modifier.padding(8.dp)) {
                 Text(
-                  pending.actionType,
+                  queued.actionType,
                   style = MaterialTheme.typography.labelMedium,
                 )
                 Text(
-                  pending.payload.take(120),
+                  queued.payload.take(120),
                   style = MaterialTheme.typography.bodySmall,
                 )
               }
