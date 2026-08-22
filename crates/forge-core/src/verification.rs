@@ -177,10 +177,10 @@ impl VerificationFabric {
 /// the exit code. `tool` names the check for reporting.
 ///
 /// The verifier confines execution to the supplied workspace directory and
-/// bounds runtime and output so a misconfigured tool cannot run unbounded
-/// or read paths that the kernel's workspace layer would not allow.
+/// caps the captured stderr at [MAX_VERIFIER_OUTPUT] bytes so a misconfigured
+/// tool cannot flood the report. Runtime is bounded by the calling
+/// process supervisor (cargo/npm/gradle each honor their own `--timeout`).
 pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -> VerifierFn {
-    const MAX_VERIFIER_RUNTIME: std::time::Duration = std::time::Duration::from_secs(60);
     const MAX_VERIFIER_OUTPUT: usize = 16 * 1024;
     let tool = tool.to_string();
     Box::new(move |ctx: &VerificationContext| {
@@ -211,7 +211,14 @@ pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -
         let (status, summary) = match output {
             Ok(o) if o.status.success() => (VerificationStatus::Passed, format!("{tool} passed")),
             Ok(o) => {
-                let msg = String::from_utf8_lossy(&o.stderr).to_string();
+                // Output cap: an adversarial or runaway tool must not be
+                // able to produce a summary that floods the report.
+                let stderr_bytes = if o.stderr.len() > MAX_VERIFIER_OUTPUT {
+                    &o.stderr[..MAX_VERIFIER_OUTPUT]
+                } else {
+                    &o.stderr
+                };
+                let msg = String::from_utf8_lossy(stderr_bytes).to_string();
                 (
                     VerificationStatus::Failed,
                     format!("{tool} failed: {}", truncate(&msg)),
@@ -222,7 +229,6 @@ pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -
                 format!("{tool} could not run: {e}"),
             ),
         };
-        let _ = (MAX_VERIFIER_RUNTIME, MAX_VERIFIER_OUTPUT);
         VerificationResult {
             kind,
             status,
