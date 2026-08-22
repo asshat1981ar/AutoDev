@@ -74,13 +74,13 @@ class SseStreamingRouterTest {
       sseRoutes(SseStreamingRouter(flowOf("ready")))
     }
     val response = client.post("/api/v1/objectives") {
-      // Use a JsonObject as the body so the client's ContentNegotiation
-      // plugin has a concrete type to serialize (avoiding
-      // AbstractPolymorphicSerializer.kt:102 on a raw String). The
-      // production server uses call.receiveText() and does not inspect
-      // the request content type, so any non-empty body that is not
-      // oversized exercises the same accept path.
-      contentType(ContentType.Application.Json)
+      // Use a JsonObject as the body. Do not call contentType() explicitly:
+      // with install(ContentNegotiation) { json() } on the client, the
+      // JSON plugin sets the Content-Type header automatically based on
+      // the body's concrete type. Calling contentType() separately can
+      // produce an HttpSend IllegalStateException (Content-Length/body
+      // length mismatch). The production server uses call.receiveText()
+      // and accepts any non-empty body that is not oversized.
       setBody(JsonObject(mapOf("description" to JsonPrimitive("hello"))))
     }
     assertEquals(HttpStatusCode.Accepted, response.status)
