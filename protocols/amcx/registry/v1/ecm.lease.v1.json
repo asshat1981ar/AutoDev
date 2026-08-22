@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECM Role Lease Schema v1",
+  "type": "object",
+  "required": [
+    "lease_id",
+    "task_id",
+    "role",
+    "holder_agent_id",
+    "expires_at",
+    "granted_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "lease_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "holder_agent_id": {
+      "type": "string"
+    },
+    "granted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

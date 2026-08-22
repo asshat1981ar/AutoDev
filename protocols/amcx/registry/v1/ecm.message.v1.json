@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECM Inter-Agent Message Schema v1",
+  "type": "object",
+  "required": [
+    "message_id",
+    "task_id",
+    "sender_role",
+    "message_kind",
+    "content",
+    "sent_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "message_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "sender_role": {
+      "type": "string",
+      "enum": [
+        "SUPERVISOR",
+        "PLANNER",
+        "ORCHESTRATOR",
+        "CODER",
+        "REVIEWER",
+        "RESEARCHER",
+        "PEER_REVIEWER",
+        "META_AGENT"
+      ]
+    },
+    "message_kind": {
+      "type": "string",
+      "enum": [
+        "PROPOSAL",
+        "CHALLENGE",
+        "REVIEW_DECISION",
+        "SPEC_CORRECTION",
+        "HEARTBEAT"
+      ]
+    },
+    "content": {
+      "type": "string"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
