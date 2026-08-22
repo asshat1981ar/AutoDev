@@ -71,7 +71,7 @@ def _get_git_branch() -> str:
                            capture_output=True,text=True,timeout=5)
         if r.returncode == 0:
             return r.stdout.strip()
-    except: pass
+    except Exception: pass
     return "unknown"
 
 
@@ -81,7 +81,7 @@ def _get_git_revision() -> str:
                            capture_output=True,text=True,timeout=5)
         if r.returncode == 0:
             return r.stdout.strip()[:12]
-    except: pass
+    except Exception: pass
     return "unknown"
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -211,7 +211,7 @@ def cmd_list(args: argparse.Namespace) -> int:
                 seen = datetime.fromisoformat(last_seen)
                 if (now - seen).total_seconds() > HEARTBEAT_INTERVAL * 3:
                     status = "stale"
-            except: pass
+            except Exception: pass
         print(f"{wid:25} {status:10} {task:30} {last_seen:25} {branch:20}")
     return 0
 
@@ -232,7 +232,7 @@ def cmd_reserve(args: argparse.Namespace) -> int:
     if reservations_path.exists():
         try:
             reservations = json.loads(reservations_path.read_text(encoding="utf-8"))
-        except: reservations = {}
+        except Exception: reservations = {}
     else:
         reservations = {}
 
@@ -259,7 +259,7 @@ def cmd_check_collisions(args: argparse.Namespace) -> int:
         print("No reservations found."); return 0
     try:
         reservations = json.loads(reservations_path.read_text(encoding="utf-8"))
-    except: print("Corrupt reservations.", file=sys.stderr); return 1
+    except Exception: print("Corrupt reservations.", file=sys.stderr); return 1
 
     collisions = []
     for wid_a, paths_a in reservations.items():
@@ -316,7 +316,7 @@ def cmd_pull_evidence(args: argparse.Namespace) -> int:
     for f in files:
         try:
             content = json.loads(f.read_text(encoding="utf-8"))
-        except: continue
+        except Exception: continue
         eid = content.get("evidence_id", content.get("id", f.stem))
         result = content.get("result", "?")
         src = content.get("_wex_source", f.name.split("--")[0] if "--" in f.name else "?")

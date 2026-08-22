@@ -93,7 +93,9 @@ Integrate centralized configuration architecture (`config/`) with Kotlin Multipl
 **false blocker**: JDK 17 Corretto is installed at
 `/opt/amazon-corretto-17.0.20.10.1-linux-aarch64`, just not on PATH. The copied
 properties also inherited invalid lines (`$JDK_17_HOME`, Groovy block) — fixed at
-source in 74765df; propagation to `kotlin/` pending.
+source in 74765df; propagation to `kotlin/` completed in 8dd0b6d
+(`diff config/kotlin/gradle.properties kotlin/gradle.properties` is byte-identical
+and parity is now enforced fail-closed by `scripts/check_harness_drift.py`).
 
 - [x] Update `mpp-core/build.gradle.kts` to reference `config/kotlin/gradle.properties` *(via kotlin/gradle.properties copy — mechanism review pending)*
 - [x] Verify ktlint uses `config/kotlin/ktlint/.ktlint.yaml` *(symlink in place — portability review pending)*
