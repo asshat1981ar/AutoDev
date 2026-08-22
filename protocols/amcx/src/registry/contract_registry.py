@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import hashlib
@@ -44,7 +45,7 @@ class NeutralContractRegistry:
     def get_schema(self, schema_name: str) -> Dict[str, Any]:
         if schema_name not in self._schemas:
             raise ContractRegistryError(f"Unknown or unactivated schema: {schema_name}. Fail-closed.")
-        return self._schemas[schema_name]
+        return copy.deepcopy(self._schemas[schema_name])
 
     def list_active_schemas(self) -> Dict[str, str]:
         return {k: v["sha256"] for k, v in self._manifest.get("schemas", {}).items()}
