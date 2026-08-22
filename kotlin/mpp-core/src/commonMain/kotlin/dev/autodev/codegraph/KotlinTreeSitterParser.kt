@@ -53,11 +53,6 @@ public class KotlinTreeSitterParser {
 
       val (symbol, consumed) = tryExtractDeclaration(tokens, i, scopeStack)
       if (symbol != null && consumed > 0) {
-        scopeStack.forEach {
-          builder.pushScope(it)
-          builder.popScope()
-        }
-        scopeStack.forEach { builder.pushScope(it) }
         builder.add(symbol)
         // If the declaration opens a body, its name becomes a scope.
         if (symbol.kind in scopeOpeners) {
@@ -80,27 +75,60 @@ public class KotlinTreeSitterParser {
     val tok = tokens.getOrNull(i) ?: return null to 0
     val keyword = tok.keywordDeclaration() ?: return null to 0
 
-    // Find the identifier that follows the declaration keyword, skipping
-    // modifiers, annotations, type parameters and `<T>`-style generics.
-    var j = i + 1
+    // Find the identifier that follows the declaration keyword. The scan
+    // must only cross tokens that are legitimate decoration (annotations,
+    // visibility/sync modifiers, generics) and must stop at anything that
+    // is part of the body or a new syntactic construct. Otherwise, an
+    // `object` declared as `companion object { val x = 1 }` would walk past
+    // the opening brace and mis-classify `x` as a class named "x".
+    val j = nextIdentifierAfterDeclaration(tokens, i + 1) ?: return null to 0
+    val nameTok = tokens[j]
+    val span = SourceSpan(start = nameTok.start, end = nameTok.start + nameTok.text.length)
+    val enclosing =
+      if (scopeStack.isEmpty()) null else scopeStack.joinToString(".")
+    val symbol =
+      AstSymbol(
+        name = nameTok.text,
+        kind = keyword.symbolKind,
+        span = span,
+        enclosing = enclosing,
+      )
+    return symbol to (j - i + 1)
+  }
+
+  /**
+   * Return the index of the first Identifier token that is a legitimate
+   * declaration name following `from`, skipping modifier keywords,
+   * annotations, type parameters, and the `companion` keyword that
+   * commonly appears before `object` / `val` / `var`. Returns null when
+   * the declaration is anonymous or the tokens do not name one.
+   */
+  private fun nextIdentifierAfterDeclaration(
+    tokens: List<Token>,
+    from: Int,
+  ): Int? {
+    val modifierKeywords: Set<String> =
+      setOf(
+        "public", "private", "protected", "internal", "open", "abstract",
+        "final", "sealed", "data", "enum", "annotation", "override",
+        "lateinit", "suspend", "inline", "noinline", "crossinline",
+        "expect", "actual", "external", "infix", "operator", "tailrec",
+        "vararg", "const", "companion",
+      )
+    var j = from
     while (j < tokens.size) {
       val t = tokens[j]
-      if (t.kind == TokenKind.Identifier) {
-        val span = SourceSpan(start = t.start, end = t.start + t.text.length)
-        val enclosing =
-          if (scopeStack.isEmpty()) null else scopeStack.joinToString(".")
-        val symbol =
-          AstSymbol(
-            name = t.text,
-            kind = keyword.symbolKind,
-            span = span,
-            enclosing = enclosing,
-          )
-        return symbol to (j - i + 1)
+      when {
+        t.kind == TokenKind.Identifier -> return j
+        t.kind == TokenKind.Keyword && t.text in modifierKeywords -> j += 1
+        // Brace / paren / equals / comma / semicolon / other punctuation
+        // ends the name search: we are now inside the declaration's body
+        // or a different syntactic construct.
+        t.kind == TokenKind.LBrace || t.kind == TokenKind.RBrace -> return null
+        else -> return null
       }
-      j += 1
     }
-    return null to 0
+    return null
   }
 
   private enum class KeywordDeclaration(val symbolKind: String) {

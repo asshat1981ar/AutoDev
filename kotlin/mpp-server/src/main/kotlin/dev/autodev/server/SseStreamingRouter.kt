@@ -52,8 +52,19 @@ public class SseStreamingRouter(
                 call.respondTextWriter(
                     contentType = ContentType.Text.EventStream.withCharset(Charsets.UTF_8),
                 ) {
+                    // SSE handshake frames: id and retry hint help clients
+                    // reconnect from the last delivered event id.
+                    write("retry: 5000\n")
+                    write("id: 0\n\n")
+                    var seq = 0
                     eventFlow.collect { event ->
+                        seq += 1
+                        write("id: $seq\n")
                         write("data: $event\n\n")
+                        flush()
+                        // Keepalive comment so idle proxies do not close the
+                        // connection while the upstream flow is quiet.
+                        write(": keepalive\n\n")
                         flush()
                     }
                 }

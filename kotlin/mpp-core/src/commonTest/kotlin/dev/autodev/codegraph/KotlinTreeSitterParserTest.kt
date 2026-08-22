@@ -100,4 +100,45 @@ class KotlinTreeSitterParserTest {
     val graph = parser.parse(src)
     assertNull(graph.symbolAt(1000))
   }
+
+  @Test
+  fun companion_object_body_does_not_produce_phantom_class_symbol() {
+    // Regression: previously, parsing `companion object { val x = 1 }`
+    // emitted a class symbol named `x` (the parser scanned past the
+    // opening brace and bound the first body identifier to `object`).
+    val src =
+      """
+      class Outer {
+          companion object {
+              val x = 1
+          }
+      }
+      """.trimIndent()
+    val graph = parser.parse(src)
+    val phantom = graph.byKind("class").firstOrNull { it.name == "x" }
+    assertNull(
+      phantom,
+      "companion object body must not produce a class symbol; got: ${graph.byKind("class")}",
+    )
+    val property = graph.findByName("x").firstOrNull { it.kind == "property" }
+    assertNotNull(property, "expected property symbol `x` in companion body")
+  }
+
+  @Test
+  fun anonymous_object_expression_does_not_bind_a_stray_class_name() {
+    // Regression: anonymous `object : Runnable { override fun run() = Unit }`
+    // must not assign the body identifier `run` to the surrounding object.
+    val src =
+      """
+      fun make(): Runnable = object : Runnable {
+          override fun run() = Unit
+      }
+      """.trimIndent()
+    val graph = parser.parse(src)
+    val phantom = graph.byKind("class").firstOrNull { it.name == "run" }
+    assertNull(
+      phantom,
+      "anonymous object body must not become a class symbol; got: ${graph.byKind("class")}",
+    )
+  }
 }

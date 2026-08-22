@@ -22,6 +22,7 @@ dependencies {
   testImplementation(kotlin("test"))
   testImplementation(platform("io.ktor:ktor-bom:2.3.12"))
   testImplementation("io.ktor:ktor-server-test-host")
+  testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
 
 application {
@@ -30,4 +31,15 @@ application {
 
 kotlin {
   jvmToolchain(17)
+}
+
+tasks.named<Test>("test") {
+  useJUnitPlatform()
+}
+
+tasks.withType<Test>().configureEach {
+  testLogging {
+    events("passed", "skipped", "failed")
+    showStandardStreams = false
+  }
 }
