@@ -556,6 +556,7 @@ class TaskECMIntegration:
         synced = 0
         skipped = 0
         errors_list = []
+        message = "No synchronization performed"
         
         try:
             # If Vibe's task tool is available, use it

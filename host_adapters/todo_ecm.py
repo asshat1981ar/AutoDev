@@ -382,6 +382,7 @@ class TodoECMIntegration:
         synced = 0
         skipped = 0
         errors_list = []
+        message = "No synchronization performed"
         
         try:
             # If Vibe's todo tool is available, use it
@@ -432,8 +433,7 @@ class TodoECMIntegration:
             
             # Fallback: Read from ECM state file
             if synced == 0 or not self._vibe_todo_available:
-                from mcp_servers.amcx_ecm.server import ECMState
-                state = ECMState(state_path=self.ecm_state.state_path)
+                state = self.todo_ecm.ecm_state
                 
                 # Check for existing tasks in ECM to avoid duplicates
                 existing_todo_ids = set()
@@ -485,12 +485,14 @@ class TodoECMIntegration:
         synced = 0
         skipped = 0
         errors_list = []
+        message = "No synchronization performed"
         
         try:
             # First, save current ECM state to disk
-            if self._ecm_state and hasattr(self._ecm_state, '_save_state'):
-                self._ecm_state._save_state()
-                synced = len(self._ecm_state.state.get("tasks", {}))
+            ecm_state = self.todo_ecm.ecm_state
+            if hasattr(ecm_state, '_save_state'):
+                ecm_state._save_state()
+                synced = len(ecm_state.state.get("tasks", {}))
             
             # If Vibe's todo tool is available, sync to it
             if self._vibe_todo_available:

@@ -466,6 +466,10 @@ class ToolsetAMX:
                     report["upgraded"] += 1
             except Exception as e:
                 report["errors"] += 1
+                # Preserve the original pattern: upgraded_patterns replaces the
+                # source file below, so dropping a failed pattern here would
+                # silently delete data.
+                upgraded_patterns.append(pattern)
                 report["error_details"].append({
                     "index": i,
                     "pattern_id": pattern.get("pattern_id", pattern.get("id", "unknown")),
