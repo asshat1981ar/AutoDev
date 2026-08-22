@@ -6,6 +6,7 @@
 //! authorization grants.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     ContextPack, Evidence, ExecPlan, ExecPlanStatus, PlanCheckpoint, VerificationKind,
@@ -59,6 +60,14 @@ pub struct AmcxRepositoryContextRef {
     pub total_bytes: usize,
 }
 
+/// Immutable artifact identity whose digest has already been verified against
+/// the exact artifact bytes supplied by the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedArtifactRef {
+    reference: String,
+    sha256: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AmcxBridgeError {
     #[error("AMCX projection source identity must be complete and non-blank")]
@@ -67,8 +76,43 @@ pub enum AmcxBridgeError {
     InvalidEvidenceFingerprint,
     #[error("projection requires a non-blank immutable artifact reference")]
     MissingArtifactReference,
-    #[error("projection requires a lowercase or uppercase 64-hex SHA-256 digest")]
+    #[error("projection requires a SHA-256 digest bound to the referenced artifact bytes")]
     InvalidArtifactDigest,
+}
+
+impl VerifiedArtifactRef {
+    /// Construct a verified immutable artifact reference by hashing the exact
+    /// artifact bytes and comparing them with the claimed SHA-256 digest.
+    pub fn from_bytes(
+        reference: &str,
+        artifact_bytes: &[u8],
+        claimed_sha256: &str,
+    ) -> Result<Self, AmcxBridgeError> {
+        if reference.trim().is_empty() {
+            return Err(AmcxBridgeError::MissingArtifactReference);
+        }
+        if !valid_sha256_hex(claimed_sha256) {
+            return Err(AmcxBridgeError::InvalidArtifactDigest);
+        }
+
+        let actual_sha256 = format!("{:x}", Sha256::digest(artifact_bytes));
+        if !actual_sha256.eq_ignore_ascii_case(claimed_sha256) {
+            return Err(AmcxBridgeError::InvalidArtifactDigest);
+        }
+
+        Ok(Self {
+            reference: reference.to_string(),
+            sha256: actual_sha256,
+        })
+    }
+
+    pub fn reference(&self) -> &str {
+        &self.reference
+    }
+
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
 }
 
 fn validate_source(source: &AmcxSourceIdentity) -> Result<(), AmcxBridgeError> {
@@ -152,21 +196,14 @@ pub fn project_evidence(
 pub fn project_verification(
     source: AmcxSourceIdentity,
     report: &VerificationReport,
-    report_ref: &str,
-    report_sha256: &str,
+    artifact: &VerifiedArtifactRef,
 ) -> Result<AmcxVerificationRef, AmcxBridgeError> {
     validate_source(&source)?;
-    if report_ref.trim().is_empty() {
-        return Err(AmcxBridgeError::MissingArtifactReference);
-    }
-    if !valid_sha256_hex(report_sha256) {
-        return Err(AmcxBridgeError::InvalidArtifactDigest);
-    }
 
     Ok(AmcxVerificationRef {
         source,
-        report_ref: report_ref.to_string(),
-        report_sha256: report_sha256.to_string(),
+        report_ref: artifact.reference().to_string(),
+        report_sha256: artifact.sha256().to_string(),
         completed_at: report.completed_at.to_rfc3339(),
         verdict: verification_verdict(report.overall).to_string(),
         checks: report
@@ -180,21 +217,14 @@ pub fn project_verification(
 pub fn project_context(
     source: AmcxSourceIdentity,
     pack: &ContextPack,
-    artifact_ref: &str,
-    artifact_sha256: &str,
+    artifact: &VerifiedArtifactRef,
 ) -> Result<AmcxRepositoryContextRef, AmcxBridgeError> {
     validate_source(&source)?;
-    if artifact_ref.trim().is_empty() {
-        return Err(AmcxBridgeError::MissingArtifactReference);
-    }
-    if !valid_sha256_hex(artifact_sha256) {
-        return Err(AmcxBridgeError::InvalidArtifactDigest);
-    }
 
     Ok(AmcxRepositoryContextRef {
         source,
-        artifact_ref: artifact_ref.to_string(),
-        artifact_sha256: artifact_sha256.to_string(),
+        artifact_ref: artifact.reference().to_string(),
+        artifact_sha256: artifact.sha256().to_string(),
         query: pack.query.clone(),
         item_count: pack.items.len(),
         total_bytes: pack.total_bytes,
