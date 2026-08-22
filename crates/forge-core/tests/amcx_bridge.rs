@@ -101,18 +101,14 @@ fn evidence_projection_requires_verified_fingerprint() {
 fn verified_artifact_handle_binds_reference_digest_and_bytes() {
     let bytes = br#"{"verdict":"pass"}"#;
     let digest = sha256_hex(bytes);
-    let artifact = VerifiedArtifactRef::from_bytes("evidence:verification-report-1", bytes, &digest)
-        .unwrap();
+    let artifact =
+        VerifiedArtifactRef::from_bytes("evidence:verification-report-1", bytes, &digest).unwrap();
 
     assert_eq!(artifact.reference(), "evidence:verification-report-1");
     assert_eq!(artifact.sha256(), digest);
 
     assert_eq!(
-        VerifiedArtifactRef::from_bytes(
-            "evidence:verification-report-1",
-            bytes,
-            &"b".repeat(64),
-        ),
+        VerifiedArtifactRef::from_bytes("evidence:verification-report-1", bytes, &"b".repeat(64),),
         Err(AmcxBridgeError::InvalidArtifactDigest)
     );
     assert_eq!(
