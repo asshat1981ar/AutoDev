@@ -7,6 +7,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.flow.flowOf
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -21,7 +24,10 @@ import org.junit.jupiter.api.Test
 class SseStreamingRouterTest {
   @Test
   fun `health endpoint returns ok`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("ready"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("ready")))
+    }
     val response = client.get("/health")
     assertEquals(HttpStatusCode.OK, response.status)
     val body = response.bodyAsText()
@@ -30,7 +36,10 @@ class SseStreamingRouterTest {
 
   @Test
   fun `events endpoint advertises event-stream content type`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("ready"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("ready")))
+    }
     val response = client.get("/events")
     val contentType = response.headers[HttpHeaders.ContentType]
     assertNotNull(contentType, "Content-Type header must be present")
@@ -42,7 +51,10 @@ class SseStreamingRouterTest {
 
   @Test
   fun `events endpoint emits data id and keepalive frames`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("alpha", "beta"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("alpha", "beta")))
+    }
     val body = client.get("/events").bodyAsText()
     assertTrue(body.contains("data: alpha"), "expected 'data: alpha' frame, got: $body")
     assertTrue(body.contains("data: beta"), "expected 'data: beta' frame, got: $body")
@@ -53,7 +65,10 @@ class SseStreamingRouterTest {
 
   @Test
   fun `objective enqueue accepts a bounded payload`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("ready"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("ready")))
+    }
     val response = client.post("/api/v1/objectives") {
       contentType(ContentType.Application.Json)
       setBody("""{"description":"hello"}""")
@@ -66,7 +81,10 @@ class SseStreamingRouterTest {
 
   @Test
   fun `objective enqueue rejects empty payload`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("ready"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("ready")))
+    }
     val response = client.post("/api/v1/objectives") {
       contentType(ContentType.Application.Json)
       setBody("")
@@ -76,7 +94,10 @@ class SseStreamingRouterTest {
 
   @Test
   fun `objective enqueue rejects oversized payload`() = testApplication {
-    application { sseRoutes(SseStreamingRouter(flowOf("ready"))) }
+    application {
+      install(ContentNegotiation) { json() }
+      sseRoutes(SseStreamingRouter(flowOf("ready")))
+    }
     val oversized = "x".repeat(SseStreamingRouter.MAX_OBJECTIVE_BYTES + 1)
     val response = client.post("/api/v1/objectives") {
       contentType(ContentType.Application.Json)

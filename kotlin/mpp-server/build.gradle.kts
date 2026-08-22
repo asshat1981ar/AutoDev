@@ -22,6 +22,13 @@ dependencies {
   testImplementation(kotlin("test"))
   testImplementation(platform("io.ktor:ktor-bom:2.3.12"))
   testImplementation("io.ktor:ktor-server-test-host")
+  // ContentNegotiation + kotlinx-json are required so the test host can
+  // serialize the production `mapOf(...)` responses from SseStreamingRouter
+  // routes into JSON bodies. Without these, /health and /api/v1/objectives
+  // return 500 and the tests catch a real production contract violation.
+  // See SseStreamingRouterTest.kt for the matching test-side install.
+  testImplementation("io.ktor:ktor-server-content-negotiation")
+  testImplementation("io.ktor:ktor-serialization-kotlinx-json")
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
 
