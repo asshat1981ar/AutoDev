@@ -169,6 +169,34 @@ def check_plans_contract(
         print("[ok] PLANS.md durable ExecPlan contract")
 
 
+def _registered_harness_profile_ids(source: str) -> tuple[list[str], str | None]:
+    """Extract profile ids actually wired into default_harness_profiles().
+
+    Validates real catalog membership rather than arbitrary source-text
+    presence: comments, dead helpers, or asset ids elsewhere in builtins.rs
+    must not satisfy the stable-identity check.
+    """
+    registry = re.search(
+        r"pub fn default_harness_profiles\(\) -> HarnessRegistry \{(.*?)\n\}",
+        source,
+        re.DOTALL,
+    )
+    if not registry:
+        return [], "default_harness_profiles() not found in builtins source"
+    constructors = re.findall(r"([a-z_0-9]+)\(\)", registry.group(1))
+    ids: list[str] = []
+    for name in constructors:
+        body = re.search(
+            rf"fn {name}\(\) -> HarnessProfile \{{.*?\"([a-z0-9-]+)\"",
+            source,
+            re.DOTALL,
+        )
+        if not body:
+            return [], f"profile constructor {name}() has no recognizable stable id"
+        ids.append(body.group(1))
+    return ids, None
+
+
 def check_harness_profile_fabric(
     errors: list[str], verbose: bool, profile_doc: Path = HARNESS_PROFILE_DOC
 ) -> None:
@@ -197,10 +225,27 @@ def check_harness_profile_fabric(
             )
         else:
             source = _read(HARNESS_BUILTINS)
-            for profile_id in STABLE_HARNESS_PROFILE_IDS:
-                if profile_id not in source:
+            registered, extraction_error = _registered_harness_profile_ids(source)
+            if extraction_error:
+                errors.append(f"Harness profile source drift: {extraction_error}")
+            else:
+                expected = set(STABLE_HARNESS_PROFILE_IDS)
+                actual = set(registered)
+                if len(registered) != len(actual):
                     errors.append(
-                        f"Harness profile source drift: missing stable profile id {profile_id!r}"
+                        "Harness profile source drift: duplicate profile "
+                        "registration in default_harness_profiles()"
+                    )
+                for missing_id in sorted(expected - actual):
+                    errors.append(
+                        f"Harness profile source drift: stable profile id "
+                        f"{missing_id!r} not registered in default_harness_profiles()"
+                    )
+                for extra_id in sorted(actual - expected):
+                    errors.append(
+                        f"Harness profile source drift: unregistered profile id "
+                        f"{extra_id!r} present in catalog (the contract specifies "
+                        f"exactly {len(STABLE_HARNESS_PROFILE_IDS)} profiles)"
                     )
 
     if verbose and len(errors) == start:

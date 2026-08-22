@@ -33,31 +33,31 @@
 - Consumes: existing `DevelopmentContract` from `forge_core::skill`.
 - Produces: `HarnessKind`, `HarnessAssetKind`, `HarnessAssetRef`, `HarnessStage`, `HarnessProfile`, `HarnessRegistry`, `HarnessError`.
 
-- [ ] **Step 1: Write failing protocol tests**
+- [x] **Step 1: Write failing protocol tests**
 
 Add tests that require the new public types, duplicate-profile rejection, duplicate-stage rejection, empty-verification rejection, and JSON round-trip stability.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: compile failure because `forge_core::harness` public API does not exist yet.
 
-- [ ] **Step 3: Implement minimal protocol and validation**
+- [x] **Step 3: Implement minimal protocol and validation**
 
 Create typed serde models and deterministic registry validation. `HarnessProfile::validate()` must reject empty IDs/versions/objectives/triggers/stages, duplicate stage IDs, stages with no verification contracts, and empty asset IDs/versions. Do not add effect execution methods.
 
-- [ ] **Step 4: Export the protocol from `lib.rs`**
+- [x] **Step 4: Export the protocol from `lib.rs`**
 
 Add `pub mod harness;` and public re-exports for the protocol types.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Commit message: `feat(forge-core): add harness asset protocol`
 
@@ -71,7 +71,7 @@ Commit message: `feat(forge-core): add harness asset protocol`
 - Consumes: Task 1 profile and registry types.
 - Produces: `default_harness_profiles() -> HarnessRegistry` with exactly five stable profiles.
 
-- [ ] **Step 1: Write failing built-in-profile tests**
+- [x] **Step 1: Write failing built-in-profile tests**
 
 Require these IDs and kinds:
 - `forgeflow-sdlc` → `HarnessKind::Sdlc`
@@ -82,13 +82,13 @@ Require these IDs and kinds:
 
 Assert every built-in validates, has at least three stages, contains verification at every stage, and has unique asset/stage references.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: test failure because built-in profile catalog is absent.
 
-- [ ] **Step 3: Implement the five profiles**
+- [x] **Step 3: Implement the five profiles**
 
 Encode the approved workflows:
 - ForgeFlow: discover → requirements → architecture → plan → isolated implementation → review → CI/verification → retrospective.
@@ -99,13 +99,13 @@ Encode the approved workflows:
 
 Use asset references for Superpowers skills, GitHub, CodeRabbit, Requirements Extractor, Context7, alphaXiv/Parallel Search, Linear, Engram, workflow registries, and evaluation components where appropriate. References remain descriptive and carry no authority.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat(forge-core): add built-in development harnesses`
 
@@ -119,27 +119,27 @@ Commit message: `feat(forge-core): add built-in development harnesses`
 - Consumes: `HarnessRegistry`, `DevelopmentContract`.
 - Produces: `HarnessRoutingEvidence`, `HarnessRoute`, `route_harness(&HarnessRegistry, &DevelopmentContract, usize) -> HarnessRoute`.
 
-- [ ] **Step 1: Write failing routing tests**
+- [x] **Step 1: Write failing routing tests**
 
 Cover SDLC/feature work, sprint/backlog work, ideation/TRIZ requests, performance/optimization work, and harness/workflow-generation requests. Add a deterministic tie-break test that orders equal scores by stable profile ID.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: compile/test failure because router API is absent.
 
-- [ ] **Step 3: Implement deterministic routing**
+- [x] **Step 3: Implement deterministic routing**
 
 Score lowercase trigger-term matches across goal, acceptance criteria, and constraints. Use fixed integer weights and stable ID tie-breaking. Return routing evidence with matched terms; do not call models or external services.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat(forge-core): route development contracts to harnesses`
 
@@ -153,27 +153,27 @@ Commit message: `feat(forge-core): route development contracts to harnesses`
 - Consumes: `HarnessProfile` plus externally produced evaluation metrics.
 - Produces: `HarnessEvaluation`, `HarnessPromotionDecision`, `evaluate_harness_candidate()`.
 
-- [ ] **Step 1: Write failing promotion tests**
+- [x] **Step 1: Write failing promotion tests**
 
 Require promotion to fail when correctness/evidence completion regress, unsafe-action rejection is below baseline, sample size is zero, or verification is self-reported only. Require promotion eligibility only when mandatory safety/correctness metrics meet or exceed baseline and at least one efficiency metric improves.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: compile/test failure because promotion evaluation API is absent.
 
-- [ ] **Step 3: Implement pure promotion evaluation**
+- [x] **Step 3: Implement pure promotion evaluation**
 
 Use integer basis points / integer counts rather than floating-point thresholds. The function returns advisory promotion evidence only and never mutates registries, policy, or execution authority.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-Run: `cargo test --locked -p forge-core --test harness_profiles`
+Run: `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat(forge-core): gate harness profile promotion`
 
@@ -188,30 +188,30 @@ Commit message: `feat(forge-core): gate harness profile promotion`
 - Consumes: public ForgeCore harness API and built-in profile IDs.
 - Produces: documented invariants plus drift enforcement that prevents accidental removal/renaming of the five built-ins or authority-boundary language.
 
-- [ ] **Step 1: Write failing drift tests**
+- [x] **Step 1: Write failing drift tests**
 
 Add checks that the repository documentation names all five stable profile IDs and states that harness configuration cannot mint authorization or self-verify.
 
-- [ ] **Step 2: Run Python drift tests and verify RED**
+- [x] **Step 2: Run Python drift tests and verify RED**
 
 Run: `python -m unittest tests.test_harness_drift -v`
 
 Expected: FAIL until documentation/checker support is added.
 
-- [ ] **Step 3: Add documentation and drift checks**
+- [x] **Step 3: Add documentation and drift checks**
 
 Document architecture, profile responsibilities, routing evidence, promotion metrics, and the ForgeCore authority boundary. Extend the drift checker with explicit stable-fragment validation.
 
-- [ ] **Step 4: Run focused Python and Rust tests**
+- [x] **Step 4: Run focused Python and Rust tests**
 
 Run:
 - `python -m unittest tests.test_harness_drift -v`
 - `python scripts/check_harness_drift.py --verbose`
-- `cargo test --locked -p forge-core --test harness_profiles`
+- `cargo test --locked -p forge-core --test harness_profiles --test harness_promotion`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run repository verification**
+- [x] **Step 5: Run repository verification**
 
 Run:
 - `cargo fmt --all -- --check`
@@ -222,10 +222,10 @@ Run:
 
 Expected: all green in canonical GitHub Actions.
 
-- [ ] **Step 6: Independent review**
+- [x] **Step 6: Independent review**
 
 Open/update a pull request and require CodeRabbit plus branch CI evidence. Resolve load-bearing findings before marking ready for merge.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Commit message: `docs(harness): document and enforce profile fabric`
