@@ -1,0 +1,45 @@
+id: python-no-shell-true
+language: Python
+files:
+  - bootstrap_cline_mcp.py
+  - .cline/**/*.py
+  - scripts/**/*.py
+rule:
+  any:
+    - all:
+        - pattern: subprocess.$METHOD($$$ARGS)
+        - has:
+            stopBy: end
+            pattern:
+              context: f(shell=True)
+              selector: keyword_argument
+    - all:
+        - pattern: $ALIAS.$METHOD($$$ARGS)
+        - has:
+            stopBy: end
+            pattern:
+              context: f(shell=True)
+              selector: keyword_argument
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              pattern: import subprocess as $ALIAS
+    - all:
+        - pattern: $FUNC($$$ARGS)
+        - has:
+            stopBy: end
+            pattern:
+              context: f(shell=True)
+              selector: keyword_argument
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              any:
+                - pattern: from subprocess import $FUNC
+                - pattern: from subprocess import $ORIGINAL as $FUNC
+message: Avoid shell=True in agent-facing Python code.
+severity: error

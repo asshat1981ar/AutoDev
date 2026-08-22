@@ -208,3 +208,33 @@ fn smoke_exits_zero_only_when_base_fails_and_reference_passes() {
     assert_eq!(value["results"][0]["base_passed"], false);
     assert_eq!(value["results"][0]["reference_passed"], true);
 }
+
+#[test]
+fn smoke_exits_nonzero_on_empty_corpus() {
+    // Regression: previously, `all` over an empty results vector returned
+    // `true` and the smoke command exited 0, allowing a hostile or
+    // accidental empty-corpus state to pass CI silently.
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    let fixtures = tempfile::tempdir().unwrap();
+    // Intentionally no fixtures are written.
+
+    let output = run(&[
+        "smoke",
+        "--fixtures",
+        fixtures.path().to_str().unwrap(),
+        "--source-repo",
+        repo.path().to_str().unwrap(),
+    ]);
+    assert!(
+        !output.status.success(),
+        "smoke must exit non-zero on an empty corpus, got stdout: {}",
+        String::from_utf8_lossy(&output.stdout),
+    );
+}

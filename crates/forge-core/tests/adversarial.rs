@@ -80,7 +80,10 @@ fn adversarial_symlink_escape_read() {
         vec![Capability::ReadFile],
     );
     let err = read_file(&action, &ws).unwrap_err();
-    assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+    assert!(matches!(
+        err,
+        ExecutionError::SymlinkEscape(_) | ExecutionError::PathOutsideWorkspace(_)
+    ));
 }
 
 #[test]
@@ -102,7 +105,10 @@ fn adversarial_symlink_escape_patch_write() {
         vec![Capability::PatchFile],
     );
     let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
-    assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+    assert!(matches!(
+        err,
+        ExecutionError::SymlinkEscape(_) | ExecutionError::PathOutsideWorkspace(_)
+    ));
 
     // Verify the outside file was NOT modified
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "original\n");

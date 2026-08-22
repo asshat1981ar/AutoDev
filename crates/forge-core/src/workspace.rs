@@ -15,7 +15,14 @@ pub enum PathResolution {
     Allowed(PathBuf),
     /// The canonical path resolves outside the allowed roots.
     Denied(PathBuf),
-    /// The path could not be interpreted (empty, malformed, traversal, etc.).
+    /// The path tried to escape the workspace root via `..` (traversal).
+    /// This is a first-class variant so callers do not need to inspect a
+    /// message string to distinguish traversal from a plain out-of-root
+    /// denial.
+    Traversal(PathBuf),
+    /// The path could not be interpreted (empty, malformed, etc.).
+    /// Callers should prefer [PathResolution::Traversal] when the cause is
+    /// `..` segments; this variant covers everything else.
     Invalid(String),
 }
 
@@ -102,9 +109,7 @@ impl Workspace {
             // A relative path that used `..` to escape is traversal; an
             // absolute path that simply points outside is a plain denial.
             if raw.components().any(|c| c == Component::ParentDir) {
-                return PathResolution::Invalid(
-                    "path escapes the workspace root (traversal)".to_string(),
-                );
+                return PathResolution::Traversal(normalized);
             }
             return PathResolution::Denied(anchored);
         }
@@ -214,12 +219,12 @@ mod tests {
     }
 
     #[test]
-    fn traversal_is_invalid() {
+    fn traversal_is_typed() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 1024).unwrap();
         assert!(matches!(
             ws.resolve_path(Path::new("../outside")),
-            PathResolution::Invalid(_)
+            PathResolution::Traversal(_)
         ));
     }
 

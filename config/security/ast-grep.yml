@@ -1,0 +1,295 @@
+# AutoDev Ast-grep Security Rules
+# Centralized ast-grep configuration for AutoDev security scanning.
+#
+# Usage:
+#   ast-grep scan --config config/security/ast-grep.yml .
+#   ast-grep scan --config .ast-grep/rules/ crates/
+#
+# This configuration includes both:
+# 1. Repositories-specific rules from .ast-grep/rules/
+# 2. Centralized rules defined here
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+
+$schema: https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.schema.json
+
+# Include existing repository rules
+includes:
+  - .ast-grep/rules/forgecore-no-unwrap.yml
+  - .ast-grep/rules/observer-no-process-exec.yml
+  - .ast-grep/rules/python-no-shell-true.yml
+  - .ast-grep/rules/rust-no-direct-process-command.yml
+
+# =============================================================================
+# TRUST BOUNDARY RULES
+# =============================================================================
+
+# These rules protect the ForgeCore trusted execution kernel
+
+rules:
+  # -------------------------------------------------------------------------
+  # Rule: forgecore-no-authorization-grant-creation
+  # -------------------------------------------------------------------------
+  - id: forgecore-no-authorization-grant-creation
+    message: "AuthorizationGrant must only be created at the trusted ForgeCore boundary. Do not create grants in adapter or CLI code."
+    severity: error
+    languages: [rust]
+    pattern: AuthorizationGrant { ... }
+    paths:
+      include:
+        - crates/autodev-server/**
+        - scripts/autodev-cli.py
+      exclude:
+        - crates/forge-core/src/**
+        - crates/forge-core/tests/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: forgecore-no-approval-self-grant
+  # -------------------------------------------------------------------------
+  - id: forgecore-no-approval-self-grant
+    message: "Payload fields like \"approved: true\" are NOT authority. Only ForgeCore can mint AuthorizationGrant from trusted grants."
+    severity: error
+    languages: [rust, yaml, json]
+    pattern: "approved": true
+    paths:
+      include:
+        - crates/forge-core/src/**
+        - protocols/**
+    fix: Replace with explicit trusted grant reference
+
+  # -------------------------------------------------------------------------
+  # Rule: verification-not-authorization
+  # -------------------------------------------------------------------------
+  - id: verification-not-authorization
+    message: "Verification PASS is evidence only and MUST NOT be treated as execution authorization. Separate approval is required."
+    severity: error
+    languages: [rust]
+    pattern: verification.*approve|approve.*verification
+    paths:
+      include:
+        - crates/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: fail-open-prohibited
+  # -------------------------------------------------------------------------
+  - id: fail-open-prohibited
+    message: "Public adapters must remain fail-closed. Do not return success/Ok on error or missing grant."
+    severity: error
+    languages: [rust]
+    pattern: Ok(.*error|error.*Ok|Result::Ok.*err|err.*Result::Ok
+    paths:
+      include:
+        - crates/forge-core/src/**
+        - crates/autodev-server/**
+
+  # -------------------------------------------------------------------------
+  # Rule: workspace-confinement-required
+  # -------------------------------------------------------------------------
+  - id: workspace-confinement-required
+    message: "Direct filesystem/network/process execution must go through Workspace confinement. Use workspace.* methods instead."
+    severity: error
+    languages: [rust]
+    pattern: std::fs::|std::process::Command|reqwest::|ureq::
+    paths:
+      include:
+        - crates/forge-core/src/**
+    fix: Use Workspace abstraction instead
+
+  # -------------------------------------------------------------------------
+  # Rule: cline-untrusted-model-output
+  # -------------------------------------------------------------------------
+  - id: cline-untrusted-model-output
+    message: "Model and agent output must be treated as untrusted. Always validate before execution."
+    severity: error
+    languages: [python]
+    pattern: subprocess\.(run|Popen|call)\s*\(.*model.*output|.*llm.*output|.*ai.*output
+    paths:
+      include:
+        - .cline/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: secret-path-detection
+  # -------------------------------------------------------------------------
+  - id: secret-path-detection
+    message: "Access to secrets/, *.pem, *.key, *.jks, *.p12, .env is read-denied without AuthorizationGrant."
+    severity: error
+    languages: [rust, python, java, kotlin]
+    pattern: (secrets/|\.pem|\.key|\.jks|\.p12|\.env)
+    paths:
+      include:
+        - crates/**
+        - kotlin/**
+        - scripts/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: pinned-pty-verification
+  # -------------------------------------------------------------------------
+  - id: pinned-pty-verification
+    message: "PTY version must be pinned to 1.1.2 with SHA-256 660a3025230f6035b7b8c000e8cca6ca3992bedaa05f7b165e7c3a5f1ae8ec8a. Do not use unpinned versions."
+    severity: error
+    languages: [javascript]
+    pattern: pty|node-pty
+    paths:
+      include:
+        - scripts/termux-kanban.mjs
+    fix: Use pinned version with SHA-256 verification
+
+# =============================================================================
+# DETERMINISM RULES
+# =============================================================================
+
+  # -------------------------------------------------------------------------
+  # Rule: no-network-in-tests
+  # -------------------------------------------------------------------------
+  - id: no-network-in-tests
+    message: "Tests must be deterministic with no network calls. Use mock data or local fixtures."
+    severity: error
+    languages: [rust, python, java, kotlin]
+    pattern: (reqwest|ureq|http|fetch|requests\.|urllib\.)
+    paths:
+      include:
+        - crates/**/tests/**
+        - tests/**
+        - kotlin/**/src/**/test/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: no-random-in-tests
+  # -------------------------------------------------------------------------
+  - id: no-random-in-tests
+    message: "Tests must be deterministic. Do not use randomness without fixed seeding."
+    severity: error
+    languages: [rust, python, java, kotlin]
+    pattern: (rand|random|Random)
+    paths:
+      include:
+        - crates/**/tests/**
+        - tests/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: no-time-assertions
+  # -------------------------------------------------------------------------
+  - id: no-time-assertions
+    message: "Tests must be deterministic. Do not use time-based assertions without mocking."
+    severity: warning
+    languages: [rust, python, java, kotlin]
+    pattern: (Instant::now|System\.currentTimeMillis|time\.time|DateTime\.now|LocalDateTime\.now)
+    paths:
+      include:
+        - crates/**/tests/**
+        - tests/**
+
+# =============================================================================
+# CODE QUALITY RULES
+# =============================================================================
+
+  # -------------------------------------------------------------------------
+  # Rule: TODO items must have issue reference
+  # -------------------------------------------------------------------------
+  - id: todo-requires-issue
+    message: "TODO comments must reference an issue or ADR. Pattern: TODO(<issue>): <description>".
+    severity: warning
+    languages: [rust, python, java, kotlin, markdown, yaml]
+    pattern: TODO(?![^(]*[0-9]+[)]*\s*:)
+    paths:
+      include:
+        - crates/**
+        - kotlin/**
+        - scripts/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: FIXME items must have issue reference
+  # -------------------------------------------------------------------------
+  - id: fixme-requires-issue
+    message: "FIXME comments must reference an issue. Pattern: FIXME(<issue>): <description>".
+    severity: warning
+    languages: [rust, python, java, kotlin, markdown, yaml]
+    pattern: FIXME(?![^(]*[0-9]+[)]*\s*:)
+    paths:
+      include:
+        - crates/**
+        - kotlin/**
+        - scripts/**
+
+# =============================================================================
+# DOCUMENTATION RULES
+# =============================================================================
+
+  # -------------------------------------------------------------------------
+  # Rule: documentation-must-be-verifiable
+  # -------------------------------------------------------------------------
+  - id: documentation-must-be-verifiable
+    message: "Documentation that claims verification must have corresponding executable checks. Do not claim 'verified' without evidence."
+    severity: warning
+    languages: [markdown]
+    pattern: (verified|green|complete|safe|working)
+    paths:
+      include:
+        - **/*.md
+      exclude:
+        - docs/failures/**
+        - docs/adr/**
+    fix: Add corresponding executable verification or remove the claim
+
+# =============================================================================
+# KOTLIN-SPECIFIC RULES
+# =============================================================================
+
+  # -------------------------------------------------------------------------
+  # Rule: commonmain-platform-purity
+  # -------------------------------------------------------------------------
+  - id: commonmain-platform-purity
+    message: "commonMain must not use platform-specific types (java.*, android.*, etc.). Use expect/actual contracts."
+    severity: error
+    languages: [kotlin]
+    pattern: (java\.|javax\.|android\.|darwin\.|ios\.|java\.|android\.)
+    paths:
+      include:
+        - kotlin/**/src/commonMain/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: actual-implementation-required
+  # -------------------------------------------------------------------------
+  - id: actual-implementation-required
+    message: "Every expect declaration in commonMain must have corresponding actual declarations in all platform targets."
+    severity: error
+    languages: [kotlin]
+    pattern: expect fun|expect val|expect class
+    paths:
+      include:
+        - kotlin/**/src/commonMain/**
+    fix: Add corresponding actual declaration in jvmMain, iosMain, etc.
+
+# =============================================================================
+# PYTHON-SPECIFIC RULES
+# =============================================================================
+
+  # -------------------------------------------------------------------------
+  # Rule: stdlib-only
+  # -------------------------------------------------------------------------
+  - id: stdlib-only
+    message: "Per AGENTS.md section 4, Python code must use stdlib only. No external dependencies without ADR."
+    severity: error
+    languages: [python]
+    pattern: import (requests|numpy|pandas|pytest|django|flask)
+    paths:
+      include:
+        - scripts/autodev-cli.py
+        - bootstrap_cline_mcp.py
+        - install.py
+        - .cline/**
+    
+  # -------------------------------------------------------------------------
+  # Rule: no-dependency-creation
+  # -------------------------------------------------------------------------
+  - id: no-dependency-creation
+    message: "Do not add requirements.txt, pyproject.toml, or setup.py without ADR per AGENTS.md section 4."
+    severity: error
+    pattern: (requirements\.txt|pyproject\.toml|setup\.py)
+    paths:
+      include:
+        - "**/"
+      exclude:
+        - .worktrees/**
+        - node_modules/**

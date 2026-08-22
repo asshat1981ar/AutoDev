@@ -46,24 +46,21 @@ pub(crate) fn read_file_authorized(
     let resolved = match workspace.resolve_path(raw_path) {
         PathResolution::Allowed(p) => p,
         PathResolution::Denied(p) => {
-            if is_symlink_escape(raw_path) {
-                return Err(ExecutionError::SymlinkEscape(p));
-            }
+            // A `Denied` resolution is a containment failure on the
+            // canonicalized path. By the time we reach that branch, any
+            // symlink would already have been resolved; a non-canonical
+            // "looks like a symlink" guess is no longer appropriate here.
             return Err(ExecutionError::PathOutsideWorkspace(p));
         }
-        PathResolution::Invalid(msg) => {
-            if msg.contains("traversal") {
-                return Err(ExecutionError::PathTraversal(raw_path.to_path_buf()));
-            }
+        PathResolution::Traversal(p) => {
+            return Err(ExecutionError::PathTraversal(p));
+        }
+        PathResolution::Invalid(_) => {
             return Err(ExecutionError::InvalidPath(raw_path.to_path_buf()));
         }
     };
 
     read_resolved(&resolved, workspace.max_bytes(), started_at)
-}
-
-fn is_symlink_escape(raw: &std::path::Path) -> bool {
-    !raw.is_absolute()
 }
 
 fn read_resolved(
@@ -210,7 +207,10 @@ mod tests {
             std::os::unix::fs::symlink(&outside, root.join("link.txt")).unwrap();
             let ws = Workspace::new(&root, 4096).unwrap();
             let err = read_file(&action_with_path("link.txt"), &ws).unwrap_err();
-            assert!(matches!(err, ExecutionError::SymlinkEscape(_)));
+            assert!(matches!(
+                err,
+                ExecutionError::SymlinkEscape(_) | ExecutionError::PathOutsideWorkspace(_)
+            ));
         }
     }
 

@@ -20,7 +20,7 @@ pub struct ContextRefs {
 }
 
 /// Authorization state bound to an execution request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyBinding {
     pub risk: RiskLevel,
@@ -48,9 +48,10 @@ pub struct EvidenceBinding {
 }
 
 /// Durable execution-envelope lifecycle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvelopeState {
+    #[default]
     Planned,
     Authorized,
     Executing,
@@ -79,7 +80,7 @@ impl EnvelopeState {
 }
 
 /// Retry/lifecycle metadata for a durable execution attempt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Lifecycle {
     pub attempt: u32,
@@ -102,7 +103,7 @@ impl Lifecycle {
 }
 
 /// The typed hand-off object used across PLAN -> AUTHORIZE -> ACT -> VERIFY.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEnvelope {
     pub operation_id: String,

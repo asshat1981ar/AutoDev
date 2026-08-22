@@ -241,3 +241,153 @@ async fn repeated_requests_do_not_create_protocol_sessions() {
         assert_eq!(body["id"], id);
     }
 }
+
+// ----- Adversarial coverage additions for the hardening batch -----
+//
+// These tests target the contract surfaces called out in the
+// `autodev-server` security audit: HMAC prefix/length failure modes,
+// oversized-body rejection on the public API surface, and the
+// bearer-not-configured empty-secret path returning 503.
+
+/// `AppState::new(Some(""))` must treat the empty secret as "not
+/// configured" and the webhook route must return 503. Otherwise an
+/// operator who forgets the env var would get a service that silently
+/// rejects every webhook with 401 instead of telling them the secret
+/// is missing.
+#[tokio::test]
+async fn webhook_returns_503_when_secret_is_empty() {
+    use autodev_server::AppState;
+    let app = router(AppState::new(Some(String::new())));
+    let body = serde_json::json!({
+        "action": "opened",
+        "issue": {"number": 1, "title": "x"}
+    })
+    .to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .expect("router response");
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+/// HMAC verification must reject a header that does not start with
+/// `sha256=`. A header of bare hex without the prefix is a common
+/// misconfiguration and must not pass.
+#[tokio::test]
+async fn webhook_rejects_signature_without_sha256_prefix() {
+    use autodev_server::AppState;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let secret = "test-webhook-secret";
+    let app = router(AppState::new(Some(secret.to_string())));
+    let body = b"{\"action\":\"opened\"}";
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(body);
+    let bare_hex = format!("{:x}", mac.finalize().into_bytes()); // no `sha256=` prefix
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header("X-Hub-Signature-256", bare_hex)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_vec()))
+                .unwrap(),
+        )
+        .await
+        .expect("router response");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "bare hex (no `sha256=` prefix) must be rejected as 401, not 202"
+    );
+}
+
+/// HMAC verification must reject a hex string of the wrong length.
+/// A truncated or padded signature must not be accepted.
+#[tokio::test]
+async fn webhook_rejects_signature_of_wrong_length() {
+    use autodev_server::AppState;
+    let app = router(AppState::new(Some("test-webhook-secret".to_string())));
+    let body = b"{\"action\":\"opened\"}";
+
+    // 31 bytes of hex instead of 32.
+    let short_hex = "a".repeat(62);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header("X-Hub-Signature-256", format!("sha256={short_hex}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_vec()))
+                .unwrap(),
+        )
+        .await
+        .expect("router response");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "wrong-length hex signature must be rejected"
+    );
+}
+
+/// The public API surface (`/api/v1/objectives`) must reject a body
+/// larger than `API_MAX_BODY_BYTES`. This bounds memory pressure from
+/// unauthenticated callers, including the LAN-bearer exposure case
+/// noted in the deployment contract.
+#[tokio::test]
+async fn api_objectives_rejects_oversized_body() {
+    use autodev_server::AppState;
+    let app = router(AppState::new(None));
+    // `API_MAX_BODY_BYTES` is 512 KiB; send one byte more.
+    let oversized = "x".repeat(autodev_server::API_MAX_BODY_BYTES + 1);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/objectives")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(oversized))
+                .unwrap(),
+        )
+        .await
+        .expect("router response");
+    assert_eq!(
+        response.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "oversized body on /api/v1/objectives must be 413"
+    );
+}
+
+/// `with_mcp_bearer_token("")` is equivalent to no token configured;
+/// the `/mcp` route must return 503, not 401. An empty token would
+/// otherwise be accepted by a `Bearer ` (empty) presentation on a
+/// per-call check.
+#[tokio::test]
+async fn mcp_returns_503_when_bearer_token_is_empty() {
+    use autodev_server::AppState;
+    let app = router(AppState::new(None).with_mcp_bearer_token(String::new()));
+    let response = app
+        .oneshot(modern_request(
+            "discover-empty-token",
+            "server/discover",
+            json!({}),
+        ))
+        .await
+        .expect("router response");
+    assert_eq!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "empty bearer token must be treated as 'not configured'"
+    );
+}

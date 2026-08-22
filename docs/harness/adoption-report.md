@@ -88,3 +88,28 @@ This was intentionally not wired automatically in this adoption to keep the chan
 - Future PRs that add or remove a verification gate and forget to update the companion file are caught within one CI run (drift check would fail).
 - Instruction quality signal: reduction in PR comments of the form "you missed ktlint/py_compile/node --check" and fewer CI retries due to local-green-but-CI-red.
 - Inspect quarterly: run `python scripts/check_harness_drift.py --verbose` and audit `docs/failures/` completeness.
+
+---
+
+## Update 2026-08-22 — cycle-2026-08-21-kotlin-mpp closeout harness changes
+
+**Harness deltas landed:**
+
+1. **New enforced check — config copy parity** (`check_config_parity` in
+   `scripts/check_harness_drift.py`): fails closed when
+   `kotlin/gradle.properties` diverges from centralized
+   `config/kotlin/gradle.properties`. Motivation: during the cycle, defects
+   (`$JDK_17_HOME` env-var java.home, AGP-7-removed `enableBuildCache`,
+   duplicate keys) propagated silently from source config to the consumer
+   copy. Negative-tested (inject drift → FAIL with actionable message).
+2. **ktlint configuration made real** (ADR-004): repo-root `.editorconfig`
+   symlink activated with `ktlint_code_style = ktlint_official`; decorative
+   `config/kotlin/ktlint/.ktlint.yaml` retired; `config/validate.py`
+   line-length check re-pointed accordingly.
+3. **Runtime-state hygiene**: `.wex/`, `.vibe/`, `skills/*/.vibe/` gitignored;
+   previously-untracked sources (`scripts/wex-cli.py`,
+   `skills/engram_memory/start_server.py`, `engram_server.sh`) committed.
+
+**Evidence:** registry records `primary--cycle-2026-08-21-kotlin-mpp-completed`,
+`primary--followups.json`; Engram memory
+`followups-1-2-3-complete-2026-08-22`.

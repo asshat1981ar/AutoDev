@@ -49,7 +49,11 @@ else
 fi
 
 echo "--- 6/6 python + node + drift (offline) ---"
-python3 -m py_compile install.py bootstrap_cline_mcp.py .cline/hooks/post_tool_use.py && echo "py_compile: PASS"
+# Compile the canonical set per AGENTS.md §3 (root .py + every .cline/hook +
+# the project-fabric plugin entry point). Do not narrow this list without
+# also updating scripts/check_harness_drift.py and AGENTS.md.
+python3 -m py_compile install.py bootstrap_cline_mcp.py scripts/validate_pr_evidence.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py \
+  && echo "py_compile: PASS"
 node --check scripts/termux-kanban.mjs && echo "node --check: PASS"
 python3 scripts/check_harness_drift.py --verbose | tail -n 5
 echo "drift: PASS"

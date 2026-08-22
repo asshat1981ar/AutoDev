@@ -1,0 +1,152 @@
+# AutoDev EditorConfig
+# Centralized editor configuration for all AutoDev code.
+#
+# Usage:
+#   Most editors automatically pick up .editorconfig from the repository root.
+#   Symlink this file to the repository root:
+#     ln -s config/defaults/common/.editorconfig .
+#
+# This file is intentionally NOT committed to the repository root to avoid
+# conflicts with existing IDE configurations. Instead, it's referenced here
+# and can be optionally symlinked.
+#
+# Priority: Project .editorconfig > This file > Editor defaults
+
+# =============================================================================
+# ROOT = TRUE
+# =============================================================================
+
+root = true
+
+# =============================================================================
+# DEFAULT CONFIGURATION (applies to all files)
+# =============================================================================
+
+[*]
+# Line endings - Unix for consistency with Termux/Node requirements
+end_of_line = lf
+
+# Character encoding
+charset = utf-8
+
+# Trim trailing whitespace
+trim_trailing_whitespace = true
+
+# Insert final newline
+insert_final_newline = true
+
+# Indentation - 2 spaces for consistency across all languages
+indent_style = space
+indent_size = 2
+
+# Maximum line length - 100 characters for readability
+max_line_length = 100
+
+# =============================================================================
+# RUST SPECIFIC
+# =============================================================================
+
+[*.{rs,toml}]
+# Rust uses 4 spaces by convention, but AutoDev uses 2 for consistency
+indent_size = 2
+
+# Allow longer lines in documentation
+[*.md]
+max_line_length = 120
+
+# =============================================================================
+# KOTLIN SPECIFIC (incl. ktlint 12.x properties - see ADR-004)
+# =============================================================================
+
+[*.{kt,kts}]
+indent_size = 2
+ktlint_code_style = ktlint_official
+
+# Allow wildcard imports in test sources only
+[**/*Test.kt]
+ktlint_standard_no-wildcard-imports = disabled
+
+# =============================================================================
+# PYTHON SPECIFIC
+# =============================================================================
+
+[*.{py}]
+indent_size = 2
+
+# =============================================================================
+# JAVASCRIPT / TYPESCRIPT SPECIFIC
+# =============================================================================
+
+[*.{js,ts,mjs,cjs}]
+indent_size = 2
+
+# =============================================================================
+# YAML / JSON SPECIFIC
+# =============================================================================
+
+[*.{yaml,yml,json}]
+indent_size = 2
+
+# =============================================================================
+# MARKDOWN SPECIFIC
+# =============================================================================
+
+[*.md]
+# Allow longer lines in markdown for tables and code blocks
+max_line_length = 120
+
+# =============================================================================
+# MAKEFILE SPECIFIC
+# =============================================================================
+
+[Makefile]
+# Makefiles use tabs for indentation
+indent_style = tab
+
+# =============================================================================
+# SHELL SCRIPT SPECIFIC
+# =============================================================================
+
+[*.{sh,bash,zsh}]
+indent_size = 2
+
+# =============================================================================
+# GIT IGNORE / DOCKERFILE / ETC.
+# =============================================================================
+
+[.{gitignore,gitmodules,dockerignore}]
+indent_size = 2
+
+[Dockerfile]
+indent_size = 2
+
+# =============================================================================
+# DIRECTORY-SPECIFIC OVERRIDES
+# =============================================================================
+
+# Kotlin directory - ensure Kotlin-specific settings
+[kotlin/**/*.{kt,kts}]
+indent_size = 2
+
+# Rust directory - ensure Rust-specific settings
+[crates/**/*.rs]
+indent_size = 2
+
+# Python directory - ensure Python-specific settings
+[scripts/**/*.py]
+indent_size = 2
+
+# Cline directory - ensure consistency
+[.cline/**/*.{py,json,yaml,yml}]
+indent_size = 2
+
+# =============================================================================
+# FILE-SPECIFIC OVERRIDES
+# =============================================================================
+
+# Cargo.toml files - use 4 spaces for compatibility with cargo fmt
+[crates/**/Cargo.toml]
+indent_size = 4
+
+[kotlin/**/*.gradle.kts]
+indent_size = 2

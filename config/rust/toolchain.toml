@@ -1,0 +1,38 @@
+# AutoDev Rust Toolchain Configuration
+# This file specifies the Rust toolchain used across all AutoDev Rust components.
+#
+# Usage:
+#   rustup show  # Should match this configuration
+#   rustup default stable  # Or override via RUSTUP_TOOLCHAIN
+#
+# Version pins are intentionally NOT specified here because:
+# 1. AGENTS.md requires dtolnay/rust-toolchain@stable for CI
+# 2. CI uses dtolnay/rust-toolchain@stable which pins to current stable
+# 3. Local development should match CI for reproducibility
+#
+# This file exists for documentation and local tooling that needs explicit config.
+
+[toolchain]
+# Use the current stable channel - matches dtolnay/rust-toolchain@stable
+channel = "stable"
+
+# Required components for all Rust development
+components = ["rustfmt", "clippy", "rustc", "cargo"]
+
+# Profile configuration for build optimization
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 16
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+debug-assertions = true
+
+# Profile used in CI for faster builds
+[profile.ci]
+inherits = "release"
+opt-level = 1
+codegen-units = 16
+incremental = false

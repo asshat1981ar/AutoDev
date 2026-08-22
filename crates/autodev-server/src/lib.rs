@@ -131,6 +131,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/events/stream", get(event_stream))
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
+        // Bound the request body on the public-API surface. The default
+        // Axum limit is 2 MiB, which is more than a webhook or an
+        // objective description should ever be; the limit mirrors the
+        // /mcp cap to keep memory pressure bounded.
+        .layer(DefaultBodyLimit::max(API_MAX_BODY_BYTES))
         .with_state(state.clone());
 
     let mcp = Router::new()
@@ -171,6 +176,12 @@ async fn require_mcp_bearer(
 
     next.run(request).await
 }
+
+/// Maximum body size accepted on the public API surface
+/// (`/api/v1/*`, `/events`, `/webhooks/*`). Matches the MCP cap so an
+/// attacker cannot drive memory pressure by sending oversized payloads to
+/// the unauthenticated routes.
+pub const API_MAX_BODY_BYTES: usize = 512 * 1024;
 
 fn mcp_bearer_tag(token: &str) -> Vec<u8> {
     let mut mac = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY)

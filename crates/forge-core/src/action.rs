@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 /// Serde uses `snake_case` so the serialized value matches the schema enum:
 /// `read_file`, `write_file`, `patch_file`, `execute`, `git`, `mcp`,
 /// `run_test`, `request_approval`. Unknown variants are rejected by serde.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionType {
+    #[default]
     ReadFile,
     WriteFile,
     PatchFile,
@@ -43,9 +44,10 @@ impl ActionType {
 /// Risk classification of an action.
 ///
 /// Matches the schema enum: `low`, `medium`, `high`, `critical`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
+    #[default]
     Low,
     Medium,
     High,
@@ -163,7 +165,7 @@ impl<'de> serde::Deserialize<'de> for Capability {
 /// Field names match `agent-action.schema.json`. `action_type` serializes to
 /// the `type` field. `additionalProperties: false` in the schema is enforced
 /// with `#[serde(deny_unknown_fields)]` so unknown fields are rejected.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAction {
     pub id: String,
