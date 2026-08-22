@@ -185,6 +185,3 @@ fn blank_source_identity_fails_closed() {
         );
     }
 }
-
-if __name__ == '__main__':
-    unittest.main()
