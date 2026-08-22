@@ -95,15 +95,12 @@ pub(crate) fn write_file_authorized(
     let resolved = match workspace.resolve_path(raw_path) {
         PathResolution::Allowed(p) => p,
         PathResolution::Denied(p) => {
-            if !raw_path.is_absolute() {
-                return Err(ExecutionError::SymlinkEscape(p));
-            }
             return Err(ExecutionError::PathOutsideWorkspace(p));
         }
-        PathResolution::Invalid(msg) => {
-            if msg.contains("traversal") {
-                return Err(ExecutionError::PathTraversal(raw_path.to_path_buf()));
-            }
+        PathResolution::Traversal(p) => {
+            return Err(ExecutionError::PathTraversal(p));
+        }
+        PathResolution::Invalid(_) => {
             return Err(ExecutionError::InvalidPath(raw_path.to_path_buf()));
         }
     };
