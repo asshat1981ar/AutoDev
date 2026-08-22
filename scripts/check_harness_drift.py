@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import re
 import sys
@@ -368,9 +369,90 @@ def check_config_parity(errors: list[str], verbose: bool) -> None:
             print(f"[ok] Config parity: {consumer.relative_to(ROOT)} matches source")
 
 
+def check_amcx1(errors: list[str], verbose: bool) -> None:
+    """AMCX-1 v1.1 state validation (opt-in via --amcx1).
+
+    Structural, stdlib-only validation of .vibe/ state files against the
+    tracked draft-07 schemas in schemas/ (required fields, digest format,
+    duplicate logical_identity). Skips silently when no AMCX-1 state exists,
+    so worktrees without agent-memory state are unaffected.
+    """
+    digest_re = re.compile(r"^[0-9a-f]{64}$")
+    amx_state = ROOT / ".vibe/amcx-memory/state.json"
+    ecm_state = ROOT / ".vibe/ecm-state.json"
+    if not amx_state.is_file() and not ecm_state.is_file():
+        if verbose:
+            print("[ok] AMCX-1: no .vibe state present (nothing to validate)")
+        return
+
+    required_amx = [
+        "schema_version", "origin", "logical_identity", "repository_scope",
+        "provenance", "causal_ancestry", "trust_validity_state", "visibility",
+        "purpose", "retraction_deletion_barriers", "canonical_semantic_digest",
+    ]
+
+    if amx_state.is_file():
+        try:
+            data = json.loads(_read(amx_state))
+        except json.JSONDecodeError as exc:
+            errors.append(f"AMCX-1: {amx_state.relative_to(ROOT)} is not valid JSON: {exc}")
+            return
+        memories = data.get("memories", [])
+        seen: dict[str, int] = {}
+        for index, memory in enumerate(memories):
+            where = f"{amx_state.relative_to(ROOT)}#memories[{index}]"
+            # Presence check: empty objects (e.g. repository_scope={}) are
+            # schema-valid; the Engram server auto-populates them as {}.
+            missing = [f for f in required_amx if f not in memory]
+            if missing:
+                errors.append(f"AMCX-1: {where} missing required fields: {missing}")
+            digest = memory.get("canonical_semantic_digest", "")
+            if digest and not digest_re.match(str(digest)):
+                errors.append(
+                    f"AMCX-1: {where} canonical_semantic_digest is not 64-char lowercase hex"
+                )
+            logical_id = memory.get("logical_identity")
+            if logical_id:
+                if logical_id in seen:
+                    errors.append(
+                        f"AMCX-1: duplicate logical_identity {logical_id!r} at "
+                        f"memories[{index}] (first seen at memories[{seen[logical_id]}])"
+                    )
+                else:
+                    seen[logical_id] = index
+        if verbose:
+            print(f"[ok] AMCX-1: {amx_state.relative_to(ROOT)} - {len(memories)} memories, {len(seen)} unique identities")
+
+    if ecm_state.is_file():
+        try:
+            data = json.loads(_read(ecm_state))
+        except json.JSONDecodeError as exc:
+            errors.append(f"AMCX-1: {ecm_state.relative_to(ROOT)} is not valid JSON: {exc}")
+            return
+        entries = data.get("entries", data if isinstance(data, list) else [])
+        combos: set[tuple] = set()
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                continue
+            combo = (entry.get("task_id"), entry.get("attempt_id"))
+            if combo in combos:
+                errors.append(
+                    f"AMCX-1: duplicate ECM pattern (task_id, attempt_id)={combo} "
+                    f"at {ecm_state.relative_to(ROOT)} entries[{index}]"
+                )
+            elif all(combo):
+                combos.add(combo)
+        if verbose:
+            print(f"[ok] AMCX-1: {ecm_state.relative_to(ROOT)} - {len(entries)} entries")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check harness drift for AutoDev")
     parser.add_argument("--verbose", action="store_true", help="print passing checks")
+    parser.add_argument(
+        "--amcx1", action="store_true",
+        help="also validate AMCX-1 .vibe state files (skipped when absent)",
+    )
     args = parser.parse_args()
 
     errors: list[str] = []
@@ -390,6 +472,8 @@ def main() -> int:
     check_cli_authority(errors, args.verbose)
     check_reproducible_script(errors, args.verbose)
     check_scripts_syntax(errors, args.verbose)
+    if args.amcx1:
+        check_amcx1(errors, args.verbose)
 
     if errors:
         print("Harness drift detected:", file=sys.stderr)
