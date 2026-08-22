@@ -22,39 +22,39 @@ import platform.objc.autoreleasepool
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class PlatformFileSystem actual constructor() {
-    actual fun readText(path: String): String =
-        autoreleasepool {
-            val manager = NSFileManager.defaultManager
-            if (!manager.fileExistsAtPath(path)) {
-                throw FileSystemException("file not found: $path")
-            }
-            val data =
-                NSData.dataWithContentsOfFile(path)
-                    ?: throw FileSystemException("read failed for $path")
-            val str =
-                NSString.create(data, NSUTF8StringEncoding)
-                    ?: throw FileSystemException("decode failed for $path (not UTF-8)")
-            str as String
-        }
-
-    actual fun writeText(
-        path: String,
-        content: String,
-    ) {
-        autoreleasepool {
-            val nsString = content as NSString
-            val data =
-                nsString.dataUsingEncoding(NSUTF8StringEncoding)
-                    ?: throw FileSystemException("encode failed for $path (not UTF-8)")
-            val ok = data.writeToFile(path, atomically = true)
-            if (!ok) {
-                throw FileSystemException("write failed for $path")
-            }
-        }
+  actual fun readText(path: String): String =
+    autoreleasepool {
+      val manager = NSFileManager.defaultManager
+      if (!manager.fileExistsAtPath(path)) {
+        throw FileSystemException("file not found: $path")
+      }
+      val data =
+        NSData.dataWithContentsOfFile(path)
+          ?: throw FileSystemException("read failed for $path")
+      val str =
+        NSString.create(data, NSUTF8StringEncoding)
+          ?: throw FileSystemException("decode failed for $path (not UTF-8)")
+      str as String
     }
 
-    actual fun exists(path: String): Boolean =
-        autoreleasepool {
-            NSFileManager.defaultManager.fileExistsAtPath(path)
-        }
+  actual fun writeText(
+    path: String,
+    content: String,
+  ) {
+    autoreleasepool {
+      val nsString = content as NSString
+      val data =
+        nsString.dataUsingEncoding(NSUTF8StringEncoding)
+          ?: throw FileSystemException("encode failed for $path (not UTF-8)")
+      val ok = data.writeToFile(path, atomically = true)
+      if (!ok) {
+        throw FileSystemException("write failed for $path")
+      }
+    }
+  }
+
+  actual fun exists(path: String): Boolean =
+    autoreleasepool {
+      NSFileManager.defaultManager.fileExistsAtPath(path)
+    }
 }

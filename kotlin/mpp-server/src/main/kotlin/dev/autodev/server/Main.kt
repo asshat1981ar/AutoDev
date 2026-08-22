@@ -11,10 +11,10 @@ import io.ktor.server.netty.Netty
  * environment variable.
  */
 fun main() {
-    val port = (System.getenv("AUTODEV_PORT") ?: "8080").toIntOrNull() ?: 8080
-    val router = SseStreamingRouter()
+  val port = (System.getenv("AUTODEV_PORT") ?: "8080").toIntOrNull() ?: 8080
+  val router = SseStreamingRouter()
 
-    embeddedServer(Netty, port = port) {
-        sseRoutes(router)
-    }.start(wait = true)
+  embeddedServer(Netty, port = port) {
+    sseRoutes(router)
+  }.start(wait = true)
 }

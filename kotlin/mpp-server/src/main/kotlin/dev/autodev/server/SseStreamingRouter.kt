@@ -26,47 +26,47 @@ import kotlinx.coroutines.flow.flow
  *  - `GET /events` — SSE stream of [eventFlow], one `data:` frame per emission.
  */
 public class SseStreamingRouter(
-    private val eventFlow: Flow<String> = defaultEvents(),
+  private val eventFlow: Flow<String> = defaultEvents(),
 ) {
-    /**
-     * Install routes onto [application].
-     */
-    public fun routes(application: Application) {
-        application.routing {
-            get("/health") {
-                call.respond(mapOf("status" to "ok"))
-            }
-            get("/events") {
-                call.respondTextWriter(
-                    contentType = ContentType.Text.EventStream.withCharset(Charsets.UTF_8),
-                ) {
-                    eventFlow.collect { event ->
-                        write("data: $event\n\n")
-                        flush()
-                    }
-                }
-            }
+  /**
+   * Install routes onto [application].
+   */
+  public fun routes(application: Application) {
+    application.routing {
+      get("/health") {
+        call.respond(mapOf("status" to "ok"))
+      }
+      get("/events") {
+        call.respondTextWriter(
+          contentType = ContentType.Text.EventStream.withCharset(Charsets.UTF_8),
+        ) {
+          eventFlow.collect { event ->
+            write("data: $event\n\n")
+            flush()
+          }
         }
+      }
     }
+  }
 
-    public companion object {
-        /**
-         * A default heartbeat event flow used when none is supplied.
-         */
-        public fun defaultEvents(): Flow<String> =
-            flow {
-                var n = 0
-                while (true) {
-                    emit("ping ${n++}")
-                    delay(1000)
-                }
-            }
-    }
+  public companion object {
+    /**
+     * A default heartbeat event flow used when none is supplied.
+     */
+    public fun defaultEvents(): Flow<String> =
+      flow {
+        var n = 0
+        while (true) {
+          emit("ping ${n++}")
+          delay(1000)
+        }
+      }
+  }
 }
 
 /**
  * Reusable convenience to attach [SseStreamingRouter] from an [Application].
  */
 public fun Application.sseRoutes(router: SseStreamingRouter) {
-    router.routes(this)
+  router.routes(this)
 }
