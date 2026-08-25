@@ -64,6 +64,30 @@ pub fn apply_verifier_overlays(
     Ok(())
 }
 
+/// Verify that every overlay asset on disk hashes to the digest declared
+/// in the fixture. Unlike [`apply_verifier_overlays`], this does not copy
+/// bytes into a workspace; it is intended for the `validate` CLI command
+/// and other static checks that want to fail on asset drift before the
+/// smoke gate runs.
+pub fn verify_overlay_assets(
+    crate_root: &Path,
+    overlays: &[VerifierOverlay],
+) -> Result<(), RunnerError> {
+    let crate_root = fs::canonicalize(crate_root)?;
+    for overlay in overlays {
+        let source = confined_source(&crate_root, &overlay.source_path)?;
+        let bytes = fs::read(&source)?;
+        let actual = sha256(&bytes);
+        if actual != overlay.sha256 {
+            return Err(RunnerError::OverlayIntegrity(format!(
+                "{} expected {}, got {actual}",
+                overlay.source_path, overlay.sha256
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub fn run_verifier(
     workspace: &Path,
     recipe: &VerificationRecipe,

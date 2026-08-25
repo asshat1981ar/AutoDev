@@ -1,0 +1,119 @@
+id: observer-no-process-exec
+language: Python
+files:
+  - scripts/autodev-cli.py
+rule:
+  any:
+    - pattern: subprocess.$SUBPROCESS_METHOD($$$ARGS)
+    - all:
+        - pattern: $SUBPROCESS_MODULE.$SUBPROCESS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_statement
+                - has:
+                    stopBy: end
+                    pattern:
+                      context: import subprocess as $SUBPROCESS_MODULE
+                      selector: aliased_import
+    - all:
+        - pattern: $SUBPROCESS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^subprocess$
+                - has:
+                    stopBy: end
+                    all:
+                      - pattern: $SUBPROCESS_METHOD
+                      - not:
+                          inside:
+                            kind: aliased_import
+    - all:
+        - pattern: $SUBPROCESS_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^subprocess$
+                - has:
+                    stopBy: end
+                    pattern:
+                      context: from subprocess import $SUBPROCESS_ORIGINAL as $SUBPROCESS_ALIAS
+                      selector: aliased_import
+    - pattern: os.$OS_METHOD($$$ARGS)
+    - all:
+        - pattern: $OS_MODULE.$OS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_statement
+                - has:
+                    stopBy: end
+                    pattern:
+                      context: import os as $OS_MODULE
+                      selector: aliased_import
+    - all:
+        - pattern: $OS_METHOD($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^os$
+                - has:
+                    stopBy: end
+                    all:
+                      - pattern: $OS_METHOD
+                      - not:
+                          inside:
+                            kind: aliased_import
+    - all:
+        - pattern: $OS_ALIAS($$$ARGS)
+        - inside:
+            kind: module
+            stopBy: end
+            has:
+              stopBy: end
+              all:
+                - kind: import_from_statement
+                - has:
+                    field: module_name
+                    regex: ^os$
+                - has:
+                    stopBy: end
+                    pattern:
+                      context: from os import $OS_ORIGINAL as $OS_ALIAS
+                      selector: aliased_import
+constraints:
+  SUBPROCESS_METHOD:
+    regex: ^(run|call|Popen|check_call|check_output)$
+  SUBPROCESS_ORIGINAL:
+    regex: ^(run|call|Popen|check_call|check_output)$
+  OS_METHOD:
+    regex: ^(system|popen)$
+  OS_ORIGINAL:
+    regex: ^(system|popen)$
+message: Observer CLI must not gain arbitrary process execution authority.
+severity: error

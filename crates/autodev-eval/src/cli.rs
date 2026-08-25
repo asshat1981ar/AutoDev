@@ -5,7 +5,7 @@ use forge_core::{compare_reports, EvalReport};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::{load_corpus, smoke_fixture};
+use crate::{load_corpus, smoke_fixture, verify_overlay_assets};
 
 #[derive(Debug, Error)]
 enum CliError {
@@ -69,6 +69,17 @@ fn dispatch(args: &[String]) -> Result<i32, CliError> {
 fn validate_command(args: &[String]) -> Result<i32, CliError> {
     let fixtures = single_option(args, "--fixtures", "validate --fixtures <dir>")?;
     let corpus = load_corpus(fixtures).map_err(runtime)?;
+    // Fail fast on asset drift: every overlay source file on disk must hash
+    // to the digest declared in the matching fixture. Catching this at
+    // `validate` time means a contributor sees the failure before the
+    // smoke gate (which only runs the full historical pipeline) ever
+    // executes.
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for fixture in &corpus {
+        if !fixture.verifier_overlay.is_empty() {
+            verify_overlay_assets(&crate_root, &fixture.verifier_overlay).map_err(runtime)?;
+        }
+    }
     let mut tasks = Vec::with_capacity(corpus.len());
     for fixture in corpus {
         let key = fixture.task.key().map_err(runtime)?;
@@ -106,9 +117,13 @@ fn smoke_command(args: &[String]) -> Result<i32, CliError> {
         });
     }
     results.sort_by(|left, right| left.task_id.cmp(&right.task_id));
-    let healthy = results
-        .iter()
-        .all(|result| !result.base_passed && result.reference_passed);
+    // An empty corpus must not be silently healthy. Without this check, a
+    // contributor (or a hostile PR) who empties fixtures/ would still
+    // exit 0 because the vacuous `all` over an empty slice is `true`.
+    let healthy = !results.is_empty()
+        && results
+            .iter()
+            .all(|result| !result.base_passed && result.reference_passed);
     print_json(&SmokeSummary { results })?;
     Ok(if healthy { 0 } else { 1 })
 }

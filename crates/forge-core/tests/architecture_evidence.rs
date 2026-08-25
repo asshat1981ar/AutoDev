@@ -283,3 +283,63 @@ fn normalized_connector_findings_render_without_live_connectors() {
     assert!(first.contains("## Ranked Options"));
     assert!(first.contains("normalized-local-domain"));
 }
+
+#[test]
+fn with_source_binds_source_fingerprint_to_raw_bytes() {
+    // Regression: previously `EvidenceRecord::new` only fingerprinted
+    // the normalized content. A caller could supply any source and
+    // any normalized text independently, and the record would not
+    // remember which source the normalized content came from.
+    use chrono::Utc;
+    use forge_core::architecture_evidence::{EvidenceClass, EvidenceRecord};
+
+    let source_bytes: &[u8] = b"raw connector output that was summarized";
+    let normalized = "ConnectorForge reports W1 coverage.";
+
+    let bound = EvidenceRecord::with_source(
+        "ev-source",
+        "obj-1",
+        "W1 coverage observed",
+        EvidenceClass::Documented,
+        "github",
+        "issue/42",
+        Utc::now(),
+        80,
+        source_bytes,
+        normalized,
+        "If issue/42 is closed as wontfix.",
+    )
+    .unwrap();
+
+    let expected_source_sha = {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(source_bytes);
+        format!("{:x}", h.finalize())
+    };
+    assert_eq!(
+        bound.source_fingerprint.as_deref(),
+        Some(expected_source_sha.as_str()),
+        "source_fingerprint must hash the raw bytes",
+    );
+    // The normalized-content fingerprint must remain independent.
+    assert!(!bound.content_fingerprint.is_empty());
+    assert_ne!(bound.content_fingerprint, expected_source_sha);
+
+    // Without `with_source`, the source_fingerprint is None — the
+    // historical constructor continues to be available.
+    let unbound = EvidenceRecord::new(
+        "ev-nobind",
+        "obj-1",
+        "Legacy",
+        EvidenceClass::Documented,
+        "github",
+        "issue/9",
+        Utc::now(),
+        50,
+        "x",
+        "n/a",
+    )
+    .unwrap();
+    assert!(unbound.source_fingerprint.is_none());
+}
