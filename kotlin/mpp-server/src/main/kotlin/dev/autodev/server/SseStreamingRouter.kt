@@ -35,113 +35,113 @@ import kotlinx.coroutines.sync.withLock
  *    [MAX_OBJECTIVE_QUEUE].
  */
 public class SseStreamingRouter(
-    private val eventFlow: Flow<String> = defaultEvents(),
+  private val eventFlow: Flow<String> = defaultEvents(),
 ) {
-    private val objectiveLock = Mutex()
-    private val objectiveQueue: ArrayDeque<String> = ArrayDeque()
+  private val objectiveLock = Mutex()
+  private val objectiveQueue: ArrayDeque<String> = ArrayDeque()
+
+  /**
+   * Install routes onto [application].
+   */
+  public fun routes(application: Application) {
+    application.routing {
+      get("/health") {
+        call.respond(mapOf("status" to "ok"))
+      }
+      get("/events") {
+        call.respondTextWriter(
+          contentType = ContentType.Text.EventStream.withCharset(Charsets.UTF_8),
+        ) {
+          // SSE handshake frames: id and retry hint help clients
+          // reconnect from the last delivered event id.
+          write("retry: 5000\n")
+          write("id: 0\n\n")
+          var seq = 0
+          eventFlow.collect { event ->
+            seq += 1
+            write("id: $seq\n")
+            write("data: $event\n\n")
+            flush()
+            // Keepalive comment so idle proxies do not close the
+            // connection while the upstream flow is quiet.
+            write(": keepalive\n\n")
+            flush()
+          }
+        }
+      }
+      post("/api/v1/objectives") {
+        val payload = call.receiveText()
+        if (payload.isEmpty()) {
+          call.respond(HttpStatusCode.BadRequest, mapOf("error" to "empty payload"))
+          return@post
+        }
+        if (payload.length > MAX_OBJECTIVE_BYTES) {
+          call.respond(
+            HttpStatusCode.PayloadTooLarge,
+            mapOf("error" to "payload exceeds $MAX_OBJECTIVE_BYTES bytes"),
+          )
+          return@post
+        }
+        val accepted = objectiveLock.withLock {
+          if (objectiveQueue.size >= MAX_OBJECTIVE_QUEUE) {
+            false
+          } else {
+            objectiveQueue.addLast(payload)
+            true
+          }
+        }
+        if (accepted) {
+          // Both values MUST be String. A mixed Map<String, Any>
+          // (e.g. Int queue_size) makes kotlinx-serialization resolve
+          // `Any` polymorphically at respond() time and throws
+          // SerializationException (AbstractPolymorphicSerializer
+          // .kt:102) — turning every successful enqueue into a 500.
+          // Discovered via CI run 32902539509; see EP-2026-08-25 D14.
+          call.respond(
+            HttpStatusCode.Accepted,
+            mapOf(
+              "status" to "queued",
+              "queue_size" to objectiveQueue.size.toString(),
+            ),
+          )
+        } else {
+          call.respond(
+            HttpStatusCode.ServiceUnavailable,
+            mapOf("error" to "objective queue full"),
+          )
+        }
+      }
+    }
+  }
+
+  public companion object {
+    /**
+     * Maximum size of a single objective payload (UTF-16 code units).
+     */
+    public const val MAX_OBJECTIVE_BYTES: Int = 64 * 1024
 
     /**
-     * Install routes onto [application].
+     * Maximum number of objectives held in the in-process queue.
      */
-    public fun routes(application: Application) {
-        application.routing {
-            get("/health") {
-                call.respond(mapOf("status" to "ok"))
-            }
-            get("/events") {
-                call.respondTextWriter(
-                    contentType = ContentType.Text.EventStream.withCharset(Charsets.UTF_8),
-                ) {
-                    // SSE handshake frames: id and retry hint help clients
-                    // reconnect from the last delivered event id.
-                    write("retry: 5000\n")
-                    write("id: 0\n\n")
-                    var seq = 0
-                    eventFlow.collect { event ->
-                        seq += 1
-                        write("id: $seq\n")
-                        write("data: $event\n\n")
-                        flush()
-                        // Keepalive comment so idle proxies do not close the
-                        // connection while the upstream flow is quiet.
-                        write(": keepalive\n\n")
-                        flush()
-                    }
-                }
-            }
-            post("/api/v1/objectives") {
-                val payload = call.receiveText()
-                if (payload.isEmpty()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "empty payload"))
-                    return@post
-                }
-                if (payload.length > MAX_OBJECTIVE_BYTES) {
-                    call.respond(
-                        HttpStatusCode.PayloadTooLarge,
-                        mapOf("error" to "payload exceeds $MAX_OBJECTIVE_BYTES bytes"),
-                    )
-                    return@post
-                }
-                val accepted = objectiveLock.withLock {
-                    if (objectiveQueue.size >= MAX_OBJECTIVE_QUEUE) {
-                        false
-                    } else {
-                        objectiveQueue.addLast(payload)
-                        true
-                    }
-                }
-                if (accepted) {
-                    // Both values MUST be String. A mixed Map<String, Any>
-                    // (e.g. Int queue_size) makes kotlinx-serialization resolve
-                    // `Any` polymorphically at respond() time and throws
-                    // SerializationException (AbstractPolymorphicSerializer
-                    // .kt:102) — turning every successful enqueue into a 500.
-                    // Discovered via CI run 32902539509; see EP-2026-08-25 D14.
-                    call.respond(
-                        HttpStatusCode.Accepted,
-                        mapOf(
-                            "status" to "queued",
-                            "queue_size" to objectiveQueue.size.toString(),
-                        ),
-                    )
-                } else {
-                    call.respond(
-                        HttpStatusCode.ServiceUnavailable,
-                        mapOf("error" to "objective queue full"),
-                    )
-                }
-            }
+    public const val MAX_OBJECTIVE_QUEUE: Int = 256
+
+    /**
+     * A default heartbeat event flow used when none is supplied.
+     */
+    public fun defaultEvents(): Flow<String> =
+      flow {
+        var n = 0
+        while (true) {
+          emit("ping ${n++}")
+          delay(1000)
         }
-    }
-
-    public companion object {
-        /**
-         * Maximum size of a single objective payload (UTF-16 code units).
-         */
-        public const val MAX_OBJECTIVE_BYTES: Int = 64 * 1024
-
-        /**
-         * Maximum number of objectives held in the in-process queue.
-         */
-        public const val MAX_OBJECTIVE_QUEUE: Int = 256
-
-        /**
-         * A default heartbeat event flow used when none is supplied.
-         */
-        public fun defaultEvents(): Flow<String> =
-            flow {
-                var n = 0
-                while (true) {
-                    emit("ping ${n++}")
-                    delay(1000)
-                }
-            }
-    }
+      }
+  }
 }
 
 /**
  * Reusable convenience to attach [SseStreamingRouter] from an [Application].
  */
 public fun Application.sseRoutes(router: SseStreamingRouter) {
-    router.routes(this)
+  router.routes(this)
 }
