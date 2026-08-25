@@ -82,14 +82,15 @@ public class SseStreamingRouter(
           )
           return@post
         }
-        val accepted = objectiveLock.withLock {
-          if (objectiveQueue.size >= MAX_OBJECTIVE_QUEUE) {
-            false
-          } else {
-            objectiveQueue.addLast(payload)
-            true
+        val accepted =
+          objectiveLock.withLock {
+            if (objectiveQueue.size >= MAX_OBJECTIVE_QUEUE) {
+              false
+            } else {
+              objectiveQueue.addLast(payload)
+              true
+            }
           }
-        }
         if (accepted) {
           // Both values MUST be String. A mixed Map<String, Any>
           // (e.g. Int queue_size) makes kotlinx-serialization resolve

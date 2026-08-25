@@ -78,10 +78,11 @@ class SseStreamingRouterTest {
       // reject tests below. No client-side ContentNegotiation is installed,
       // so the body bypasses kotlinx-serialization dispatch entirely; the
       // server reads it with call.receiveText(), which ignores content type.
-      val response = client.post("/api/v1/objectives") {
-        contentType(ContentType.Application.Json)
-        setBody("""{"title":"demo"}""")
-      }
+      val response =
+        client.post("/api/v1/objectives") {
+          contentType(ContentType.Application.Json)
+          setBody("""{"title":"demo"}""")
+        }
       assertEquals(HttpStatusCode.Accepted, response.status)
       val body = response.bodyAsText()
       assertTrue(body.contains("queued"), "expected 'queued' in body, got: $body")
@@ -95,10 +96,11 @@ class SseStreamingRouterTest {
         install(ContentNegotiation) { json() }
         sseRoutes(SseStreamingRouter(flowOf("ready")))
       }
-      val response = client.post("/api/v1/objectives") {
-        contentType(ContentType.Application.Json)
-        setBody("")
-      }
+      val response =
+        client.post("/api/v1/objectives") {
+          contentType(ContentType.Application.Json)
+          setBody("")
+        }
       assertEquals(HttpStatusCode.BadRequest, response.status)
     }
 
@@ -110,10 +112,11 @@ class SseStreamingRouterTest {
         sseRoutes(SseStreamingRouter(flowOf("ready")))
       }
       val oversized = "x".repeat(SseStreamingRouter.MAX_OBJECTIVE_BYTES + 1)
-      val response = client.post("/api/v1/objectives") {
-        contentType(ContentType.Application.Json)
-        setBody(oversized)
-      }
+      val response =
+        client.post("/api/v1/objectives") {
+          contentType(ContentType.Application.Json)
+          setBody(oversized)
+        }
       assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
     }
 }
