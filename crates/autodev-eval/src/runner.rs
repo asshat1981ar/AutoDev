@@ -153,6 +153,23 @@ pub struct ReferenceSmokeResult {
 /// re-running anything. Environmental failures (e.g. missing Android SDK or
 /// JDK on a local host) then surface as `exit_code=Some(127)`-style evidence
 /// instead of an opaque boolean.
+/// Collapse a captured stream tail into one bounded, log-safe line: newlines
+/// become ` | ` and the result is truncated to 400 chars so assertion
+/// messages stay readable.
+fn single_line(tail: &str) -> String {
+    const MAX_DETAIL_CHARS: usize = 400;
+    let collapsed = tail.replace('\r', " ").replace('\n', " | ");
+    let char_count = collapsed.chars().count();
+    if char_count > MAX_DETAIL_CHARS {
+        collapsed
+            .chars()
+            .skip(char_count - MAX_DETAIL_CHARS)
+            .collect()
+    } else {
+        collapsed
+    }
+}
+
 fn required_steps_detail(fixture: &EvalFixture, executions: &[StepExecution]) -> String {
     fixture
         .task
@@ -165,14 +182,25 @@ fn required_steps_detail(fixture: &EvalFixture, executions: &[StepExecution]) ->
                 .iter()
                 .find(|execution| execution.evidence.step_id == step.id)
             {
-                Some(execution) => format!(
-                    "step `{}` passed={} exit_code={:?} timed_out={} elapsed_ms={}",
-                    step.id,
-                    execution.evidence.passed,
-                    execution.evidence.exit_code,
-                    execution.evidence.timed_out,
-                    execution.elapsed_ms
-                ),
+                Some(execution) => {
+                    let evidence = &execution.evidence;
+                    let mut detail = format!(
+                        "step `{}` passed={} exit_code={:?} timed_out={} elapsed_ms={}",
+                        step.id,
+                        evidence.passed,
+                        evidence.exit_code,
+                        evidence.timed_out,
+                        execution.elapsed_ms
+                    );
+                    if !evidence.passed && !evidence.stderr_tail.is_empty() {
+                        detail.push_str(" stderr_tail=");
+                        detail.push_str(&single_line(&evidence.stderr_tail));
+                    } else if !evidence.passed && !evidence.stdout_tail.is_empty() {
+                        detail.push_str(" stdout_tail=");
+                        detail.push_str(&single_line(&evidence.stdout_tail));
+                    }
+                    detail
+                }
                 None => format!("step `{}` has no recorded execution", step.id),
             }
         })

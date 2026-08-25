@@ -14,10 +14,20 @@ use sha2::{Digest, Sha256};
 use crate::{RunnerError, VerifierOverlay};
 
 const MAX_STREAM_BYTES: usize = 64 * 1024;
+/// Maximum bytes retained per stream in [`VerifierEvidence::stdout_tail`] /
+/// [`VerifierEvidence::stderr_tail`]. Tails keep the last bytes, where build
+/// tools print their summary and failure reason (ADR-005).
+pub(crate) const TAIL_BYTES: usize = 2 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const CAPTURE_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 
 type CaptureHandle = thread::JoinHandle<io::Result<Vec<u8>>>;
+
+/// Lossy-UTF-8 rendering of the last `max_bytes` of a captured stream.
+fn lossy_tail(bytes: &[u8], max_bytes: usize) -> String {
+    let start = bytes.len().saturating_sub(max_bytes);
+    String::from_utf8_lossy(&bytes[start..]).into_owned()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepExecution {
@@ -146,6 +156,8 @@ pub fn run_verifier(
                 stdout_sha256: sha256(&stdout),
                 stderr_sha256: sha256(&stderr),
                 timed_out,
+                stdout_tail: lossy_tail(&stdout, TAIL_BYTES),
+                stderr_tail: lossy_tail(&stderr, TAIL_BYTES),
             },
             elapsed_ms,
         });

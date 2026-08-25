@@ -251,3 +251,38 @@ The plan was halted with the PR still failing CI on two jobs (Kotlin and Self-ev
 3. mpp-core emits expect/actual Beta warnings (KT-61573); harmless today, consider `-Xexpect-actual-classes` or refactor in a future cycle.
 
 **Retrospective lessons:** (1) When one test fails across N different input shapes while its siblings pass, suspect the shared success-path code, not the inputs — the failing assertion was pointing at itself all along. (2) Never-before-green lint gates hoard invisible debt; making the build step green surfaced three separate ktlint layers in sequence. Budgeting "unknown unknown" attempts for first-time-exercised gates would have made the original plan's estimates honest.
+
+---
+
+# ExecPlan EP-2026-08-25-eval-reliability
+
+**Status:** IN PROGRESS (attempt 1 of 2)
+**Replan budget:** 2 replans
+**Branch:** `feat/cycle-eval-reliability` (off `main` @ `7c1b7ad`, post-PR-#50 merge)
+**Supersedes:** nothing; directly continues the hand-forward items D15/D17 of EP-2026-08-25-pr50-closeout (CLOSED — SUCCESS).
+
+**Goal:** Make self-eval verifier failures durably diagnosable and reduce corpus-smoke CI flakiness, so merges are never again blocked by an opaque `exit_code=Some(1)` with no error text.
+
+**Scope boundary:**
+- IN: ADR-005 output-tail retention in `VerifierEvidence`; autodev-eval capture/detail wiring; fixture-level mitigation of Gradle cold-cache flakiness if diagnosis supports it.
+- OUT: changing verification pass/fail semantics; persisting full streams; touching mpp-* Kotlin modules.
+- HARD OUT (inherited): changes to `main` without PR, force-push, root manifests, lockfile edits outside `cargo update`, secrets paths.
+
+## Progress
+
+**M0 — Cycle opened.** *Status:* DONE. Branch cut from merged main; ADR-005 drafted; evidence-tail slice implemented across forge-core + autodev-eval. Evidence: this section, `git diff main..feat/cycle-eval-reliability`.
+**M1 — Evidence-tail slice green in CI.** *Status:* PENDING (attempt 0/2). Proof: all 7 CI jobs green on branch head including `cargo test --workspace` covering updated evaluation_report helper.
+**M2 — Flake diagnosis from first captured failure.** *Status:* PENDING (attempt 0/2). Proof: next corpus-smoke failure's assertion message contains `stderr_tail=` naming the actual Gradle error. If 5 consecutive runs pass instead, close plan as OBSOLETE-BY-STABILITY with the tails kept for future use.
+**M3 — Mitigation decision.** *Status:* PENDING. From M2 evidence choose: Gradle retry/caching config via existing `verifier_overlay` machinery (no schema change), or accept-and-document residual flake rate. Requires observable before/after failure-rate comparison.
+
+## Surprises & Discoveries
+
+- **2026-08-25**: Corpus smoke failed on a PLANS.md-only commit (`28e5b91`) while byte-identical code had just passed — confirming pure infrastructure flake, independent of any repo change.
+
+## Decision Log
+
+- **D18 (2026-08-25)**: Chose bounded tail retention over full-stream persistence (smaller blast radius, serde-compatible) and over blind retry logic (masks signal). Tails are advisory diagnostics only; hashes remain the integrity authority per ADR-002.
+
+## Outcomes & Retrospective
+
+*(To be filled at M3/closeout from real CI evidence, not from intent.)*
