@@ -177,7 +177,7 @@ The plan was halted with the PR still failing CI on two jobs (Kotlin and Self-ev
 
 # ExecPlan EP-2026-08-25-pr50-closeout
 
-**Status:** IN PROGRESS (attempt 1 of 2)
+**Status:** CLOSED — SUCCESS (all 7 CI jobs green on head; see Outcomes & Retrospective)
 **Replan budget:** 2 replans
 **Supersedes:** EP-2026-08-22-cycle-kotlin-mpp-closeout (halted honestly at 5/7 CI jobs green; its Plan halt reason and pre-existing-failure inventory above are inherited context for this plan).
 **Goal:** Take PR #50 (`feat/cycle-kotlin-mpp`) from 5/7 green CI jobs to all 7 green by (a) committing the already-authored Kotlin accept-test fix, (b) committing the Rust corpus-smoke diagnostic instrumentation, (c) passing local offline gates, then (d) pushing and requiring a fully green CI run as the authoritative verifier before closeout.
@@ -224,4 +224,30 @@ The plan was halted with the PR still failing CI on two jobs (Kotlin and Self-ev
 
 ## Outcomes & Retrospective
 
-*(To be filled at M-E from real CI evidence, not from intent.)*
+*(Filled at M-E from real CI evidence, per plan contract.)*
+
+**Status: CLOSED — SUCCESS.** All 7 CI jobs green on branch head (`run 32906824425` @ `3c18dc6`, 2026-08-25), including the two jobs red since EP-2026-08-22 halted.
+
+**What actually landed (commits on `feat/cycle-kotlin-mpp`, all in PR #50):**
+- `f5abaa5` fix(mpp-server): restore accept test using the reject-test request shape (M-A)
+- `2823cf8` feat(autodev-eval): per-step verifier evidence (`base_detail`/`reference_detail`) + self-explaining assert messages (M-B)
+- `c3723bb` docs(plans): this ExecPlan
+- `042b10e` fix(mpp-server): respond all-String map from objective enqueue accept path (D14) — **the real production bug fix**
+- `a80a475` style(mpp-server): 2-space reformat of SseStreamingRouter.kt (D16, pre-existing ktlint debt layer 1)
+- `3c18dc6` (plus `470e5be`/`a339768` ancestors) style: multiline expression bodies in test + router val assignments (pre-existing ktlint debt layers 2–3)
+
+**Acceptance criteria proof:**
+- M-A ✅ commit landed; test passes in CI runs 32903823458+.
+- M-B ✅ committed; diagnostics named the failing step/exit code verbatim in run 32902539509 output.
+- M-C ✅ drift/py_compile/unittest(32)/node checks green locally at every push.
+- M-D ✅ run 32906116191 (head a339768): 7/7 after one targeted flaky-job rerun; confirmed by run 32906824425 (head 3c18dc6): 7/7.
+- M-E ✅ this section.
+
+**Biggest discovery:** the "unfixable accept test" was never a Ktor test-host problem. The production happy path responded a mixed `Map<String, Any>`, which kotlinx-serialization cannot serialize — every successful enqueue was a guaranteed 500. Five prior body-shape attempts (EP-2026-08-22 D10 loop) chased the wrong layer because reject tests (which short-circuit before respond) kept passing.
+
+**What remained unfinished / handed forward:**
+1. Corpus smoke flake (~40% historical failure rate across 5 runs; passes on rerun). Root cause unobservable by design (evidence stores hashes only). Follow-up candidates: retain an output tail in `VerifierEvidence` (needs ADR — forge-core schema change) or add Gradle dependency caching/retry to the eval harness path.
+2. `queue_size` is now returned as a JSON string rather than number; no current consumers parse it, but if an API consumer appears it may want `buildJsonObject` with a main-scope kotlinx-serialization-json dependency.
+3. mpp-core emits expect/actual Beta warnings (KT-61573); harmless today, consider `-Xexpect-actual-classes` or refactor in a future cycle.
+
+**Retrospective lessons:** (1) When one test fails across N different input shapes while its siblings pass, suspect the shared success-path code, not the inputs — the failing assertion was pointing at itself all along. (2) Never-before-green lint gates hoard invisible debt; making the build step green surfaced three separate ktlint layers in sequence. Budgeting "unknown unknown" attempts for first-time-exercised gates would have made the original plan's estimates honest.
