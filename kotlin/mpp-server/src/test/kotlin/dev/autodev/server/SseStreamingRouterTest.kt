@@ -24,90 +24,96 @@ import org.junit.jupiter.api.Test
  */
 class SseStreamingRouterTest {
   @Test
-  fun `health endpoint returns ok`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("ready")))
+  fun `health endpoint returns ok`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("ready")))
+      }
+      val response = client.get("/health")
+      assertEquals(HttpStatusCode.OK, response.status)
+      val body = response.bodyAsText()
+      assertTrue(body.contains("ok"), "expected health body to contain 'ok', got: $body")
     }
-    val response = client.get("/health")
-    assertEquals(HttpStatusCode.OK, response.status)
-    val body = response.bodyAsText()
-    assertTrue(body.contains("ok"), "expected health body to contain 'ok', got: $body")
-  }
 
   @Test
-  fun `events endpoint advertises event-stream content type`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("ready")))
+  fun `events endpoint advertises event-stream content type`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("ready")))
+      }
+      val response = client.get("/events")
+      val contentType = response.headers[HttpHeaders.ContentType]
+      assertNotNull(contentType, "Content-Type header must be present")
+      assertTrue(
+        contentType!!.startsWith("text/event-stream"),
+        "expected text/event-stream content type, got: $contentType",
+      )
     }
-    val response = client.get("/events")
-    val contentType = response.headers[HttpHeaders.ContentType]
-    assertNotNull(contentType, "Content-Type header must be present")
-    assertTrue(
-      contentType!!.startsWith("text/event-stream"),
-      "expected text/event-stream content type, got: $contentType",
-    )
-  }
 
   @Test
-  fun `events endpoint emits data id and keepalive frames`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("alpha", "beta")))
+  fun `events endpoint emits data id and keepalive frames`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("alpha", "beta")))
+      }
+      val body = client.get("/events").bodyAsText()
+      assertTrue(body.contains("data: alpha"), "expected 'data: alpha' frame, got: $body")
+      assertTrue(body.contains("data: beta"), "expected 'data: beta' frame, got: $body")
+      assertTrue(body.contains("retry: 5000"), "expected 'retry:' hint, got: $body")
+      assertTrue(body.contains("id: 1"), "expected sequential 'id:' frame, got: $body")
+      assertTrue(body.contains(": keepalive"), "expected ': keepalive' comment frame, got: $body")
     }
-    val body = client.get("/events").bodyAsText()
-    assertTrue(body.contains("data: alpha"), "expected 'data: alpha' frame, got: $body")
-    assertTrue(body.contains("data: beta"), "expected 'data: beta' frame, got: $body")
-    assertTrue(body.contains("retry: 5000"), "expected 'retry:' hint, got: $body")
-    assertTrue(body.contains("id: 1"), "expected sequential 'id:' frame, got: $body")
-    assertTrue(body.contains(": keepalive"), "expected ': keepalive' comment frame, got: $body")
-  }
 
   @Test
-  fun `objective enqueue accepts a bounded payload`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("ready")))
+  fun `objective enqueue accepts a bounded payload`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("ready")))
+      }
+      // Plain String body sent via setBody matches the pattern used by the
+      // reject tests below. No client-side ContentNegotiation is installed,
+      // so the body bypasses kotlinx-serialization dispatch entirely; the
+      // server reads it with call.receiveText(), which ignores content type.
+      val response = client.post("/api/v1/objectives") {
+        contentType(ContentType.Application.Json)
+        setBody("""{"title":"demo"}""")
+      }
+      assertEquals(HttpStatusCode.Accepted, response.status)
+      val body = response.bodyAsText()
+      assertTrue(body.contains("queued"), "expected 'queued' in body, got: $body")
+      assertTrue(body.contains("queue_size"), "expected 'queue_size' in body, got: $body")
     }
-    // Plain String body sent via setBody matches the pattern used by the
-    // reject tests below. No client-side ContentNegotiation is installed,
-    // so the body bypasses kotlinx-serialization dispatch entirely; the
-    // server reads it with call.receiveText(), which ignores content type.
-    val response = client.post("/api/v1/objectives") {
-      contentType(ContentType.Application.Json)
-      setBody("""{"title":"demo"}""")
-    }
-    assertEquals(HttpStatusCode.Accepted, response.status)
-    val body = response.bodyAsText()
-    assertTrue(body.contains("queued"), "expected 'queued' in body, got: $body")
-    assertTrue(body.contains("queue_size"), "expected 'queue_size' in body, got: $body")
-  }
 
   @Test
-  fun `objective enqueue rejects empty payload`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("ready")))
+  fun `objective enqueue rejects empty payload`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("ready")))
+      }
+      val response = client.post("/api/v1/objectives") {
+        contentType(ContentType.Application.Json)
+        setBody("")
+      }
+      assertEquals(HttpStatusCode.BadRequest, response.status)
     }
-    val response = client.post("/api/v1/objectives") {
-      contentType(ContentType.Application.Json)
-      setBody("")
-    }
-    assertEquals(HttpStatusCode.BadRequest, response.status)
-  }
 
   @Test
-  fun `objective enqueue rejects oversized payload`() = testApplication {
-    application {
-      install(ContentNegotiation) { json() }
-      sseRoutes(SseStreamingRouter(flowOf("ready")))
+  fun `objective enqueue rejects oversized payload`() =
+    testApplication {
+      application {
+        install(ContentNegotiation) { json() }
+        sseRoutes(SseStreamingRouter(flowOf("ready")))
+      }
+      val oversized = "x".repeat(SseStreamingRouter.MAX_OBJECTIVE_BYTES + 1)
+      val response = client.post("/api/v1/objectives") {
+        contentType(ContentType.Application.Json)
+        setBody(oversized)
+      }
+      assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
     }
-    val oversized = "x".repeat(SseStreamingRouter.MAX_OBJECTIVE_BYTES + 1)
-    val response = client.post("/api/v1/objectives") {
-      contentType(ContentType.Application.Json)
-      setBody(oversized)
-    }
-    assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
-  }
 }
