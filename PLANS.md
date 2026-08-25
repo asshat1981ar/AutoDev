@@ -172,3 +172,47 @@ The plan was halted with the PR still failing CI on two jobs (Kotlin and Self-ev
 **Honest assessment:** The PR has more pre-existing test failures than the original scope covered. The "peeling the onion" pattern (fix one bug, expose the next) continued for 4 fix commits and would likely continue further. The plan is inadequate for the true scope of the PR, and the bounded replan budget (3 replans) has not been formally consumed but the attempt budgets (2 per milestone) have been, so per the plan's "Exhausting the configured attempt budget must stop automatic retry" rule, automatic retry stops here. A larger follow-up plan is needed to bring the PR to a fully green state, but that plan should be authored with the full pre-existing-failure inventory and a more honest budget.
 
 **Rollback path:** Every commit in this plan is independently revertible. The original `3a3a661` (the build-config refactor) is orthogonal to all the fixes and is safe to keep even if the CI fixes are reverted.
+
+---
+
+# ExecPlan EP-2026-08-25-pr50-closeout
+
+**Status:** IN PROGRESS (attempt 1 of 2)
+**Replan budget:** 2 replans
+**Supersedes:** EP-2026-08-22-cycle-kotlin-mpp-closeout (halted honestly at 5/7 CI jobs green; its Plan halt reason and pre-existing-failure inventory above are inherited context for this plan).
+**Goal:** Take PR #50 (`feat/cycle-kotlin-mpp`) from 5/7 green CI jobs to all 7 green by (a) committing the already-authored Kotlin accept-test fix, (b) committing the Rust corpus-smoke diagnostic instrumentation, (c) passing local offline gates, then (d) pushing and requiring a fully green CI run as the authoritative verifier before closeout.
+
+**Authoritative state:** `forge-core::ExecPlan` typed state (lifecycle, milestone attempts, replan budget) is owned by the runtime; this file is the human-readable projection only.
+
+**Scope boundary:**
+- IN: commit + CI-verify the two prepared working-tree diffs; run offline gates; push PR #50 head; observe CI; write Outcomes & Retrospective from real CI evidence; one bounded follow-up if corpus smoke still fails on CI despite diagnostics.
+- OUT: production `ContentNegotiation` fix in `mpp-server` `src/main/`, redesign of `autodev-eval`, new modules, README rewrites, release notes.
+- HARD OUT (inherited from EP-2026-08-22): changes to `main`, force-push to `main`, root `Cargo.toml` / `package.json` / `pyproject.toml`, new `kotlin/gradle/libs.versions.toml`, modifications to `Cargo.lock` outside `cargo update`, secrets paths (`secrets/`, `*.pem`, `*.key`, `*.jks`, `*.p12`, `.env`).
+
+**Known environment constraint:** this sandbox cannot build cargo or gradle artifacts (network egress blocked per `docs/failures/002-network-isolated-build-gates.md`; Termux cross-link env). Local proof is static reasoning + the offline gate subset (`verify_reproducible.sh`: drift, py_compile, node --check, fmt --check). **CI is the authoritative verifier** for both code changes; nothing here may claim red→green locally.
+
+## Progress
+
+**M-A — Commit Kotlin accept-test fix.** *Status:* PENDING (attempt 0/2). The uncommitted working-tree change in `kotlin/mpp-server/src/test/kotlin/dev/autodev/server/SseStreamingRouterTest.kt` restores the `objective enqueue accepts a bounded payload` accept test using `contentType(Application.Json)` + `setBody(String)` — the same proven shape as the passing reject tests (contrast D10's four failed body-type attempts in EP-2026-08-22). Proof: commit hash on `feat/cycle-kotlin-mpp` naming the test; no other files touched.
+**M-B — Commit Rust corpus-smoke diagnostics.** *Status:* PENDING (attempt 0/2). Uncommitted changes in `crates/autodev-eval/src/runner.rs` (add `base_detail`/`reference_detail` diagnostic evidence strings on `ReferenceSmokeResult`) and `crates/autodev-eval/tests/corpus_smoke.rs` (enriched assert messages) make the environmental failure self-diagnosing. This does NOT make the test pass locally — it names the failing step/exit code when it fails. Proof: both files committed; `cargo fmt --all -- --check` exit 0 (offline-safe).
+**M-C — Local offline gates green.** *Status:* PENDING (attempt 0/2). Required proof: `python scripts/check_harness_drift.py` PASS (PLANS.md changed), `python -m py_compile install.py bootstrap_cline_mcp.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py`, `python -m unittest discover -s tests -v` all OK, `node --check scripts/termux-kanban.mjs` OK, `cargo fmt --all -- --check` exit 0. Gradle/cargo build+test are out of local scope per the environment constraint.
+**M-D — Push; require all 7 CI jobs green on PR #50 head.** *Status:* PENDING (attempt 0/2). Proof: CI run on the post-M-A/M-B branch head with Harness, Python 3.10, Python 3.11, AMCX-1, Rust, Kotlin, and Self-eval corpus smoke all ✅. If corpus smoke still fails, its new `base_detail`/`reference_detail` evidence names the failing step/exit code → open one bounded follow-up plan rather than looping here. CI provisions Android SDK 35 (`.github/workflows/ci.yml` `sdkmanager` line), which this sandbox lacks — exactly why M-D can be proven where local runs cannot.
+**M-E — Closeout.** *Status:* PENDING. Write Outcomes & Retrospective below strictly from real CI evidence; mark plan CLOSED or BLOCKED.
+
+Next action: execute M-A (commit Kotlin fix), then M-B (commit Rust diagnostics), then M-C gates, then push under M-D.
+
+## Surprises & Discoveries
+
+- **2026-08-25 (recon)**: EP-2026-08-22's D10 loop (4 body-type attempts: plain text, `TextContent`, `JsonObject`, `contentType(Text.Plain)`) was chasing the wrong shape. The working tree now holds a restore of the accept test using `contentType(Application.Json)` + `setBody(String)` — identical to the two reject tests that already pass in CI. Evidence: `git status` shows `kotlin/mpp-server/src/test/kotlin/dev/autodev/server/SseStreamingRouterTest.kt` modified; diff matches the passing reject-test shape.
+- **2026-08-25 (recon)**: Self-eval corpus smoke failure is classified **ENVIRONMENTAL**, not a code bug: the pinned reference revision requires JDK 17 + Android SDK 35 (`:android-command-center:assembleDebug`), which exist in CI but not in this sandbox. Evidence: `.github/workflows/ci.yml` `android-actions/setup-android@v3` + `sdkmanager "platforms;android-35" "build-tools;35.0.0"` vs. blocked egress locally.
+- **2026-08-25 (recon)**: The corpus-smoke failure was opaque ("accepted/reference state failed" with no step detail), so the Rust change adds diagnostic evidence fields rather than attempting a blind fix — future failures become self-naming for any follow-up.
+
+## Decision Log
+
+- **D11 (2026-08-25)**: Adopt the working-tree Kotlin accept-test restore (`contentType(Application.Json)` + `setBody(String)`) instead of inventing a fifth body-type attempt. Evidence: the reject tests using this exact shape are green on this branch's CI runs; D10's four alternatives each failed with `IllegalStateException at HttpSend.kt:88` or `SerializationException`. Alternatives considered: another body-type permutation (rejected — attempt budget exhausted in prior plan); deleting the accept test (rejected — dishonestly reduces coverage). Risk: low — test-only change. Rollback: revert the single commit.
+- **D12 (2026-08-25)**: Treat corpus smoke as environmental and land diagnostics-only changes (no behavioral fix) in M-B. Evidence: pinned reference revision requires JDK 17 + Android SDK 35; the local sandbox cannot provide either (blocked egress per `docs/failures/002-network-isolated-build-gates.md`); CI can. Alternatives considered: provisioning Android SDK locally (rejected — sandbox network policy); skipping/disabling the test (rejected — masks a real gate). Risk: low — additive diagnostic fields and assert messages only. Rollback: revert the two-file commit.
+- **D13 (2026-08-25)**: Accept CI as the sole authoritative verifier for M-D, with bounded escalation: if corpus smoke fails even in CI after diagnostics land, stop (attempts exhausted), read the named failing step/exit code from the enriched assertion, and author a scoped follow-up plan — do not retry blindly. Evidence: PLANS.md invariant "exhausting the configured attempt budget must stop automatic retry." Risk: low. Rollback: not applicable.
+
+## Outcomes & Retrospective
+
+*(To be filled at M-E from real CI evidence, not from intent.)*
