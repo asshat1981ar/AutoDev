@@ -91,9 +91,18 @@ public class SseStreamingRouter(
                     }
                 }
                 if (accepted) {
+                    // Both values MUST be String. A mixed Map<String, Any>
+                    // (e.g. Int queue_size) makes kotlinx-serialization resolve
+                    // `Any` polymorphically at respond() time and throws
+                    // SerializationException (AbstractPolymorphicSerializer
+                    // .kt:102) — turning every successful enqueue into a 500.
+                    // Discovered via CI run 32902539509; see EP-2026-08-25 D14.
                     call.respond(
                         HttpStatusCode.Accepted,
-                        mapOf("status" to "queued", "queue_size" to objectiveQueue.size),
+                        mapOf(
+                            "status" to "queued",
+                            "queue_size" to objectiveQueue.size.toString(),
+                        ),
                     )
                 } else {
                     call.respond(
