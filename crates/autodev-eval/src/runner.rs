@@ -141,6 +141,43 @@ pub struct ReferenceSmokeResult {
     pub task_id: String,
     pub base_passed: bool,
     pub reference_passed: bool,
+    /// Per-required-step verifier evidence for the base state, for failure
+    /// diagnostics (exit codes, timeouts, elapsed time).
+    pub base_detail: String,
+    /// Same evidence summary for the accepted/reference state.
+    pub reference_detail: String,
+}
+
+/// Summarize required-step executions so callers can tell *why* a state
+/// failed its verifier (non-zero exit, timeout, missing execution) without
+/// re-running anything. Environmental failures (e.g. missing Android SDK or
+/// JDK on a local host) then surface as `exit_code=Some(127)`-style evidence
+/// instead of an opaque boolean.
+fn required_steps_detail(fixture: &EvalFixture, executions: &[StepExecution]) -> String {
+    fixture
+        .task
+        .verifier
+        .steps
+        .iter()
+        .filter(|step| step.required)
+        .map(|step| {
+            match executions
+                .iter()
+                .find(|execution| execution.evidence.step_id == step.id)
+            {
+                Some(execution) => format!(
+                    "step `{}` passed={} exit_code={:?} timed_out={} elapsed_ms={}",
+                    step.id,
+                    execution.evidence.passed,
+                    execution.evidence.exit_code,
+                    execution.evidence.timed_out,
+                    execution.elapsed_ms
+                ),
+                None => format!("step `{}` has no recorded execution", step.id),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 pub fn smoke_fixture(
@@ -162,6 +199,8 @@ pub fn smoke_fixture(
         task_id: fixture.task.id.clone(),
         base_passed: required_steps_pass(fixture, &base_executions),
         reference_passed: required_steps_pass(fixture, &reference_executions),
+        base_detail: required_steps_detail(fixture, &base_executions),
+        reference_detail: required_steps_detail(fixture, &reference_executions),
     })
 }
 
