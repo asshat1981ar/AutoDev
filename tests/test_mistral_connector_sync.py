@@ -1,0 +1,223 @@
+import json
+import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from scripts.mistral_connector_sync import (
+    ManifestError,
+    MistralConnectorClient,
+    apply_plan,
+    diff_tools,
+    load_manifest,
+    main,
+    plan_reconciliation,
+    sanitize,
+    validate_manifest,
+)
+
+
+BASE = {
+    "schema_version": 1,
+    "key": "deepwiki",
+    "name": "autodev_deepwiki",
+    "kind": "mcp",
+    "managed": True,
+    "server": "https://mcp.deepwiki.com/mcp",
+    "visibility": "private",
+    "description": "Repository intelligence",
+    "tool_policy": {"include": [], "exclude": []},
+    "confirmation": {"required": []},
+    "risk": "read_only",
+}
+
+
+def remote_for(desired=BASE):
+    return {
+        "id": "uuid-1",
+        "name": desired["name"],
+        "server": desired["server"],
+        "visibility": desired["visibility"],
+        "description": desired["description"],
+    }
+
+
+class ManifestTests(unittest.TestCase):
+    def test_loads_json_subset_yaml_and_validates(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "connector.yaml"
+            path.write_text(json.dumps(BASE), encoding="utf-8")
+            self.assertEqual(load_manifest(path)["name"], "autodev_deepwiki")
+
+    def test_rejects_invalid_name_visibility_and_secret_fields(self):
+        for patch in (
+            {"name": "bad name"},
+            {"visibility": "world"},
+            {"api_key": "secret"},
+        ):
+            with self.subTest(patch=patch), self.assertRaises(ManifestError):
+                validate_manifest({**BASE, **patch})
+
+    def test_rejects_nested_api_key_headers(self):
+        with self.assertRaises(ManifestError):
+            validate_manifest({**BASE, "headers": {"X-Api-Key": "should-not-be-in-git"}})
+
+    def test_cli_validates_connector_registry(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main(["validate", "connectors/registry.yaml"])
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["schema_version"], 1)
+        self.assertIn("connectors/deepwiki.yaml", parsed["connectors"])
+
+    def test_registry_entries_exist_and_validate(self):
+        registry = json.loads(Path("connectors/registry.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(len(registry["connectors"]), len(set(registry["connectors"])))
+        for manifest_path in registry["connectors"]:
+            with self.subTest(manifest=manifest_path):
+                self.assertTrue(Path(manifest_path).is_file())
+                self.assertEqual(load_manifest(manifest_path)["schema_version"], 1)
+
+    def test_policy_documents_are_deny_by_default(self):
+        permissions = json.loads(
+            Path("policies/mistral-connectors/permissions.yaml").read_text(encoding="utf-8")
+        )
+        confirmation = json.loads(
+            Path("policies/mistral-connectors/confirmation.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(permissions["default"], "deny")
+        self.assertEqual(permissions["tool_discovery_policy"], "deny_until_classified")
+        self.assertEqual(confirmation["unknown_tool"], "deny")
+        self.assertEqual(
+            confirmation["default_for_external_mutation"], "require_confirmation"
+        )
+
+
+class PlanningTests(unittest.TestCase):
+    def test_create_noop_update_and_external(self):
+        self.assertEqual(plan_reconciliation(BASE, None)["action"], "CREATE")
+        remote = remote_for()
+        self.assertEqual(plan_reconciliation(BASE, remote)["action"], "NOOP")
+        changed = {**remote, "description": "old"}
+        update = plan_reconciliation(BASE, changed)
+        self.assertEqual(update["action"], "UPDATE")
+        self.assertEqual(update["connector_id"], "uuid-1")
+        featured = {**BASE, "kind": "featured", "managed": False}
+        self.assertEqual(plan_reconciliation(featured, None)["action"], "EXTERNAL")
+
+    def test_visibility_drift_blocks_in_place_update(self):
+        remote = {**remote_for(), "visibility": "shared_workspace"}
+        plan = plan_reconciliation(BASE, remote)
+        self.assertEqual(plan["action"], "BLOCKED")
+        self.assertIn("visibility", plan["reason"])
+
+    def test_shared_org_is_blocked_without_explicit_elevation(self):
+        desired = {**BASE, "visibility": "shared_org"}
+        self.assertEqual(plan_reconciliation(desired, None)["action"], "BLOCKED")
+        self.assertEqual(
+            plan_reconciliation(desired, None, allow_org_shared=True)["action"],
+            "CREATE",
+        )
+
+    def test_tool_drift_and_redaction(self):
+        old = [
+            {"name": "read", "description": "old", "inputSchema": {"type": "object"}},
+            {"name": "removed", "description": "x", "inputSchema": {}},
+        ]
+        new = [
+            {"name": "read", "description": "new", "inputSchema": {"type": "object"}},
+            {"name": "added", "description": "x", "inputSchema": {}},
+        ]
+        drift = diff_tools(old, new)
+        self.assertEqual(drift["added"], ["added"])
+        self.assertEqual(drift["removed"], ["removed"])
+        self.assertEqual(drift["changed"], ["read"])
+        clean = sanitize({"Authorization": "Bearer abc", "token": "abc", "ok": "value"})
+        self.assertEqual(clean["Authorization"], "[REDACTED]")
+        self.assertEqual(clean["token"], "[REDACTED]")
+        self.assertEqual(clean["ok"], "value")
+
+
+class FakeTransport:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def __call__(self, method, url, headers, body):
+        self.calls.append((method, url, headers, body))
+        return self.responses.pop(0)
+
+
+class ClientTests(unittest.TestCase):
+    def test_client_serializes_documented_create_and_list_tools(self):
+        transport = FakeTransport([
+            {"id": "uuid-1", "name": BASE["name"]},
+            [{"name": "read", "description": "Read", "inputSchema": {}}],
+        ])
+        client = MistralConnectorClient("test-key", transport=transport)
+        client.create_connector(BASE)
+        client.list_tools(BASE["name"], refresh=True, pretty=True)
+        method, url, headers, body = transport.calls[0]
+        self.assertEqual(method, "POST")
+        self.assertTrue(url.endswith("/v1/connectors"))
+        self.assertEqual(headers["Authorization"], "Bearer test-key")
+        self.assertNotIn("risk", json.loads(body.decode("utf-8")))
+        self.assertIn("refresh=true", transport.calls[1][1])
+        self.assertIn("pretty=true", transport.calls[1][1])
+
+    def test_direct_tool_call_serializes_documented_endpoint(self):
+        transport = FakeTransport([{"content": [{"type": "text", "text": "ok"}]}])
+        client = MistralConnectorClient("test-key", transport=transport)
+        result = client.call_tool(
+            BASE["name"], "read_wiki_structure", {"repoName": "sqlite/sqlite"}
+        )
+        self.assertEqual(result["content"][0]["text"], "ok")
+        method, url, _, body = transport.calls[0]
+        self.assertEqual(method, "POST")
+        self.assertTrue(
+            url.endswith(
+                "/v1/connectors/autodev_deepwiki/tools/read_wiki_structure/call"
+            )
+        )
+        self.assertEqual(
+            json.loads(body.decode("utf-8")),
+            {"arguments": {"repoName": "sqlite/sqlite"}},
+        )
+
+    def test_list_connectors_follows_cursor_pagination(self):
+        transport = FakeTransport([
+            {"items": [{"id": "1", "name": "one"}], "pagination": {"next_cursor": "next"}},
+            {"items": [{"id": "2", "name": "two"}], "pagination": {}},
+        ])
+        client = MistralConnectorClient("test-key", transport=transport)
+        self.assertEqual([item["name"] for item in client.list_connectors()], ["one", "two"])
+        self.assertNotIn("cursor=", transport.calls[0][1])
+        self.assertIn("cursor=next", transport.calls[1][1])
+
+    def test_apply_create_rereads_remote_state_and_verifies_noop(self):
+        transport = FakeTransport([
+            {"id": "uuid-1", "name": BASE["name"]},
+            remote_for(),
+        ])
+        client = MistralConnectorClient("test-key", transport=transport)
+        plan = plan_reconciliation(BASE, None)
+        result = apply_plan(client, plan)
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["verification"]["action"], "NOOP")
+        self.assertEqual([call[0] for call in transport.calls], ["POST", "GET"])
+        self.assertTrue(transport.calls[1][1].endswith("/v1/connectors/uuid-1"))
+
+    def test_apply_only_mutates_create_or_update(self):
+        transport = FakeTransport([])
+        client = MistralConnectorClient("test-key", transport=transport)
+        result = apply_plan(client, {"action": "NOOP", "desired": BASE})
+        self.assertEqual(result["action"], "NOOP")
+        self.assertEqual(transport.calls, [])
+        with self.assertRaises(ValueError):
+            apply_plan(client, {"action": "BLOCKED", "desired": BASE})
+
+
+if __name__ == "__main__":
+    unittest.main()

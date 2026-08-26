@@ -17,6 +17,11 @@ use crate::AppState;
 
 pub(crate) const MCP_MAX_BODY_BYTES: usize = 512 * 1024;
 const DEFAULT_MCP_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "::1", "autodev-server"];
+const DEFAULT_MCP_ORIGINS: [&str; 3] = [
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://localhost:8080",
+];
 
 #[derive(Clone)]
 pub(crate) struct AutoDevMcp {
@@ -145,10 +150,20 @@ impl ServerHandler for AutoDevMcp {
 
 pub(crate) fn service(state: AppState) -> StreamableHttpService<AutoDevMcp, LocalSessionManager> {
     let hosts = configured_hosts();
+    let origins = configured_origins();
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
-        .with_allowed_hosts(hosts);
+        // Defense in depth alongside the bearer middleware: an HTTP
+        // request carrying a valid bearer but a foreign `Host` header
+        // is rejected by the transport. The allowlist must remain
+        // non-empty; do not introduce a `disable_allowed_hosts()` knob
+        // without a security review.
+        .with_allowed_hosts(hosts)
+        // Bind the MCP transport to localhost origins only by default.
+        // A stolen bearer token on a developer laptop cannot be used
+        // cross-origin from a malicious co-located browser page.
+        .with_allowed_origins(origins);
     StreamableHttpService::new(
         move || Ok(AutoDevMcp::new(state.clone())),
         LocalSessionManager::default().into(),
@@ -173,6 +188,27 @@ fn configured_hosts() -> Vec<String> {
         DEFAULT_MCP_HOSTS
             .iter()
             .map(|host| host.to_string())
+            .collect()
+    })
+}
+
+fn configured_origins() -> Vec<String> {
+    let configured = std::env::var("AUTODEV_MCP_ALLOWED_ORIGINS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .filter(|origins| !origins.is_empty());
+
+    configured.unwrap_or_else(|| {
+        DEFAULT_MCP_ORIGINS
+            .iter()
+            .map(|origin| origin.to_string())
             .collect()
     })
 }

@@ -20,6 +20,7 @@ pub mod evidence;
 pub mod exec_plan;
 pub mod execute;
 mod git;
+pub mod harness;
 pub mod hybrid_simulation;
 pub mod model;
 pub mod model_assignment;
@@ -29,6 +30,7 @@ pub mod patch_exec;
 pub mod plugin;
 pub mod policy;
 pub mod read;
+pub mod run_test;
 pub mod runtime;
 pub mod skill;
 pub mod verification;
@@ -77,6 +79,11 @@ pub use exec_plan::{
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
+pub use harness::{
+    default_harness_profiles, evaluate_harness_candidate, route_harness, HarnessAssetKind,
+    HarnessAssetRef, HarnessError, HarnessEvaluation, HarnessKind, HarnessProfile,
+    HarnessPromotionDecision, HarnessRegistry, HarnessRoute, HarnessRoutingEvidence, HarnessStage,
+};
 pub use hybrid_simulation::{
     pareto_frontier, simulate_hybrid_topologies, simulate_hybrid_traces, strongest_candidate,
     HybridSimulationConfig, HybridSimulationSummary, HybridSimulationTrace, HybridTopology,
@@ -110,6 +117,7 @@ pub use policy::{
     PolicyDecision,
 };
 pub use read::read_file;
+pub use run_test::run_test_authorized;
 pub use runtime::{
     AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
 };
@@ -182,7 +190,22 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
             &exec.authorization,
         )?,
         ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
-        ActionType::Git => execute_git_authorized(exec)?,
+        ActionType::Git => {
+            // Git actions pass through the same policy gate as every other
+            // effectful action: structural validation, risk-based approval
+            // resolution against the kernel-owned grant, and capability
+            // checks. This branch previously skipped policy entirely, which
+            // let a Critical-risk git operation run without the
+            // `approval:critical` capability invariant being enforced.
+            crate::policy::enforce_policy(&exec.action, &exec.authorization)?;
+            if !crate::policy::has_required_capability(&exec.action) {
+                return Err(ExecutionError::CapabilityDenied);
+            }
+            execute_git_authorized(exec)?
+        }
+        ActionType::RunTest => {
+            run_test::run_test_authorized(&exec.action, &exec.workspace, &exec.authorization)?
+        }
         other => {
             return Err(ExecutionError::UnsupportedAction(
                 other.as_str().to_string(),
@@ -207,12 +230,10 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
     let mut action = exec.action.clone();
     if let Some(payload) = action.payload.as_object_mut() {
         // Never trust an approval bit supplied by an agent/model payload.
+        // Approval authority flows exclusively from the kernel-owned grant
+        // and is passed to the adapter as an explicit parameter — it is never
+        // round-tripped through the untrusted payload.
         payload.remove("approved");
-        // The legacy Git adapter currently expects an internal marker. Only the
-        // trusted kernel grant can recreate it after sanitization.
-        if exec.authorization.is_approved() {
-            payload.insert("approved".to_string(), serde_json::Value::Bool(true));
-        }
     }
 
     let operation = action
@@ -221,17 +242,21 @@ fn execute_git_authorized(exec: &ExecutableAction) -> Result<ExecutionResult, Ex
         .and_then(|value| value.as_str())
         .unwrap_or_default();
     let capabilities = action.capabilities.clone();
+    // Single source of truth for git approval: the AuthorizationGrant.
+    let approved = exec.authorization.is_approved();
     match operation {
         "repository_info" | "status" | "diff" | "branch" | "log" => {
-            git::run_read(&capabilities, || git::execute_git(&action, &exec.workspace))
+            git::run_read(&capabilities, || {
+                git::execute_git(&action, &exec.workspace, approved)
+            })
         }
-        "checkpoint" | "prepare_commit" => {
-            git::run_mutate(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        "rollback" => {
-            git::run_destructive(&capabilities, || git::execute_git(&action, &exec.workspace))
-        }
-        _ => git::execute_git(&action, &exec.workspace),
+        "checkpoint" | "prepare_commit" => git::run_mutate(&capabilities, || {
+            git::execute_git(&action, &exec.workspace, approved)
+        }),
+        "rollback" => git::run_destructive(&capabilities, || {
+            git::execute_git(&action, &exec.workspace, approved)
+        }),
+        _ => git::execute_git(&action, &exec.workspace, approved),
     }
 }
 

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "default": "deny",
+  "tool_discovery_policy": "deny_until_classified",
+  "connectors": {
+    "github": {
+      "mode": "external_featured",
+      "default_authority": "read_only",
+      "forbidden_capabilities": [
+        "source_write",
+        "merge",
+        "branch_delete",
+        "repository_admin",
+        "release_publish",
+        "production_deploy"
+      ]
+    },
+    "linear": {
+      "mode": "external_featured",
+      "default_authority": "read_only",
+      "confirm_capabilities": [
+        "issue_create",
+        "issue_update",
+        "issue_state_change",
+        "comment_create"
+      ],
+      "forbidden_capabilities": [
+        "bulk_delete",
+        "workspace_admin",
+        "permission_change"
+      ]
+    },
+    "context7": {
+      "mode": "managed_mcp",
+      "default_authority": "read_only"
+    },
+    "deepwiki": {
+      "mode": "managed_mcp",
+      "default_authority": "read_only"
+    }
+  },
+  "agents": {
+    "flow-orchestrator": ["github:read", "linear:read", "linear:confirm_write"],
+    "product-requirements": ["github:read", "linear:read", "linear:confirm_write", "context7:read", "deepwiki:read"],
+    "research-technology": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "systems-architect": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "feature-engineer": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "platform-integration": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "test-verification": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "security-reliability": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "code-review-maintainability": ["github:read", "linear:read", "context7:read", "deepwiki:read"],
+    "cicd-release": ["github:read", "linear:read", "context7:read", "deepwiki:read"]
+  }
+}
