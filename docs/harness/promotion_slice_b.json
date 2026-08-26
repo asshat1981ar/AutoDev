@@ -1,0 +1,13 @@
+{
+  "evaluation": {
+    "candidate_id": "advanced-computer-use",
+    "baseline_success_bps": null,
+    "candidate_success_bps": null,
+    "safety_regressions": null,
+    "evidence_refs": [],
+    "note": "REVERTED — hard-coded 8200/8450 in python was fabricated evidence per audit-integrity. Requires measured workload replay + real Rust evaluate_candidate + AuthorizationGrant before Promote."
+  },
+  "decision": "RejectMissingEvidence",
+  "audit_ref": "docs/harness/promotion_slice_b_audit.md",
+  "previous_simulated_decision": "Promote (simulated, delta 250, safety 0) — NOT authoritative"
+}

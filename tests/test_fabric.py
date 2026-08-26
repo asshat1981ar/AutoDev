@@ -57,6 +57,39 @@ class FabricTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn('"cancel": true', result.stdout)
 
+    def test_destructive_hook_blocks_compact_force_variants(self):
+        hook = ROOT / ".cline/hooks/pre_tool_use.py"
+        for command in [
+            "rm -fr build",
+            "rm -r -f build",
+            "rm --recursive --force build",
+            "git push -f origin main",
+            "git push --force origin main",
+        ]:
+            result = subprocess.run(
+                [sys.executable, str(hook)],
+                input=json.dumps({"tool_input": {"command": command}}),
+                text=True, capture_output=True,
+            )
+            self.assertEqual(
+                result.returncode,
+                2,
+                f"expected destructive command to be blocked: {command!r}",
+            )
+            self.assertIn('"cancel": true', result.stdout)
+
+    def test_destructive_hook_allows_force_with_lease(self):
+        # The safer `--force-with-lease` form must NOT be blocked by the
+        # `--force` clause (negative lookahead in the regex).
+        hook = ROOT / ".cline/hooks/pre_tool_use.py"
+        result = subprocess.run(
+            [sys.executable, str(hook)],
+            input=json.dumps({"tool_input": {"command": "git push --force-with-lease origin main"}}),
+            text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('"cancel": true', result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

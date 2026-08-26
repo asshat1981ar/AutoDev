@@ -1,0 +1,51 @@
+{
+  "task": {
+    "id": "rust-control-plane-secure-webhook",
+    "source": {
+      "kind": "merged_pull_request",
+      "repository": "asshat1981ar/AutoDev",
+      "source_ref": "5c0adf94d192aef131c96d4cb72ef00e30bf7501",
+      "source_url": "https://github.com/asshat1981ar/AutoDev/pull/8"
+    },
+    "base_sha": "c4b13fb66b427ea6b7c6c57f823962b4def818b7",
+    "specification": "Add a thin Rust HTTP and SSE control-plane adapter that creates ForgeCore task graphs and rejects unsigned or invalid GitHub webhook traffic without becoming a second executor.",
+    "acceptance_criteria": [
+      "Objective intake returns HTTP 202 and creates ForgeCore task state",
+      "Unsigned GitHub webhooks are rejected",
+      "The independent Axum and Tower verifier passes"
+    ],
+    "verifier": {
+      "steps": [
+        {
+          "id": "secure-webhook-probe",
+          "program": "cargo",
+          "args": ["test", "-p", "autodev-server", "--test", "eval_secure_webhook"],
+          "working_directory": "crates",
+          "timeout_seconds": 600,
+          "required": true
+        }
+      ],
+      "asset_fingerprints": [
+        "46d5b4bd9da99bd0f84e98dc38ad55182a0a7bb5d739b06aa9139db64aa1ec13"
+      ]
+    },
+    "protected": {
+      "paths": [".autodev-eval/"]
+    },
+    "expected_change_scope": [
+      "crates/autodev-server/",
+      "crates/Cargo.toml",
+      "Dockerfile",
+      "docker-compose.yml",
+      ".dockerignore",
+      ".github/workflows/"
+    ]
+  },
+  "verifier_overlay": [
+    {
+      "source_path": "fixture-assets/rust-control-plane-secure-webhook/eval_secure_webhook.rs",
+      "destination_path": "crates/autodev-server/tests/eval_secure_webhook.rs",
+      "sha256": "46d5b4bd9da99bd0f84e98dc38ad55182a0a7bb5d739b06aa9139db64aa1ec13"
+    }
+  ]
+}

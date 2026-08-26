@@ -52,6 +52,7 @@ impl EvidenceClass {
 
 /// A connector-neutral architecture finding with provenance and invalidation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceRecord {
     pub id: String,
     pub objective_id: String,
@@ -64,6 +65,15 @@ pub struct EvidenceRecord {
     pub confidence: u8,
     /// SHA-256 of the normalized source content supplied at construction time.
     pub content_fingerprint: String,
+    /// Optional SHA-256 of the *raw* source bytes, when the caller is
+    /// willing to provide them. When present, this binds the record to
+    /// the specific source payload it claims to summarize, so a later
+    /// edit to the source cannot be silently reflected as the same
+    /// fingerprint. `None` indicates the caller did not bind a source,
+    /// which is permitted for backward compatibility but is not
+    /// preferred for new evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fingerprint: Option<String>,
     pub invalidation_condition: String,
 }
 
@@ -106,8 +116,44 @@ impl EvidenceRecord {
             observed_at,
             confidence,
             content_fingerprint: sha256_hex(normalized_content.as_bytes()),
+            source_fingerprint: None,
             invalidation_condition,
         })
+    }
+
+    /// Construct an evidence record with the raw source bytes bound.
+    /// The source bytes are hashed and recorded as `source_fingerprint`,
+    /// so a future audit can prove the record corresponds to a specific
+    /// source payload. Use this constructor for new evidence; the
+    /// source-binding is what gives the record its provenance strength.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_source(
+        id: impl Into<String>,
+        objective_id: impl Into<String>,
+        claim: impl Into<String>,
+        evidence_class: EvidenceClass,
+        source_system: impl Into<String>,
+        source_reference: impl Into<String>,
+        observed_at: DateTime<Utc>,
+        confidence: u8,
+        source_bytes: &[u8],
+        normalized_content: &str,
+        invalidation_condition: impl Into<String>,
+    ) -> Result<Self, ArchitectureEvidenceError> {
+        let mut record = Self::new(
+            id,
+            objective_id,
+            claim,
+            evidence_class,
+            source_system,
+            source_reference,
+            observed_at,
+            confidence,
+            normalized_content,
+            invalidation_condition,
+        )?;
+        record.source_fingerprint = Some(sha256_hex(source_bytes));
+        Ok(record)
     }
 
     /// Whether this record can independently contribute to a verified gate.
@@ -164,6 +210,7 @@ impl DecisionMaturity {
 
 /// An evidence-linked architecture decision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureDecision {
     pub id: String,
     pub objective_id: String,
@@ -302,6 +349,7 @@ pub struct CriterionScore {
 
 /// One candidate architecture with deterministic weighted scoring.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureOption {
     pub name: String,
     pub description: String,
@@ -331,6 +379,7 @@ pub fn rank_options(options: &[ArchitectureOption]) -> Vec<ArchitectureOption> {
 
 /// Complete deterministic input for a W1 Markdown report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArchitectureReportInput {
     pub objective_id: String,
     pub title: String,
