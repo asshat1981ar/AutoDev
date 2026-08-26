@@ -336,26 +336,22 @@ pub fn forbidden_command(command: &str) -> bool {
     )
 }
 
-/// Require explicit approval for an operation, as recorded on the action.
+/// Require explicit approval for a destructive operation.
 ///
-/// Approval is an explicit attestation:
-/// - `payload.approved == true`, or
+/// Approval is an explicit attestation passed from the trusted boundary:
+/// - the caller-provided `approved` flag derived from a kernel-owned
+///   `AuthorizationGrant` (never from the action payload), or
 /// - the special `approval:critical` capability (already validated elsewhere).
 ///
 /// Without it, destructive operations are refused with
 /// [`ExecutionError::RequiresApproval`] rather than proceeding. This makes
 /// "approval required" structural rather than advisory.
-fn require_approval(action: &AgentAction) -> Result<(), ExecutionError> {
-    let attested = action
-        .payload
-        .get("approved")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+fn require_approval(approved: bool, action: &AgentAction) -> Result<(), ExecutionError> {
     let has_critical_cap = action
         .capabilities
         .iter()
         .any(|c| c == &crate::action::Capability::ApprovalCritical);
-    if attested || has_critical_cap {
+    if approved || has_critical_cap {
         Ok(())
     } else {
         Err(ExecutionError::RequiresApproval)
@@ -423,6 +419,7 @@ where
 pub fn execute_git(
     action: &AgentAction,
     workspace: &Workspace,
+    approved: bool,
 ) -> Result<ExecutionResult, ExecutionError> {
     use crate::evidence::ExecutionStatus;
 
@@ -517,7 +514,7 @@ pub fn execute_git(
             gate(GitTier::Destructive, &action.capabilities)?;
             // Destructive Git requires explicit approval (in addition to the
             // capability). Without it, refuse rather than proceed.
-            require_approval(action)?;
+            require_approval(approved, action)?;
             let command = action
                 .payload
                 .get("command")
@@ -721,13 +718,19 @@ mod tests {
             expected: serde_json::json!({}),
         };
         // Without approval: refused.
-        let err = execute_git(&a, &ws).unwrap_err();
+        let err = execute_git(&a, &ws, false).unwrap_err();
         assert!(matches!(err, ExecutionError::RequiresApproval));
 
-        // With payload.approved true: allowed.
+        // With trusted approval (explicit parameter, never payload-derived):
+        // allowed.
+        a.payload = serde_json::json!({ "operation": "rollback", "command": "checkout" });
+        assert!(execute_git(&a, &ws, true).is_ok());
+
+        // A payload-supplied approval bit is ignored entirely.
         a.payload = serde_json::json!({
             "operation": "rollback", "command": "checkout", "approved": true
         });
-        assert!(execute_git(&a, &ws).is_ok());
+        let err = execute_git(&a, &ws, false).unwrap_err();
+        assert!(matches!(err, ExecutionError::RequiresApproval));
     }
 }

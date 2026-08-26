@@ -192,6 +192,10 @@ node scripts/termux-kanban.mjs
 
 See [docs/termux-kanban.md](docs/termux-kanban.md) for diagnostics, force-repair, and shell-alias usage.
 
+## Server deployment
+
+The `autodev-server` binary is a stateless control-plane adapter. Its deployment contract — bind address, TLS requirement, bearer-token handling, body-size limits — is documented in [docs/operations/autodev-server-deployment.md](docs/operations/autodev-server-deployment.md). Production deployments are expected to terminate TLS at a reverse proxy in front of the server; the server itself listens for plaintext HTTP.
+
 ## License
 
 AutoDev is released under the MIT License. See [LICENSE](LICENSE).

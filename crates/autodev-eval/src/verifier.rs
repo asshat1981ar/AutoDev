@@ -14,10 +14,20 @@ use sha2::{Digest, Sha256};
 use crate::{RunnerError, VerifierOverlay};
 
 const MAX_STREAM_BYTES: usize = 64 * 1024;
+/// Maximum bytes retained per stream in [`VerifierEvidence::stdout_tail`] /
+/// [`VerifierEvidence::stderr_tail`]. Tails keep the last bytes, where build
+/// tools print their summary and failure reason (ADR-005).
+pub(crate) const TAIL_BYTES: usize = 2 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const CAPTURE_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 
 type CaptureHandle = thread::JoinHandle<io::Result<Vec<u8>>>;
+
+/// Lossy-UTF-8 rendering of the last `max_bytes` of a captured stream.
+fn lossy_tail(bytes: &[u8], max_bytes: usize) -> String {
+    let start = bytes.len().saturating_sub(max_bytes);
+    String::from_utf8_lossy(&bytes[start..]).into_owned()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepExecution {
@@ -60,6 +70,30 @@ pub fn apply_verifier_overlays(
             ));
         }
         fs::write(destination, bytes)?;
+    }
+    Ok(())
+}
+
+/// Verify that every overlay asset on disk hashes to the digest declared
+/// in the fixture. Unlike [`apply_verifier_overlays`], this does not copy
+/// bytes into a workspace; it is intended for the `validate` CLI command
+/// and other static checks that want to fail on asset drift before the
+/// smoke gate runs.
+pub fn verify_overlay_assets(
+    crate_root: &Path,
+    overlays: &[VerifierOverlay],
+) -> Result<(), RunnerError> {
+    let crate_root = fs::canonicalize(crate_root)?;
+    for overlay in overlays {
+        let source = confined_source(&crate_root, &overlay.source_path)?;
+        let bytes = fs::read(&source)?;
+        let actual = sha256(&bytes);
+        if actual != overlay.sha256 {
+            return Err(RunnerError::OverlayIntegrity(format!(
+                "{} expected {}, got {actual}",
+                overlay.source_path, overlay.sha256
+            )));
+        }
     }
     Ok(())
 }
@@ -122,6 +156,8 @@ pub fn run_verifier(
                 stdout_sha256: sha256(&stdout),
                 stderr_sha256: sha256(&stderr),
                 timed_out,
+                stdout_tail: lossy_tail(&stdout, TAIL_BYTES),
+                stderr_tail: lossy_tail(&stderr, TAIL_BYTES),
             },
             elapsed_ms,
         });

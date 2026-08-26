@@ -270,7 +270,34 @@ pub enum ExecPlanError {
 }
 
 impl ExecPlan {
-    pub fn new(id: impl Into<String>, goal: impl Into<String>, budget: PlanBudget) -> Self {
+    /// Construct a plan and run structural validation immediately.
+    ///
+    /// Returns an error if the plan id or goal is blank, or if the budget
+    /// is non-positive. Callers that need to defer validation (e.g. when
+    /// building a plan incrementally before all fields are populated)
+    /// can use [`ExecPlan::new_unchecked`], but should call
+    /// [`ExecPlan::validate`] before advancing the lifecycle.
+    pub fn new(
+        id: impl Into<String>,
+        goal: impl Into<String>,
+        budget: PlanBudget,
+    ) -> Result<Self, ExecPlanError> {
+        let plan = Self::new_unchecked(id, goal, budget);
+        plan.validate()?;
+        Ok(plan)
+    }
+
+    /// Construct a plan without running structural validation. The plan
+    /// is in a "pre-validation" state; the caller MUST call
+    /// [`ExecPlan::validate`] before any lifecycle transition.
+    ///
+    /// Prefer [`ExecPlan::new`] unless the caller has a specific reason
+    /// to build up state first.
+    pub fn new_unchecked(
+        id: impl Into<String>,
+        goal: impl Into<String>,
+        budget: PlanBudget,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: id.into(),

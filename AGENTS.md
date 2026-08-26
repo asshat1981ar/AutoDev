@@ -118,7 +118,7 @@ Network gates that require egress (`cargo build --workspace`, `cargo test --work
 
 ## 4. Package manager and dependency rules
 
-- **Rust:** Workspace at `crates/Cargo.toml` with members `forge-core` + `autodev-server`. No root `Cargo.toml`. Do not run `cargo` from repo root. `Cargo.lock` is committed under `crates/Cargo.lock` — keep it.
+- **Rust:** Workspace at `crates/Cargo.toml` with members `forge-core` + `autodev-server` + `autodev-eval`. No root `Cargo.toml`. Do not run `cargo` from repo root. Every workspace member must be named here (enforced by `scripts/check_harness_drift.py`). `Cargo.lock` is committed under `crates/Cargo.lock` — keep it.
 - **Kotlin:** Gradle wrapper only. Kotlin 2.0.21, Gradle 8.10.2, ktlint 12.1.1 via `org.jlleitschuh.gradle.ktlint`. Android compileSdk 35 / minSdk 26 / targetSdk 35. Do not bump without updating CI `sdkmanager` line.
 - **Python:** No `package.json`/`pyproject.toml`/`requirements.txt` at root. `scripts/autodev-cli.py` must remain dependency-free (urllib only). `tests/` uses `unittest` stdlib.
 - **Node:** No root `package.json`. Only `scripts/termux-kanban.mjs` uses Node builtins (`node:crypto`, `node:fs`, `node:path`, `node:child_process`). PTY version pinned to `1.1.2` with SHA-256 `660a3025230f6035b7b8c000e8cca6ca3992bedaa05f7b165e7c3a5f1ae8ec8a`.

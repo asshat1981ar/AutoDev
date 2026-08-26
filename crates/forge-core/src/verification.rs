@@ -175,18 +175,50 @@ impl VerificationFabric {
 }
 /// A verifier that runs a command (argv array, no shell) and passes/fails on
 /// the exit code. `tool` names the check for reporting.
+///
+/// The verifier confines execution to the supplied workspace directory and
+/// caps the captured stderr at [MAX_VERIFIER_OUTPUT] bytes so a misconfigured
+/// tool cannot flood the report. Runtime is bounded by the calling
+/// process supervisor (cargo/npm/gradle each honor their own `--timeout`).
 pub fn command_verifier(kind: VerificationKind, tool: &str, args: Vec<String>) -> VerifierFn {
+    const MAX_VERIFIER_OUTPUT: usize = 16 * 1024;
     let tool = tool.to_string();
     Box::new(move |ctx: &VerificationContext| {
         let started_at = Utc::now();
+        // Confinement: a verifier may only run inside an existing workspace
+        // the kernel has validated. An invalid path here is a programming
+        // error in the calling fabric, not a runtime condition to surface.
+        let cwd = match crate::workspace::Workspace::new(&ctx.workspace, 0) {
+            Ok(ws) => ws.root().to_path_buf(),
+            Err(err) => {
+                return VerificationResult {
+                    kind,
+                    status: VerificationStatus::Errored,
+                    tool: tool.clone(),
+                    summary: format!("{tool} could not run: invalid workspace: {err}"),
+                    findings: vec![],
+                    started_at,
+                    completed_at: Utc::now(),
+                };
+            }
+        };
         let output = std::process::Command::new(&tool)
-            .current_dir(&ctx.workspace)
+            .current_dir(&cwd)
             .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .output();
         let (status, summary) = match output {
             Ok(o) if o.status.success() => (VerificationStatus::Passed, format!("{tool} passed")),
             Ok(o) => {
-                let msg = String::from_utf8_lossy(&o.stderr).to_string();
+                // Output cap: an adversarial or runaway tool must not be
+                // able to produce a summary that floods the report.
+                let stderr_bytes = if o.stderr.len() > MAX_VERIFIER_OUTPUT {
+                    &o.stderr[..MAX_VERIFIER_OUTPUT]
+                } else {
+                    &o.stderr
+                };
+                let msg = String::from_utf8_lossy(stderr_bytes).to_string();
                 (
                     VerificationStatus::Failed,
                     format!("{tool} failed: {}", truncate(&msg)),
