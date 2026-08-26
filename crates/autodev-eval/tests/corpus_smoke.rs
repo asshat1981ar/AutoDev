@@ -43,13 +43,17 @@ fn historical_reference_states_are_distinguished_from_base_states() {
         let result = smoke_fixture(&fixture, source_repo.as_ref(), &crate_root()).unwrap();
         assert!(
             !result.base_passed,
-            "{} base state unexpectedly passed",
-            result.task_id
+            "{} base state unexpectedly passed — verifier evidence: {}",
+            result.task_id, result.base_detail
         );
         assert!(
             result.reference_passed,
-            "{} accepted/reference state failed",
-            result.task_id
+            "{} accepted/reference state failed — verifier evidence: {}. \
+             If exit_code is 127/1 with a near-immediate elapsed_ms, this is \
+             environmental (the pinned reference revision needs JDK 17 and \
+             Android SDK 35 to assemble the debug APK, as provisioned in CI), \
+             not an eval regression",
+            result.task_id, result.reference_detail
         );
     }
 }

@@ -7,6 +7,7 @@
         android:allowBackup="false"
         android:label="AutoDev Controller"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"
