@@ -19,6 +19,7 @@ pub mod evidence;
 pub mod exec_plan;
 pub mod execute;
 mod git;
+pub mod harness;
 pub mod hybrid_simulation;
 pub mod model;
 pub mod model_assignment;
@@ -28,6 +29,7 @@ pub mod patch_exec;
 pub mod plugin;
 pub mod policy;
 pub mod read;
+pub mod run_test;
 pub mod runtime;
 pub mod skill;
 pub mod verification;
@@ -76,6 +78,11 @@ pub use exec_plan::{
 };
 pub use execute::execute_process;
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
+pub use harness::{
+    default_harness_profiles, evaluate_harness_candidate, route_harness, HarnessAssetKind,
+    HarnessAssetRef, HarnessError, HarnessEvaluation, HarnessKind, HarnessProfile,
+    HarnessPromotionDecision, HarnessRegistry, HarnessRoute, HarnessRoutingEvidence, HarnessStage,
+};
 pub use hybrid_simulation::{
     pareto_frontier, simulate_hybrid_topologies, simulate_hybrid_traces, strongest_candidate,
     HybridSimulationConfig, HybridSimulationSummary, HybridSimulationTrace, HybridTopology,
@@ -109,6 +116,7 @@ pub use policy::{
     PolicyDecision,
 };
 pub use read::read_file;
+pub use run_test::run_test_authorized;
 pub use runtime::{
     AgentRuntime, AgentRuntimeState, Executor, RuntimeError, StepOutcome, StructuredOutput, Task,
 };
@@ -193,6 +201,9 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
                 return Err(ExecutionError::CapabilityDenied);
             }
             execute_git_authorized(exec)?
+        }
+        ActionType::RunTest => {
+            run_test::run_test_authorized(&exec.action, &exec.workspace, &exec.authorization)?
         }
         other => {
             return Err(ExecutionError::UnsupportedAction(
