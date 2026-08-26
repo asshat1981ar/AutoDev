@@ -64,7 +64,8 @@ fn verification_report() -> VerificationReport {
 
 #[test]
 fn plan_projection_retains_identity_without_mutating_plan() {
-    let mut plan = ExecPlan::new("plan-1", "bridge AMCX", PlanBudget::new(2, 2));
+    let mut plan =
+        ExecPlan::new("plan-1", "bridge AMCX", PlanBudget::new(2, 2)).expect("valid plan");
     plan.add_milestone(PlanMilestone::new("m1", "projection"))
         .unwrap();
     plan.start().unwrap();
