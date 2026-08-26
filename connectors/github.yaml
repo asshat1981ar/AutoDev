@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "key": "github",
+  "name": "github",
+  "kind": "featured",
+  "managed": false,
+  "visibility": "private",
+  "description": "Mistral-managed featured GitHub connector; lifecycle is external to this reconciler",
+  "tool_policy": {
+    "include": [],
+    "exclude": []
+  },
+  "confirmation": {
+    "required": []
+  },
+  "risk": "bounded_write"
+}
