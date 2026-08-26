@@ -53,6 +53,8 @@ fn evidence(step_id: &str, required: bool, passed: bool) -> VerifierEvidence {
         stdout_sha256: "a".repeat(64),
         stderr_sha256: "b".repeat(64),
         timed_out: false,
+        stdout_tail: String::new(),
+        stderr_tail: String::new(),
     }
 }
 

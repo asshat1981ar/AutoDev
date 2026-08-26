@@ -19,7 +19,11 @@
         {
           "id": "android-debug-apk",
           "program": "./gradlew",
-          "args": [":android-command-center:assembleDebug", "--no-daemon"],
+          "args": [
+            "clean",
+            ":android-command-center:assembleDebug",
+            "--no-daemon"
+          ],
           "working_directory": "kotlin",
           "timeout_seconds": 1200,
           "required": true

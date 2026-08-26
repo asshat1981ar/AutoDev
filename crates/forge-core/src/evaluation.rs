@@ -86,6 +86,15 @@ pub struct VerifierEvidence {
     pub stdout_sha256: String,
     pub stderr_sha256: String,
     pub timed_out: bool,
+    /// Last bytes of stdout as lossy UTF-8, retained for failure
+    /// diagnostics. Full streams remain hash-only per ADR-002; the tail is
+    /// bounded and exists so transient verifier failures are diagnosable
+    /// without re-running anything (ADR-005).
+    #[serde(default)]
+    pub stdout_tail: String,
+    /// Last bytes of stderr as lossy UTF-8, same contract as [`Self::stdout_tail`].
+    #[serde(default)]
+    pub stderr_tail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
