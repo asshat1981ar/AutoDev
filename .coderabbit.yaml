@@ -1,0 +1,117 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+reviews:
+  path_instructions:
+    - path: "crates/forge-core/src/**"
+      instructions: |
+        Treat ForgeCore as AutoDev's trusted execution kernel.
+        Review aggressively for authority leakage, confused-deputy behavior, effects that bypass Workspace confinement, policy evaluation, or AuthorizationGrant, fail-open trust-boundary behavior, unchecked external inputs, unintended mutation from projection/observation/verification/planning/context-only surfaces, provenance or identity loss, and nondeterminism where deterministic behavior is expected.
+        Flag panics, unchecked unwrap/expect, path traversal, TOCTOU hazards, symlink escapes, unsafe concurrency, and any convenience abstraction that weakens the security model.
+        Require explicit evidence when a change affects an execution or authorization boundary.
+
+    - path: "protocols/amcx/**"
+      instructions: |
+        Treat AMCX protocol artifacts as normative protocol material.
+        Focus on semantic correctness, internal consistency, provenance, requirement traceability, immutable identity, and preservation of authority boundaries.
+        Flag contradictions between schemas/specifications/examples/tests/manifests/mappings, requirement IDs claimed without semantic coverage, weakened MUST/MUST NOT invariants, ambiguous ownership between AMCX and AutoDev, mutable or unverifiable evidence/reference identities, fabricated defaults, source contents substituted where immutable references or digests are required, and verification interpreted as authorization.
+        Verification success is evidence only and MUST NOT itself grant permission to execute an effect.
+        Prefer fail-closed behavior when protocol identity, provenance, evidence, or required references are incomplete or invalid.
+
+    - path: "crates/forge-core/src/amcx_bridge.rs"
+      instructions: |
+        This module is a projection bridge, not an authority bridge.
+        No bridge API may construct, mint, infer, synthesize, return, or implicitly confer AuthorizationGrant.
+        No bridge API may execute effects or mutate ExecPlan, EvidenceStore, VerificationFabric, ContextPack, or equivalent authoritative state.
+        Verification PASS remains evidence only and MUST NOT become an execution authorization signal.
+        Context projection should carry immutable artifact references, digests, identity, and metadata rather than copying source contents.
+        Missing, malformed, conflicting, or unverifiable source identity must fail closed.
+        Projection must preserve relevant identifiers and provenance without silently substituting or regenerating identity.
+        Fingerprints/digests must bind the fields they claim to authenticate.
+        Treat authority escalation or semantic conversions that change authority meaning as blocking issues.
+
+    - path: "crates/forge-core/tests/amcx_bridge*"
+      instructions: |
+        Ensure tests validate security and semantic invariants, not merely successful serialization or happy paths.
+        Expect coverage for identity preservation, invalid identity rejection, evidence fingerprint/digest validation, evidence-only verification projection, reference-only context projection, fail-closed missing source identity, malformed/conflicting values, attempted authority escalation, mutation isolation, and deterministic projection.
+        Flag tests that duplicate implementation logic so closely that the same defect could exist in both implementation and test.
+        Prefer adversarial negative cases for every trust-boundary invariant.
+
+    - path: "crates/forge-core/tests/**"
+      instructions: |
+        Treat ForgeCore tests as security-boundary tests.
+        Check that changes affecting Workspace, policy, authorization, evidence, verification, execution, recovery, or protocol projection include adversarial and fail-closed cases.
+        Required evidence must be both present and passing. Missing required evidence is failure even when every executed check passed.
+        Unknown required verification names must fail closed rather than being silently accepted.
+
+    - path: "crates/autodev-server/**"
+      instructions: |
+        Preserve separation between the untrusted/control plane and ForgeCore's trusted execution authority.
+        Review MCP, HTTP, SSE, RPC, and agent inputs as untrusted.
+        Flag direct effect execution bypassing ForgeCore, caller-controlled authorization, implicit trust of agent/model output, unsafe deserialization, stateful assumptions incompatible with stateless MCP behavior, cross-workspace information disclosure, and endpoint behavior that converts observation into authority.
+
+    - path: "kotlin/**/src/commonMain/**"
+      instructions: |
+        Preserve Kotlin Multiplatform commonMain purity.
+        Flag direct use of java.*, javax.* platform APIs, android.*, Darwin/iOS platform-specific types, or other JVM/Android-only implementation details.
+        Platform-specific functionality should cross explicit expect/actual or equivalent abstraction boundaries.
+        Keep business/control-plane contracts platform-neutral and deterministic where practical.
+
+    - path: "kotlin/android-command-center/**"
+      instructions: |
+        Treat the Android command center as a thin UI/control surface over KMP contracts.
+        Flag duplicated domain logic that belongs in shared modules, direct execution authority that bypasses ForgeCore, blocking UI-thread work, lifecycle-unsafe coroutine/state handling, Compose state inconsistent with authoritative backend/task state, and platform code leaking into commonMain.
+
+    - path: ".cline/**"
+      instructions: |
+        Treat model and agent output as untrusted.
+        Review hooks, skills, plugins, routing, and MCP integrations for command injection, path traversal, unauthorized writes, secret exposure, authority escalation, prompt-derived shell execution without trusted validation, and assumptions that agent-generated claims constitute verification.
+        Preserve the distinction between proposing work and authorizing or executing trusted effects.
+
+    - path: "bootstrap_cline_mcp.py"
+      instructions: |
+        Preserve deterministic and auditable bootstrap behavior.
+        Do not introduce undeclared Python dependencies without the required architectural decision.
+        Validate filesystem paths and generated configuration carefully, and avoid destructive replacement of existing user configuration unless behavior is explicit, bounded, and recoverable.
+
+    - path: "scripts/autodev-cli.py"
+      instructions: |
+        This CLI is a read-only observer/objective-enqueue surface.
+        It MUST NOT gain ForgeCore execution authority, AuthorizationGrant creation, Git write authority, MCP write authority, or direct arbitrary process execution.
+        Treat expansion from observation/objective submission into trusted effect execution as an architectural boundary violation.
+        Keep this script dependency-free unless an approved architectural decision explicitly changes that rule.
+
+    - path: "scripts/check_harness_drift.py"
+      instructions: |
+        Treat this script as executable repository policy.
+        Review for false negatives more aggressively than cosmetic issues.
+        Ensure new checks correspond to documented invariants, fail deterministically, do not silently skip malformed inputs, avoid environment-dependent behavior where possible, and produce actionable failure messages.
+        Scrutinize any change that weakens an existing enforced invariant.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        Treat CI as canonical verification evidence.
+        Review for skipped or conditionally bypassed required gates, branch/path filters that remove protection, commands diverging from AGENTS.md or README.md, missing reproducibility protections where required, unpinned or unnecessarily privileged third-party actions, secret exposure, cache poisoning risks, and permissions broader than required.
+        Do not accept local sandbox limitations as justification for weakening canonical CI.
+
+    - path: "PLANS.md"
+      instructions: |
+        Treat ExecPlans as coordination/evidence artifacts, never as authority.
+        Ensure lifecycle, recovery, interrupted-effect reconciliation, milestone evidence, decisions, discoveries, and outcomes remain internally consistent.
+        A plan must not self-authorize execution and must not self-verify its own success.
+
+    - path: "docs/adr/**"
+      instructions: |
+        Check that architectural decisions clearly identify context/problem, decision, alternatives/tradeoffs, authority/security implications, compatibility/migration impact, and verification consequences.
+        Flag ADRs whose implementation contradicts existing trusted-boundary guarantees without explicitly superseding the prior decision.
+
+    - path: "docs/failures/**"
+      instructions: |
+        Treat failure documents as inputs to future prevention.
+        Require a concrete root cause, prevention strategy, and objective evidence/detection mechanism.
+        Flag vague prevention statements such as "be more careful" when an enforceable check is reasonably possible.
+
+    - path: "**/*.md"
+      instructions: |
+        Review technical claims for consistency with actual repository behavior and canonical verification commands.
+        Pay particular attention to MUST/MUST NOT statements, paths, command working directories, version numbers, authority claims, and test evidence.
+        Do not treat documentation-only claims that something is verified, green, complete, or safe as sufficient evidence when executable verification is expected.

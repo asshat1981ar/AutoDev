@@ -1,0 +1,47 @@
+{
+  "task": {
+    "id": "architecture-evidence-forge",
+    "source": {
+      "kind": "merged_pull_request",
+      "repository": "asshat1981ar/AutoDev",
+      "source_ref": "6df35bf674af8023779f59b6770135dca2895d74",
+      "source_url": "https://github.com/asshat1981ar/AutoDev/pull/9"
+    },
+    "base_sha": "5c0adf94d192aef131c96d4cb72ef00e30bf7501",
+    "specification": "Implement connector-neutral architecture evidence records, evidence-linked decisions, deterministic ranking and reporting, and objective-integrity guards without granting live connector authority to ForgeCore.",
+    "acceptance_criteria": [
+      "Architecture evidence can support verified gates only from supported evidence classes",
+      "Cross-objective architecture decisions are rejected",
+      "The independent Rust verifier passes"
+    ],
+    "verifier": {
+      "steps": [
+        {
+          "id": "architecture-evidence-probe",
+          "program": "cargo",
+          "args": ["test", "-p", "forge-core", "--test", "eval_architecture_evidence"],
+          "working_directory": "crates",
+          "timeout_seconds": 600,
+          "required": true
+        }
+      ],
+      "asset_fingerprints": [
+        "86e6bfa9464df2c0c72972b821c1b86bd61c8a2662e6eb1cce3da20d9c28c77a"
+      ]
+    },
+    "protected": {
+      "paths": [".autodev-eval/"]
+    },
+    "expected_change_scope": [
+      "crates/forge-core/src/",
+      "crates/forge-core/tests/"
+    ]
+  },
+  "verifier_overlay": [
+    {
+      "source_path": "fixture-assets/architecture-evidence-forge/eval_architecture_evidence.rs",
+      "destination_path": "crates/forge-core/tests/eval_architecture_evidence.rs",
+      "sha256": "86e6bfa9464df2c0c72972b821c1b86bd61c8a2662e6eb1cce3da20d9c28c77a"
+    }
+  ]
+}
