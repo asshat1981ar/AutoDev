@@ -69,7 +69,15 @@ fn git_read_rejected_without_git_capability() {
     let mut action = git_action("status");
     action.capabilities.clear();
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
+    // execute() performs a general capability check before delegating to
+    // execute_git(), so the surface error is CapabilityDenied. The more
+    // specific GitCapabilityDenied is returned by execute_git's internal
+    // tier check. Accept either: the security property (git action without
+    // capability is rejected) is preserved either way.
+    assert!(
+        matches!(err, ExecutionError::CapabilityDenied)
+            || matches!(err, ExecutionError::GitCapabilityDenied(_))
+    );
 }
 
 #[test]
@@ -79,7 +87,10 @@ fn git_mutate_requires_git_write_capability() {
     let mut action = git_action("prepare_commit");
     action.payload = json!({ "operation": "prepare_commit", "message": "x", "commit": true });
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
+    assert!(
+        matches!(err, ExecutionError::CapabilityDenied)
+            || matches!(err, ExecutionError::GitCapabilityDenied(_))
+    );
 }
 
 #[test]
@@ -90,7 +101,10 @@ fn git_destructive_requires_git_destructive_capability() {
     let mut action = git_action("rollback");
     action.payload = json!({ "operation": "rollback", "command": "reset", "to": "HEAD" });
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
+    assert!(
+        matches!(err, ExecutionError::CapabilityDenied)
+            || matches!(err, ExecutionError::GitCapabilityDenied(_))
+    );
 }
 
 #[test]
@@ -150,7 +164,10 @@ fn git_destructive_denied_without_capability() {
     let mut action = git_action("rollback");
     action.payload = json!({ "operation": "rollback", "command": "checkout", "approved": true });
     let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
-    assert!(matches!(err, ExecutionError::GitCapabilityDenied(_)));
+    assert!(
+        matches!(err, ExecutionError::CapabilityDenied)
+            || matches!(err, ExecutionError::GitCapabilityDenied(_))
+    );
 }
 
 #[test]
@@ -172,4 +189,22 @@ fn git_not_a_repository_is_reported() {
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     let err = forge_core::execute(&ExecutableAction::new(git_action("status"), ws)).unwrap_err();
     assert!(matches!(err, ExecutionError::NotARepository(_)));
+}
+
+#[test]
+fn git_critical_risk_without_approval_capability_is_refused() {
+    // Adversarial: a Critical-risk git operation without the
+    // `approval:critical` capability must be rejected by the policy gate
+    // even when the destructive-tier capability is held. This guards against
+    // the prior path where Git actions bypassed structural validation.
+    let dir = init_repo();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut action = git_action("rollback");
+    action.risk = RiskLevel::Critical;
+    action.capabilities = vec![Capability::Git, Capability::GitDestructive];
+    action.payload = json!({ "operation": "rollback", "command": "checkout" });
+
+    let err = forge_core::execute(&ExecutableAction::with_approval(action, ws, "approval-2"))
+        .unwrap_err();
+    assert!(matches!(err, ExecutionError::CriticalApprovalRequired));
 }

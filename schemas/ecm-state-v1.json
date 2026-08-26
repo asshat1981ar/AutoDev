@@ -1,0 +1,837 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autodev.dev/schemas/amcx1/ecm-state-v1.json",
+  "title": "AMCX-1 ECM Collaboration State",
+  "description": "Schema for AMCX-1 v1.1 Entity-Collaboration Model (ECM) collaboration history and coordination state. ECM owns collaboration history: roles, attempts, messages, leases, task coordination, promotion evidence and ContextView history.",
+  "type": "object",
+  "required": ["schema_version", "ecm_id", "tasks", "attempts", "roles", "messages"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version identifier",
+      "enum": ["ecm-state-v1"],
+      "default": "ecm-state-v1"
+    },
+    "ecm_id": {
+      "type": "string",
+      "description": "Unique identifier for this ECM state instance",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "examples": ["autodev-main-ecm", "amcx1-integration-ecm"]
+    },
+    "repository_context": {
+      "type": "object",
+      "description": "Repository context for this ECM state",
+      "required": ["repository_revision", "repository_path"],
+      "properties": {
+        "repository_revision": {
+          "type": "string",
+          "description": "Git commit SHA identifying the repository revision",
+          "pattern": "^[0-9a-f]+$",
+          "minLength": 7,
+          "maxLength": 64
+        },
+        "repository_path": {
+          "type": "string",
+          "description": "Path to the repository root",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "description": "Git branch name",
+          "minLength": 1
+        },
+        "worktree_id": {
+          "type": "string",
+          "description": "Worktree identifier",
+          "minLength": 1
+        }
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this ECM state was last updated",
+      "format": "date-time"
+    },
+    "tasks": {
+      "type": "object",
+      "description": "Map of task_id to Task objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/Task"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attempts": {
+      "type": "object",
+      "description": "Map of attempt_id to Attempt objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/Attempt"
+        }
+      },
+      "additionalProperties": false
+    },
+    "roles": {
+      "type": "object",
+      "description": "Map of role_id to Role objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/Role"
+        }
+      },
+      "additionalProperties": false
+    },
+    "messages": {
+      "type": "array",
+      "description": "List of Message objects in chronological order",
+      "items": {
+        "$ref": "#/definitions/Message"
+      }
+    },
+    "role_leases": {
+      "type": "object",
+      "description": "Map of lease_id to RoleLease objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/RoleLease"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact_references": {
+      "type": "object",
+      "description": "Map of artifact_id to ArtifactReference objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/ArtifactReference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_references": {
+      "type": "object",
+      "description": "Map of evidence_id to EvidenceReference objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/EvidenceReference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "memory_bindings": {
+      "type": "object",
+      "description": "Map of memory_id to MemoryBinding objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/MemoryBinding"
+        }
+      },
+      "additionalProperties": false
+    },
+    "context_views": {
+      "type": "object",
+      "description": "Map of context_view_id to ContextView objects",
+      "patternProperties": {
+        "^[a-z0-9]+(?:-[a-z0-9]+)*$": {
+          "$ref": "#/definitions/ContextView"
+        }
+      },
+      "additionalProperties": false
+    },
+    "promotion_candidates": {
+      "type": "array",
+      "description": "List of promotion candidates",
+      "items": {
+        "$ref": "#/definitions/PromotionCandidate"
+      }
+    }
+  },
+  "definitions": {
+    "Task": {
+      "type": "object",
+      "description": "ECM Task represents a unit of work or objective",
+      "required": ["task_id", "title", "status", "created_timestamp", "objective"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Unique identifier for the task",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable title of the task",
+          "minLength": 1
+        },
+        "objective": {
+          "type": "string",
+          "description": "The objective or goal of this task",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the task",
+          "enum": ["pending", "in_progress", "completed", "failed", "cancelled", "blocked"]
+        },
+        "priority": {
+          "type": "string",
+          "description": "Priority level",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "created_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when task was created",
+          "format": "date-time"
+        },
+        "updated_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when task was last updated",
+          "format": "date-time"
+        },
+        "completed_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when task was completed",
+          "format": "date-time"
+        },
+        "attempt_ids": {
+          "type": "array",
+          "description": "List of attempt_ids associated with this task",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "List of task_ids this task depends on",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "blocked_by": {
+          "type": "array",
+          "description": "List of task_ids blocking this task",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional task metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Attempt": {
+      "type": "object",
+      "description": "ECM Attempt represents a try at completing a task",
+      "required": ["attempt_id", "task_id", "status", "start_timestamp", "agent_id"],
+      "properties": {
+        "attempt_id": {
+          "type": "string",
+          "description": "Unique identifier for the attempt",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "task_id": {
+          "type": "string",
+          "description": "The task_id this attempt belongs to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "description": "Identifier of the agent performing this attempt",
+          "minLength": 1
+        },
+        "role_id": {
+          "type": "string",
+          "description": "Role identifier for this attempt",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the attempt",
+          "enum": ["pending", "in_progress", "completed", "failed", "cancelled"]
+        },
+        "start_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when attempt started",
+          "format": "date-time"
+        },
+        "end_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when attempt ended",
+          "format": "date-time"
+        },
+        "result": {
+          "type": "string",
+          "description": "Result of the attempt",
+          "enum": ["success", "failure", "partial", "timeout", "error"]
+        },
+        "error_message": {
+          "type": "string",
+          "description": "Error message if attempt failed"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "description": "List of evidence_ids produced by this attempt",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "message_ids": {
+          "type": "array",
+          "description": "List of message_ids associated with this attempt",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "artifact_ids": {
+          "type": "array",
+          "description": "List of artifact_ids produced by this attempt",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "replan_count": {
+          "type": "integer",
+          "description": "Number of replans for this attempt",
+          "minimum": 0,
+          "default": 0
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional attempt metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Role": {
+      "type": "object",
+      "description": "ECM Role represents a role in the collaboration",
+      "required": ["role_id", "name", "capabilities"],
+      "properties": {
+        "role_id": {
+          "type": "string",
+          "description": "Unique identifier for the role",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the role",
+          "minLength": 1,
+          "examples": ["architect", "builder", "reviewer", "scout", "security", "verifier"]
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the role's responsibilities"
+        },
+        "capabilities": {
+          "type": "array",
+          "description": "List of capabilities this role has",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "examples": [["read:repo", "write:files", "execute:tools"]]
+        },
+        "constraints": {
+          "type": "array",
+          "description": "List of constraints on this role",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "authorized_tools": {
+          "type": "array",
+          "description": "List of tool names this role can use",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "examples": [["bash", "read_file", "edit", "grep"]]
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "description": "Maximum number of concurrent agents with this role",
+          "minimum": 1,
+          "default": 1
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional role metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RoleLease": {
+      "type": "object",
+      "description": "ECM RoleLease represents a lease of a role to an agent",
+      "required": ["lease_id", "role_id", "agent_id", "status", "acquired_timestamp"],
+      "properties": {
+        "lease_id": {
+          "type": "string",
+          "description": "Unique identifier for the lease",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "role_id": {
+          "type": "string",
+          "description": "The role_id being leased",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "description": "The agent_id acquiring the lease",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the lease",
+          "enum": ["pending", "active", "expired", "revoked", "released"]
+        },
+        "acquired_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when lease was acquired",
+          "format": "date-time"
+        },
+        "expires_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when lease expires",
+          "format": "date-time"
+        },
+        "released_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when lease was released",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for lease acquisition or release"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional lease metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Message": {
+      "type": "object",
+      "description": "ECM Message represents a collaboration message",
+      "required": ["message_id", "sender", "timestamp", "content_type", "body"],
+      "properties": {
+        "message_id": {
+          "type": "string",
+          "description": "Unique identifier for the message",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "sender": {
+          "type": "object",
+          "description": "Sender of the message",
+          "required": ["agent_id", "role_id"],
+          "properties": {
+            "agent_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "session_id": {
+              "type": "string"
+            }
+          }
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when message was sent",
+          "format": "date-time"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "Type of message content",
+          "enum": ["text", "markdown", "json", "yaml", "diff", "log"]
+        },
+        "body": {
+          "type": "string",
+          "description": "Message content",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Optional task_id this message relates to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "attempt_id": {
+          "type": "string",
+          "description": "Optional attempt_id this message relates to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "in_reply_to": {
+          "type": "string",
+          "description": "Optional message_id this is a reply to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "description": "List of evidence_ids referenced in this message",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "artifact_ids": {
+          "type": "array",
+          "description": "List of artifact_ids referenced in this message",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "memory_ids": {
+          "type": "array",
+          "description": "List of memory_ids referenced in this message",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional message metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "ArtifactReference": {
+      "type": "object",
+      "description": "ECM ArtifactReference references a produced artifact",
+      "required": ["artifact_id", "uri", "artifact_type", "created_timestamp"],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "description": "Unique identifier for the artifact",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "uri": {
+          "type": "string",
+          "description": "URI or path to the artifact",
+          "minLength": 1,
+          "format": "uri"
+        },
+        "artifact_type": {
+          "type": "string",
+          "description": "Type of artifact",
+          "enum": ["file", "directory", "image", "log", "report", "dataset", "model", "config"]
+        },
+        "checksum": {
+          "type": "string",
+          "description": "SHA-256 checksum of the artifact",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "description": "Size of the artifact in bytes",
+          "minimum": 0
+        },
+        "mime_type": {
+          "type": "string",
+          "description": "MIME type of the artifact"
+        },
+        "created_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when artifact was created",
+          "format": "date-time"
+        },
+        "expires_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when artifact expires",
+          "format": "date-time"
+        },
+        "created_by": {
+          "type": "string",
+          "description": "Agent or process that created the artifact",
+          "minLength": 1
+        },
+        "related_task_id": {
+          "type": "string",
+          "description": "Task ID this artifact is related to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "related_attempt_id": {
+          "type": "string",
+          "description": "Attempt ID this artifact is related to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional artifact metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "EvidenceReference": {
+      "type": "object",
+      "description": "ECM EvidenceReference references evidence produced or consumed",
+      "required": ["evidence_id", "evidence_type", "timestamp", "checksum"],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "description": "Unique identifier for the evidence",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "evidence_type": {
+          "type": "string",
+          "description": "Type of evidence",
+          "enum": ["test:output", "build:log", "lint:result", "security:scan", "verification:check", "manual:review", "observation"]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when evidence was recorded",
+          "format": "date-time"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "SHA-256 checksum of the evidence data",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "result": {
+          "type": "string",
+          "description": "Result of the evidence (for test/build/verification)",
+          "enum": ["passed", "failed", "skipped", "error", "warning"]
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the evidence",
+          "minLength": 1
+        },
+        "related_task_id": {
+          "type": "string",
+          "description": "Task ID this evidence is related to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "related_attempt_id": {
+          "type": "string",
+          "description": "Attempt ID this evidence is related to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "freshness_timestamp": {
+          "type": "string",
+          "description": "Timestamp for freshness validation",
+          "format": "date-time"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional evidence metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "MemoryBinding": {
+      "type": "object",
+      "description": "ECM MemoryBinding links AMX memory to ECM state",
+      "required": ["binding_id", "memory_id", "bound_entity_type", "bound_entity_id"],
+      "properties": {
+        "binding_id": {
+          "type": "string",
+          "description": "Unique identifier for the binding",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "memory_id": {
+          "type": "string",
+          "description": "AMX memory_id being bound",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "bound_entity_type": {
+          "type": "string",
+          "description": "Type of ECM entity being bound to",
+          "enum": ["task", "attempt", "role", "message", "artifact", "evidence"]
+        },
+        "bound_entity_id": {
+          "type": "string",
+          "description": "ID of the ECM entity being bound to",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "binding_type": {
+          "type": "string",
+          "description": "Type of binding relationship",
+          "enum": ["context", "evidence", "input", "output", "reference", "dependency"]
+        },
+        "created_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when binding was created",
+          "format": "date-time"
+        },
+        "expires_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when binding expires",
+          "format": "date-time"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional binding metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "ContextView": {
+      "type": "object",
+      "description": "ECM ContextView represents a snapshot of context for a task/attempt",
+      "required": ["context_view_id", "snapshot_timestamp", "context_type"],
+      "properties": {
+        "context_view_id": {
+          "type": "string",
+          "description": "Unique identifier for the context view",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "snapshot_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when context was snapshotted",
+          "format": "date-time"
+        },
+        "context_type": {
+          "type": "string",
+          "description": "Type of context view",
+          "enum": ["full", "partial", "focused", "minimal"]
+        },
+        "related_task_id": {
+          "type": "string",
+          "description": "Task ID this context is for",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "related_attempt_id": {
+          "type": "string",
+          "description": "Attempt ID this context is for",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "included_entities": {
+          "type": "object",
+          "description": "Entities included in this context view",
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "attempts": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "roles": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "messages": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "artifacts": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "evidences": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            },
+            "memories": {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+            }
+          },
+          "additionalProperties": false
+        },
+        "excluded_entities": {
+          "type": "object",
+          "description": "Entities explicitly excluded from this context view",
+          "properties": {
+            "tasks": {"type": "array", "items": {"type": "string"}},
+            "attempts": {"type": "array", "items": {"type": "string"}},
+            "roles": {"type": "array", "items": {"type": "string"}},
+            "messages": {"type": "array", "items": {"type": "string"}},
+            "artifacts": {"type": "array", "items": {"type": "string"}},
+            "evidences": {"type": "array", "items": {"type": "string"}},
+            "memories": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+        "focus_target": {
+          "type": "string",
+          "description": "The primary focus of this context view",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional context view metadata",
+          "additionalProperties": true
+        }
+      }
+    },
+    "PromotionCandidate": {
+      "type": "object",
+      "description": "ECM PromotionCandidate represents a candidate for promotion",
+      "required": ["candidate_id", "entity_type", "entity_id", "status"],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "description": "Unique identifier for the promotion candidate",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "entity_type": {
+          "type": "string",
+          "description": "Type of entity being promoted",
+          "enum": ["task", "attempt", "memory", "artifact", "evidence"]
+        },
+        "entity_id": {
+          "type": "string",
+          "description": "ID of the entity being promoted",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current promotion status",
+          "enum": ["proposed", "reviewed", "approved", "rejected", "promoted", "failed"]
+        },
+        "proposed_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when candidate was proposed",
+          "format": "date-time"
+        },
+        "reviewed_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when candidate was reviewed",
+          "format": "date-time"
+        },
+        "promoted_timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when candidate was promoted",
+          "format": "date-time"
+        },
+        "decision_evidence_ids": {
+          "type": "array",
+          "description": "List of evidence_ids supporting the promotion decision",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "promotion_target": {
+          "type": "string",
+          "description": "Target environment or scope for promotion",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional promotion candidate metadata",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

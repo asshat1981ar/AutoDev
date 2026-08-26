@@ -1,0 +1,295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://autodev.dev/schemas/amcx1/amx-memory-v1.json",
+  "title": "AMCX-1 AMX Canonical Portable Memory Record",
+  "description": "Schema for AMCX-1 v1.1 Agent Memory (AMX) canonical portable memory history. Every durable memory must retain sufficient information to determine origin, logical identity, repository/worktree/project scope, provenance, causal ancestry, trust/validity state, visibility, purpose, retraction/deletion barriers, and canonical semantic digest.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "origin",
+    "logical_identity",
+    "repository_scope",
+    "provenance",
+    "causal_ancestry",
+    "trust_validity_state",
+    "visibility",
+    "purpose",
+    "retraction_deletion_barriers",
+    "canonical_semantic_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version identifier",
+      "enum": ["amx-memory-v1"],
+      "default": "amx-memory-v1"
+    },
+    "origin": {
+      "type": "string",
+      "description": "Origin of the memory record. Identifies the source system or agent that created this memory.",
+      "minLength": 1,
+      "examples": [
+        "vibe:skill:architecture-design",
+        "cline:agent:builder",
+        "forge-core:exec-plan:001",
+        "manual:human:dev"
+      ]
+    },
+    "logical_identity": {
+      "type": "string",
+      "description": "Logical identity of the memory. Stable identifier that can be referenced across sessions.",
+      "minLength": 1,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "examples": [
+        "autodev-tdd-pattern-001",
+        "execplan-milestone-complete",
+        "harness-drift-check"
+      ]
+    },
+    "repository_scope": {
+      "type": "object",
+      "description": "Repository, worktree, and project scope where this memory applies.",
+      "required": ["repository_revision", "repository_path", "worktree_id"],
+      "properties": {
+        "repository_revision": {
+          "type": "string",
+          "description": "Git commit SHA or tag identifying the repository revision.",
+          "minLength": 7,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]+$",
+          "examples": ["75051b78c8bf75ce5c589432b1ce3aae19a1fad4"]
+        },
+        "repository_path": {
+          "type": "string",
+          "description": "Absolute or relative path to the repository root.",
+          "minLength": 1,
+          "examples": ["/data/data/com.termux/files/home/AutoDev", "."]
+        },
+        "worktree_id": {
+          "type": "string",
+          "description": "Identifier for the worktree or checkout where this memory was created.",
+          "minLength": 1,
+          "examples": ["primary", "amcx1-vibe-integration", "feat/amcx1-v1.1"]
+        },
+        "project_scope": {
+          "type": "string",
+          "description": "Optional project or module scope within the repository.",
+          "examples": ["crates/forge-core", "kotlin/mpp-core", "docs/architecture"]
+        }
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "description": "Provenance chain showing the lineage of this memory. Ordered from oldest to newest.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source", "timestamp", "checksum"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Source of this provenance entry.",
+            "minLength": 1,
+            "examples": ["tool:bash:output", "skill:architecture-design", "human:review"]
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when this provenance was recorded.",
+            "format": "date-time",
+            "examples": ["2026-08-20T21:00:00Z"]
+          },
+          "checksum": {
+            "type": "string",
+            "description": "SHA-256 checksum of the source data.",
+            "pattern": "^[0-9a-f]{64}$",
+            "examples": ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this provenance entry.",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "causal_ancestry": {
+      "type": "array",
+      "description": "Causal ancestry references. Identifies parent memories or events that led to this memory.",
+      "items": {
+        "type": "object",
+        "required": ["logical_identity", "relationship"],
+        "properties": {
+          "logical_identity": {
+            "type": "string",
+            "description": "Logical identity of the ancestor memory.",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "relationship": {
+            "type": "string",
+            "description": "Type of causal relationship.",
+            "enum": ["derives_from", "depends_on", "extends", "replaces", "resolves", "invalidates"]
+          },
+          "repository_revision": {
+            "type": "string",
+            "description": "Repository revision where the ancestor was created.",
+            "pattern": "^[0-9a-f]+$"
+          }
+        }
+      }
+    },
+    "trust_validity_state": {
+      "type": "object",
+      "description": "Trust and validity state of this memory.",
+      "required": ["trust_level", "validity_status", "last_validated"],
+      "properties": {
+        "trust_level": {
+          "type": "string",
+          "description": "Trust level assigned to this memory.",
+          "enum": ["unverified", "low", "medium", "high", "absolute"],
+          "default": "unverified"
+        },
+        "validity_status": {
+          "type": "string",
+          "description": "Current validity status of the memory content.",
+          "enum": ["valid", "stale", "deprecated", "retracted", "invalid"],
+          "default": "valid"
+        },
+        "last_validated": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of the last validation.",
+          "format": "date-time"
+        },
+        "validation_method": {
+          "type": "string",
+          "description": "Method used for validation.",
+          "examples": ["mechanical:schema", "human:review", "automated:ci", "cryptographic:signature"]
+        },
+        "expiry_timestamp": {
+          "type": "string",
+          "description": "Optional ISO 8601 timestamp when this memory expires.",
+          "format": "date-time"
+        }
+      }
+    },
+    "visibility": {
+      "type": "object",
+      "description": "Visibility and access control for this memory.",
+      "required": ["scope", "access_level"],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "Visibility scope.",
+          "enum": ["private", "workspace", "repository", "public"]
+        },
+        "access_level": {
+          "type": "string",
+          "description": "Access level required to read this memory.",
+          "enum": ["restricted", "read", "write", "admin"]
+        },
+        "authorized_roles": {
+          "type": "array",
+          "description": "Roles authorized to access this memory.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "authorized_agents": {
+          "type": "array",
+          "description": "Specific agent IDs authorized to access this memory.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "purpose": {
+      "type": "object",
+      "description": "Purpose and intent of this memory.",
+      "required": ["primary", "task_class"],
+      "properties": {
+        "primary": {
+          "type": "string",
+          "description": "Primary purpose of this memory.",
+          "minLength": 1,
+          "examples": ["evidence:verification", "knowledge:pattern", "coordination:task", "decision:log"]
+        },
+        "task_class": {
+          "type": "string",
+          "description": "Reusable task category this memory applies to.",
+          "minLength": 1,
+          "examples": ["Rust feature implementation", "Security review", "CI configuration"]
+        },
+        "secondary_purposes": {
+          "type": "array",
+          "description": "Secondary purposes of this memory.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "retraction_deletion_barriers": {
+      "type": "object",
+      "description": "Barriers preventing retraction or deletion of this memory.",
+      "required": ["retractable", "deletable"],
+      "properties": {
+        "retractable": {
+          "type": "boolean",
+          "description": "Whether this memory can be retracted.",
+          "default": true
+        },
+        "deletable": {
+          "type": "boolean",
+          "description": "Whether this memory can be deleted.",
+          "default": true
+        },
+        "retraction_conditions": {
+          "type": "array",
+          "description": "Conditions under which retraction is allowed.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "examples": [["human:explicit-approval", "expiry:timestamp-passed"]]
+        },
+        "deletion_conditions": {
+          "type": "array",
+          "description": "Conditions under which deletion is allowed.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "retention_policy": {
+          "type": "string",
+          "description": "Retention policy for this memory.",
+          "enum": ["ephemeral", "session", "persistent", "permanent", "archival"]
+        }
+      }
+    },
+    "canonical_semantic_digest": {
+      "type": "string",
+      "description": "Canonical semantic digest (SHA-256 hash) of the memory content. Used to detect tampering and verify integrity.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this memory was created.",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "object",
+      "description": "The actual memory data/content.",
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata about this memory.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

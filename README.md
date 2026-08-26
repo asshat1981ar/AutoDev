@@ -94,6 +94,12 @@ Approval resume reuses the same envelope and does not consume an execution attem
 
 `VerifiedOrchestratorState` is serializable so envelope lifecycle and retry state can be recovered after process restart.
 
+## Durable ExecPlans
+
+Architectural and multi-hour work uses the root `PLANS.md` contract plus serialized `forge_core::ExecPlan` state. ExecPlans persist goals, task/run/envelope references, milestone attempts, bounded replans, decisions, discoveries, interruption state, and checkpoints so development can resume from repository evidence rather than conversational memory.
+
+An ExecPlan is coordination only: it cannot mint an `AuthorizationGrant`, approve or execute effects, widen capabilities, or self-verify. Interrupted effectful work must be reconciled against trusted evidence before retry, and completion still requires independent verification.
+
 ## Repository context fabric
 
 ForgeCore includes deterministic bounded repository retrieval. Context selection is local-first, reproducible, and budgeted by maximum files and bytes. Context is treated as evidence for planning rather than permission to mutate the repository.
@@ -185,6 +191,10 @@ node scripts/termux-kanban.mjs
 ```
 
 See [docs/termux-kanban.md](docs/termux-kanban.md) for diagnostics, force-repair, and shell-alias usage.
+
+## Server deployment
+
+The `autodev-server` binary is a stateless control-plane adapter. Its deployment contract — bind address, TLS requirement, bearer-token handling, body-size limits — is documented in [docs/operations/autodev-server-deployment.md](docs/operations/autodev-server-deployment.md). Production deployments are expected to terminate TLS at a reverse proxy in front of the server; the server itself listens for plaintext HTTP.
 
 ## License
 

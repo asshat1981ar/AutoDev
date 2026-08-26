@@ -7,26 +7,26 @@ package dev.autodev.platform
  * The common API never exposes JVM or Darwin types.
  */
 expect class PlatformFileSystem() {
-    /**
-     * Read the entire file at [path] as UTF-8 text.
-     *
-     * @throws FileSystemException if the path does not exist or cannot be read.
-     */
-    fun readText(path: String): String
+  /**
+   * Read the entire file at [path] as UTF-8 text.
+   *
+   * @throws FileSystemException if the path does not exist or cannot be read.
+   */
+  fun readText(path: String): String
 
-    /**
-     * Write [content] to [path], creating or truncating the file. Parent
-     * directories are created if missing.
-     *
-     * @throws FileSystemException if the file cannot be written.
-     */
-    fun writeText(
-        path: String,
-        content: String,
-    )
+  /**
+   * Write [content] to [path], creating or truncating the file. Parent
+   * directories are created if missing.
+   *
+   * @throws FileSystemException if the file cannot be written.
+   */
+  fun writeText(
+    path: String,
+    content: String,
+  )
 
-    /**
-     * Whether a regular file exists at [path].
-     */
-    fun exists(path: String): Boolean
+  /**
+   * Whether a regular file exists at [path].
+   */
+  fun exists(path: String): Boolean
 }
