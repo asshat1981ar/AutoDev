@@ -7,6 +7,7 @@
 
 pub mod action;
 pub mod agent;
+pub mod amcx_bridge;
 pub mod architecture_evidence;
 pub mod capability_gap;
 pub mod context;

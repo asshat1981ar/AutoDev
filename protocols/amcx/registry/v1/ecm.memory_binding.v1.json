@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Noncanonical ECM Memory Binding Schema v1",
+  "type": "object",
+  "required": [
+    "binding_id",
+    "task_id",
+    "amx_record_id",
+    "amx_record_digest",
+    "binding_purpose",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "binding_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "amx_record_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "amx_record_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "binding_purpose": {
+      "type": "string",
+      "enum": [
+        "INPUT_CONTEXT",
+        "OUTPUT_EVIDENCE",
+        "AUDIT_TRAIL",
+        "RECONCILIATION_SOURCE"
+      ]
+    },
+    "is_canonical": {
+      "type": "boolean",
+      "enum": [
+        false
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

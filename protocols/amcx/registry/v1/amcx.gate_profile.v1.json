@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AMCX GateProfile Schema v1",
+  "type": "object",
+  "required": [
+    "profile_id",
+    "subject_kind",
+    "promotion_target",
+    "required_evidence_kinds",
+    "min_reviewer_quorum",
+    "audit_policy_digest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "profile_id": {
+      "type": "string"
+    },
+    "subject_kind": {
+      "type": "string",
+      "enum": [
+        "PROMPT",
+        "SKILL",
+        "ROUTER",
+        "SCHEMA_CANDIDATE"
+      ]
+    },
+    "promotion_target": {
+      "type": "string",
+      "enum": [
+        "CANARY",
+        "PRODUCTION",
+        "DEPRECATED"
+      ]
+    },
+    "required_evidence_kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "min_reviewer_quorum": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "audit_policy_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

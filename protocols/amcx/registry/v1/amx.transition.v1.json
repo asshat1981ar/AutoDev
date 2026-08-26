@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AMX Guarded Reducer Transition Schema v1",
+  "type": "object",
+  "required": [
+    "transition_id",
+    "dimension",
+    "from_state",
+    "to_state",
+    "guard_authority",
+    "audit_reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "transition_id": {
+      "type": "string"
+    },
+    "dimension": {
+      "type": "string",
+      "enum": [
+        "content_lifecycle",
+        "admission",
+        "validity",
+        "runtime_sharing",
+        "repository_publication",
+        "cross_project_export"
+      ]
+    },
+    "from_state": {
+      "type": "string"
+    },
+    "to_state": {
+      "type": "string"
+    },
+    "guard_authority": {
+      "type": "string"
+    },
+    "audit_reason": {
+      "type": "string"
+    }
+  }
+}

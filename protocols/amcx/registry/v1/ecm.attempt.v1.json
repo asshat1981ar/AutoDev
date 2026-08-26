@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECM Task Attempt Schema v1",
+  "type": "object",
+  "required": [
+    "attempt_id",
+    "task_id",
+    "lease_id",
+    "executor_agent_id",
+    "attempt_status",
+    "started_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "attempt_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "lease_id": {
+      "type": "string"
+    },
+    "executor_agent_id": {
+      "type": "string"
+    },
+    "attempt_status": {
+      "type": "string",
+      "enum": [
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "REJECTED_REVIEW",
+        "TIMED_OUT"
+      ]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evidence_receipt_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

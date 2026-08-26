@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AMCX \u00a75 18-Domain Trust Boundary Specification v1",
+  "type": "object",
+  "required": [
+    "version",
+    "domains"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": [
+        "AMCX-1.0.0-design"
+      ]
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 18,
+      "maxItems": 18,
+      "items": {
+        "type": "object",
+        "required": [
+          "domain_id",
+          "domain_name",
+          "canonical_history",
+          "decision_authority",
+          "execution_materialization"
+        ],
+        "properties": {
+          "domain_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 18
+          },
+          "domain_name": {
+            "type": "string"
+          },
+          "canonical_history": {
+            "type": "string"
+          },
+          "decision_authority": {
+            "type": "string"
+          },
+          "execution_materialization": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

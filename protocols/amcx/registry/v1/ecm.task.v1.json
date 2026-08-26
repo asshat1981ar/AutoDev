@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECM Collaboration Task Schema v1",
+  "type": "object",
+  "required": [
+    "task_id",
+    "title",
+    "task_state",
+    "acceptance_contract_id",
+    "created_at",
+    "budget_limit_tokens"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "task_state": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "READY",
+        "CLAIMED",
+        "RUNNING",
+        "BLOCKED",
+        "REVIEW_PENDING",
+        "ACCEPTANCE_PENDING",
+        "RETRY_WAIT",
+        "CANCEL_REQUESTED",
+        "COMPLETED",
+        "FAILED",
+        "EXPIRED",
+        "CANCELLED",
+        "CANCELLED_WITH_EFFECT",
+        "CANCELLED_EFFECT_UNKNOWN",
+        "MANUAL_REQUIRED"
+      ]
+    },
+    "acceptance_contract_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "budget_limit_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "assigned_role": {
+      "type": "string"
+    }
+  }
+}

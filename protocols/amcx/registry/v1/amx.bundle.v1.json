@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AMX Memory Bundle Schema v1",
+  "type": "object",
+  "required": [
+    "bundle_id",
+    "schema_version",
+    "records",
+    "causal_roots",
+    "causal_heads",
+    "bundle_digest",
+    "exported_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "bundle_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": [
+        "amx.bundle.v1"
+      ]
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "amx.record.v1.json"
+      }
+    },
+    "causal_roots": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "causal_heads": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "bundle_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "exported_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

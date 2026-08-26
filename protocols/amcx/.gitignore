@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.worktrees/
+.autodev/checkpoints/
+.superpowers/sdd/
+dist/
