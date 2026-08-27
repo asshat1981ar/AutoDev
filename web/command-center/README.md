@@ -26,7 +26,7 @@ https://autodev.example/api/v1/*         -> autodev-server:8080/api/v1/*
 https://autodev.example/events           -> autodev-server:8080/events
 ```
 
-The server input defaults to `http://127.0.0.1:8080` for local development and can be changed in the UI. Embedded URL credentials are rejected.
+The server input defaults to `http://127.0.0.1:8080` for local development and can be changed in the UI. Embedded URL credentials are rejected. When the server is configured with `AUTODEV_API_BEARER_TOKEN`, enter the same bearer token in the optional API token field before connecting or queueing objectives.
 
 ## CLI companion
 
@@ -40,4 +40,4 @@ python scripts/autodev-cli.py objectives create \
 python scripts/autodev-cli.py events
 ```
 
-Use `--server https://autodev.example` to target another deployment. The CLI intentionally has no MCP, approval, or direct execution commands.
+Use `--server https://autodev.example` to target another deployment. Authenticated deployments can pass `--api-bearer-token` or set `AUTODEV_API_BEARER_TOKEN`. The CLI intentionally has no MCP, approval, or direct execution commands.

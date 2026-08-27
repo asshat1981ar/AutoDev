@@ -56,6 +56,10 @@ CANONICAL_CI_FRAGMENTS = [
     "python -m unittest discover -s tests -v",
     "node --check scripts/termux-kanban.mjs",
     "node scripts/termux-kanban.mjs --check",
+    "pnpm install --frozen-lockfile",
+    "pnpm typecheck",
+    "pnpm test",
+    "docker build -f services/livekit-agent/Dockerfile -t autodev-livekit-agent:ci .",
     'sdkmanager "platforms;android-35" "build-tools;35.0.0"',
 ]
 
@@ -85,7 +89,6 @@ HARNESS_AUTHORITY_FRAGMENTS = [
 
 FORBIDDEN_ROOT_FILES = [
     ROOT / "Cargo.toml",
-    ROOT / "package.json",
     ROOT / "pyproject.toml",
     ROOT / "requirements.txt",
     ROOT / "kotlin/gradle/libs.versions.toml",
@@ -268,9 +271,15 @@ def check_referenced_files_exist(errors: list[str], verbose: bool) -> None:
         ROOT / "install.py",
         ROOT / "bootstrap_cline_mcp.py",
         ROOT / "Dockerfile",
+        ROOT / "package.json",
+        ROOT / "pnpm-lock.yaml",
+        ROOT / "pnpm-workspace.yaml",
+        ROOT / "services/livekit-agent/package.json",
+        ROOT / "services/livekit-agent/Dockerfile",
+        ROOT / "docs/adr/ADR-006-livekit-realtime-intake.md",
     ]
     for p in must_exist:
-        if not p.exists():
+        if not p.is_file():
             errors.append(f"Missing referenced file: {p.relative_to(ROOT)}")
         elif verbose:
             print(f"[ok] referenced file exists: {p.relative_to(ROOT)}")
@@ -285,6 +294,23 @@ def check_forbidden_files(errors: list[str], verbose: bool) -> None:
             )
         elif verbose:
             print(f"[ok] forbidden file absent: {p.relative_to(ROOT)}")
+
+    node_manifest = ROOT / "package.json"
+    node_adr = ROOT / "docs/adr/ADR-006-livekit-realtime-intake.md"
+    node_workspace = ROOT / "pnpm-workspace.yaml"
+    node_lock = ROOT / "pnpm-lock.yaml"
+    livekit_package = ROOT / "services/livekit-agent/package.json"
+    node_files = [node_manifest, node_workspace, node_lock, livekit_package]
+    present = [path for path in node_files if path.is_file()]
+    if 0 < len(present) < len(node_files):
+        missing = ", ".join(
+            path.relative_to(ROOT).as_posix() for path in node_files if not path.is_file()
+        )
+        errors.append(f"Incomplete ADR-006 Node workspace: missing {missing}")
+    elif present and not node_adr.is_file():
+        errors.append("Root Node workspace requires docs/adr/ADR-006-livekit-realtime-intake.md")
+    elif present and verbose:
+        print("[ok] ADR-006 root Node workspace is complete and documented")
 
 
 def check_instructions(errors: list[str], verbose: bool) -> None:

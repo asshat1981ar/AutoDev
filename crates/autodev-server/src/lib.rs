@@ -25,6 +25,7 @@ mod mcp;
 
 type HmacSha256 = Hmac<Sha256>;
 const MCP_BEARER_COMPARE_KEY: &[u8] = b"autodev-mcp-bearer-constant-time-compare-v1";
+const API_BEARER_COMPARE_KEY: &[u8] = b"autodev-api-bearer-constant-time-compare-v1";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ObjectiveRequest {
@@ -50,6 +51,7 @@ pub struct AppState {
     events: broadcast::Sender<String>,
     github_webhook_secret: Option<String>,
     mcp_bearer_tag: Option<Arc<Vec<u8>>>,
+    api_bearer_tag: Option<Arc<Vec<u8>>>,
 }
 
 impl AppState {
@@ -60,6 +62,7 @@ impl AppState {
             events,
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
             mcp_bearer_tag: None,
+            api_bearer_tag: None,
         }
     }
 
@@ -74,6 +77,21 @@ impl AppState {
             None
         } else {
             Some(Arc::new(mcp_bearer_tag(&token)))
+        };
+        self
+    }
+
+    /// Configure an optional bearer token for mutating public API routes.
+    ///
+    /// When unset, objective creation remains available for backward-compatible
+    /// loopback deployments. Operators that expose the API beyond loopback must
+    /// configure this token at the reverse proxy and application boundary.
+    pub fn with_api_bearer_token(mut self, token: impl Into<String>) -> Self {
+        let token = token.into();
+        self.api_bearer_tag = if token.trim().is_empty() {
+            None
+        } else {
+            Some(Arc::new(bearer_tag(API_BEARER_COMPARE_KEY, &token)))
         };
         self
     }
@@ -122,15 +140,20 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
+    let mutating_api = Router::new()
+        .route("/api/v1/objectives", post(create_objective))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_bearer_if_configured,
+        ));
+
     let api = Router::new()
         .route("/health", get(health))
-        .route(
-            "/api/v1/objectives",
-            get(list_objectives).post(create_objective),
-        )
+        .route("/api/v1/objectives", get(list_objectives))
         .route("/api/v1/events/stream", get(event_stream))
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
+        .merge(mutating_api)
         // Bound the request body on the public-API surface. The default
         // Axum limit is 2 MiB, which is more than a webhook or an
         // objective description should ever be; the limit mirrors the
@@ -166,7 +189,7 @@ async fn require_mcp_bearer(
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty());
 
-    if !presented.is_some_and(|token| verify_mcp_bearer(expected_tag, token)) {
+    if !presented.is_some_and(|token| verify_bearer(MCP_BEARER_COMPARE_KEY, expected_tag, token)) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "invalid MCP bearer token"})),
@@ -177,21 +200,54 @@ async fn require_mcp_bearer(
     next.run(request).await
 }
 
+async fn require_api_bearer_if_configured(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(expected_tag) = state.api_bearer_tag.as_deref() else {
+        return next.run(request).await;
+    };
+    let presented = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.is_empty());
+    if !presented.is_some_and(|token| verify_bearer(API_BEARER_COMPARE_KEY, expected_tag, token)) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "invalid API bearer token"})),
+        )
+            .into_response();
+    }
+    next.run(request).await
+}
+
 /// Maximum body size accepted on the public API surface
 /// (`/api/v1/*`, `/events`, `/webhooks/*`). Matches the MCP cap so an
 /// attacker cannot drive memory pressure by sending oversized payloads to
 /// the unauthenticated routes.
 pub const API_MAX_BODY_BYTES: usize = 512 * 1024;
 
+pub fn normalize_api_bearer_token(token: Option<String>) -> Option<String> {
+    token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn mcp_bearer_tag(token: &str) -> Vec<u8> {
-    let mut mac = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY)
-        .expect("constant MCP bearer comparison key is valid");
+    bearer_tag(MCP_BEARER_COMPARE_KEY, token)
+}
+
+fn bearer_tag(key: &[u8], token: &str) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(key).expect("constant bearer comparison key is valid");
     mac.update(token.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }
 
-fn verify_mcp_bearer(expected_tag: &[u8], presented: &str) -> bool {
-    let Ok(mut mac) = HmacSha256::new_from_slice(MCP_BEARER_COMPARE_KEY) else {
+fn verify_bearer(key: &[u8], expected_tag: &[u8], presented: &str) -> bool {
+    let Ok(mut mac) = HmacSha256::new_from_slice(key) else {
         return false;
     };
     mac.update(presented.as_bytes());
@@ -342,8 +398,16 @@ mod tests {
     #[test]
     fn mcp_bearer_verification_is_constant_time_over_tags() {
         let expected = mcp_bearer_tag("secret-token");
-        assert!(verify_mcp_bearer(&expected, "secret-token"));
-        assert!(!verify_mcp_bearer(&expected, "wrong-token"));
+        assert!(verify_bearer(
+            MCP_BEARER_COMPARE_KEY,
+            &expected,
+            "secret-token"
+        ));
+        assert!(!verify_bearer(
+            MCP_BEARER_COMPARE_KEY,
+            &expected,
+            "wrong-token"
+        ));
     }
 
     #[tokio::test]
@@ -369,6 +433,95 @@ mod tests {
         let record = objectives.values().next().expect("queued objective");
         assert_eq!(record.graph.root().description, "Implement health endpoint");
         assert_eq!(record.status, "queued");
+    }
+
+    #[tokio::test]
+    async fn objective_intake_requires_configured_api_bearer() {
+        let state = AppState::new(None).with_api_bearer_token("api-secret");
+        let request = || {
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/objectives")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"repository":"owner/repo","description":"Implement health endpoint"}"#,
+                ))
+                .expect("request")
+        };
+
+        let missing = router(state.clone())
+            .oneshot(request())
+            .await
+            .expect("response");
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+
+        let wrong = router(state.clone())
+            .oneshot({
+                let mut request = request();
+                request.headers_mut().insert(
+                    header::AUTHORIZATION,
+                    "Bearer wrong".parse().expect("header"),
+                );
+                request
+            })
+            .await
+            .expect("response");
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+        let accepted = router(state.clone())
+            .oneshot({
+                let mut request = request();
+                request.headers_mut().insert(
+                    header::AUTHORIZATION,
+                    "Bearer api-secret".parse().expect("header"),
+                );
+                request
+            })
+            .await
+            .expect("response");
+        assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+        assert_eq!(state.objectives.read().await.len(), 1);
+
+        let listing = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/objectives")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(listing.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn blank_api_bearer_token_leaves_loopback_compatibility_unconfigured() {
+        let state = AppState::new(None).with_api_bearer_token("  \t  ");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/objectives")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"repository":"owner/repo","description":"Implement health endpoint"}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
+
+    #[test]
+    fn api_bearer_token_normalization_rejects_blank_values() {
+        assert_eq!(normalize_api_bearer_token(None), None);
+        assert_eq!(normalize_api_bearer_token(Some(" \t ".to_string())), None);
+        assert_eq!(
+            normalize_api_bearer_token(Some("  api-secret  ".to_string())),
+            Some("api-secret".to_string())
+        );
     }
 
     #[tokio::test]

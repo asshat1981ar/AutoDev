@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "mode": "metadata-only",
+  "source_catalogs": [
+    {
+      "name": "VoltAgent awesome-agent-skills",
+      "url": "https://github.com/VoltAgent/awesome-agent-skills",
+      "license_for_index": "MIT",
+      "content_policy": "Do not copy linked skill content until each source license and authority profile is reviewed independently."
+    }
+  ],
+  "active_skills": [
+    "skill-curator",
+    "skill-security-auditor",
+    "skill-license-reviewer",
+    "skill-packager"
+  ],
+  "quarantine_policy": {
+    "default_status": "discovered",
+    "installer_behavior": "ignore",
+    "allowed_content": ["metadata", "source links", "review notes"],
+    "forbidden_content": ["third-party executable scripts", "secret material", "ambient credential instructions", "unreviewed copied skill bodies"]
+  }
+}

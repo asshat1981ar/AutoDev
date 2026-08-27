@@ -139,6 +139,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 It also validates the Cline/Termux fabric. A development slice is not considered green until these gates pass.
 
+The optional LiveKit realtime intake service is verified from the repository root:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+docker build -f services/livekit-agent/Dockerfile -t autodev-livekit-agent:ci .
+```
+
 ## Design principle
 
 > Agents propose intent. Policy authorizes capabilities. Trusted components execute. Independent verifiers produce evidence. Orchestrators advance or replan from that evidence.
@@ -180,6 +189,12 @@ with `python install.py --project /path/to/repo --dry-run`. Existing project fil
 by default; `--force` creates backups before replacement. The package provides routing rules,
 progressive Skills, specialist agents, safety/context hooks, local plugin tools, and scoped
 external MCP profiles. See [.cline/README.md](.cline/README.md).
+
+## LiveKit realtime intake
+
+`services/livekit-agent` adds an optional LiveKit Agents JS voice/video edge. It can clarify a request and enqueue a bounded objective for one operator-configured repository. It cannot approve or execute work, access Git/filesystem/shell tools, construct a ForgeCore `AuthorizationGrant`, or perform LiveKit administrative operations.
+
+The worker uses `@livekit/agents@1.7.0`, requires an explicit LiveKit dispatch name, and optionally uses the matching `@livekit/agents-plugin-lemonslice@1.7.0`. LemonSlice remains disabled unless its API key and exactly one safe avatar source are configured. See [ADR-006](docs/adr/ADR-006-livekit-realtime-intake.md) and the [deployment guide](docs/operations/livekit-agent-deployment.md).
 
 ## Termux Cline Kanban compatibility
 

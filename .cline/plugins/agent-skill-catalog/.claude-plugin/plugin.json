@@ -1,0 +1,8 @@
+{
+  "name": "agent-skill-catalog",
+  "version": "0.1.0",
+  "description": "Metadata-only catalog and review workflow for safely curating external agent skills before packaging them for AutoDev.",
+  "author": {
+    "name": "AutoDev"
+  }
+}
