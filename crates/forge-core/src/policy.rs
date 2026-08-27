@@ -5,7 +5,7 @@
 //! checks, and risk-based authorization. No privileged operation occurs until
 //! policy authorizes it.
 
-use crate::action::{AgentAction, Capability, RiskLevel};
+use crate::action::{ActionType, AgentAction, Capability, RiskLevel};
 use crate::error::ExecutionError;
 
 /// The outcome of policy evaluation for an action.
@@ -42,6 +42,47 @@ impl AuthorizationGrant {
         self.approval_ref
             .as_deref()
             .is_some_and(|reference| !reference.trim().is_empty())
+    }
+}
+
+/// Trusted minimum risk for an executable action.
+///
+/// Model-declared risk is advisory. This floor is derived from action semantics
+/// inside ForgeCore so an untrusted producer cannot downgrade an operation to
+/// bypass approval.
+pub fn minimum_risk_for_action(action: &AgentAction) -> RiskLevel {
+    match action.action_type {
+        ActionType::ReadFile | ActionType::RequestApproval => RiskLevel::Low,
+        ActionType::WriteFile | ActionType::PatchFile | ActionType::RunTest => RiskLevel::Medium,
+        ActionType::Execute | ActionType::Mcp => RiskLevel::High,
+        ActionType::Git => match action
+            .payload
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("checkpoint" | "prepare_commit") => RiskLevel::Medium,
+            Some("rollback") => RiskLevel::High,
+            _ => RiskLevel::Low,
+        },
+    }
+}
+
+/// Effective authorization risk after applying the trusted semantic floor.
+pub fn effective_risk_for_action(action: &AgentAction) -> RiskLevel {
+    let minimum = minimum_risk_for_action(action);
+    if risk_rank(action.risk) >= risk_rank(minimum) {
+        action.risk
+    } else {
+        minimum
+    }
+}
+
+fn risk_rank(risk: RiskLevel) -> u8 {
+    match risk {
+        RiskLevel::Low => 0,
+        RiskLevel::Medium => 1,
+        RiskLevel::High => 2,
+        RiskLevel::Critical => 3,
     }
 }
 
