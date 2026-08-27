@@ -40,6 +40,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URI
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -55,6 +56,7 @@ data class PendingAction(
 
 data class CommandCenterState(
   val endpoint: String = DEFAULT_SERVER,
+  val apiBearerToken: String = "",
   val connected: Boolean = false,
   val status: String = "Disconnected",
   val events: List<String> = emptyList(),
@@ -75,14 +77,30 @@ class CommandCenterViewModel : ViewModel() {
   private val pendingActionsFlow = MutableStateFlow<List<PendingAction>>(emptyList())
   val pendingActionsState: StateFlow<List<PendingAction>> = pendingActionsFlow.asStateFlow()
 
-  fun connect(rawEndpoint: String) {
+  fun connect(
+    rawEndpoint: String,
+    rawApiBearerToken: String = mutableState.value.apiBearerToken,
+  ) {
     val endpoint = rawEndpoint.trim().trimEnd('/')
+    val apiBearerToken = rawApiBearerToken.trim()
     if (endpoint.isEmpty()) return
+    if (apiBearerToken.isNotEmpty() && !endpoint.allowsBearerTokenTransport()) {
+      mutableState.update {
+        it.copy(
+          endpoint = endpoint,
+          apiBearerToken = "",
+          connected = false,
+          status = "API bearer token requires HTTPS or local development endpoint",
+        )
+      }
+      return
+    }
 
     cancelStream()
     mutableState.update {
       it.copy(
         endpoint = endpoint,
+        apiBearerToken = apiBearerToken,
         connected = false,
         status = "Connecting…",
         events = emptyList(),
@@ -91,7 +109,12 @@ class CommandCenterViewModel : ViewModel() {
 
     streamJob =
       viewModelScope.launch(Dispatchers.IO) {
-        val request = Request.Builder().url("$endpoint/events").get().build()
+        val request =
+          Request.Builder()
+            .url("$endpoint/events")
+            .applyApiBearerToken(apiBearerToken)
+            .get()
+            .build()
         val call = client.newCall(request)
         activeCall = call
         try {
@@ -144,17 +167,19 @@ class CommandCenterViewModel : ViewModel() {
 
   fun replayPending(endpoint: String) {
     val pending = pendingActionsFlow.value
+    val apiBearerToken = mutableState.value.apiBearerToken
     if (pending.isEmpty()) return
     viewModelScope.launch(Dispatchers.IO) {
       val remaining = mutableListOf<PendingAction>()
       for (action in pending) {
-        // Reuse same endpoint and existing AuthorizationGrant concept — blocked without grant does not consume attempt
-        // This replay respects VerifiedOrchestratorState: approval resume reuses same envelope id
+        // Reuse the configured endpoint and bearer token. This only enqueues
+        // intent; ForgeCore remains the execution authority.
         val success =
           try {
             val request =
               Request.Builder()
                 .url("$endpoint/api/v1/objectives")
+                .applyApiBearerToken(apiBearerToken)
                 .post(
                   action.payload.toRequestBody("application/json".toMediaType()),
                 )
@@ -200,6 +225,22 @@ class CommandCenterViewModel : ViewModel() {
   }
 }
 
+private fun Request.Builder.applyApiBearerToken(token: String): Request.Builder =
+  apply {
+    if (token.isNotBlank()) {
+      header("Authorization", "Bearer ${token.trim()}")
+    }
+  }
+
+private fun String.allowsBearerTokenTransport(): Boolean =
+  try {
+    val uri = URI(this)
+    val host = uri.host ?: return false
+    uri.scheme == "https" || host == "127.0.0.1" || host == "localhost" || host == "10.0.2.2"
+  } catch (_: Exception) {
+    false
+  }
+
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -221,6 +262,7 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
   // a stale mirror of the queue.
   val pending by viewModel.pendingActionsState.collectAsState()
   var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
+  var apiBearerToken by remember(state.apiBearerToken) { mutableStateOf(state.apiBearerToken) }
 
   Column(
     modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -240,8 +282,16 @@ private fun commandCenterScreen(viewModel: CommandCenterViewModel = viewModel())
       modifier = Modifier.fillMaxWidth(),
     )
 
+    OutlinedTextField(
+      value = apiBearerToken,
+      onValueChange = { apiBearerToken = it },
+      label = { Text("API bearer token (optional)") },
+      singleLine = true,
+      modifier = Modifier.fillMaxWidth(),
+    )
+
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(onClick = { viewModel.connect(endpoint) }) { Text("Connect") }
+      Button(onClick = { viewModel.connect(endpoint, apiBearerToken) }) { Text("Connect") }
       Button(
         onClick = viewModel::disconnect,
         enabled = state.connected,

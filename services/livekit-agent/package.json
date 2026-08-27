@@ -1,0 +1,26 @@
+{
+  "name": "@autodev/livekit-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node --test dist/test/*.test.js",
+    "dev": "node --enable-source-maps dist/src/main.js dev",
+    "start": "node --enable-source-maps dist/src/main.js start"
+  },
+  "dependencies": {
+    "@livekit/agents": "1.7.0",
+    "@livekit/agents-plugin-lemonslice": "1.7.0",
+    "@livekit/rtc-node": "0.13.34",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "typescript": "5.9.2"
+  }
+}

@@ -2,6 +2,7 @@
 
 const elements = {
   serverUrl: document.querySelector("#server-url"),
+  apiToken: document.querySelector("#api-token"),
   connectButton: document.querySelector("#connect-button"),
   refreshButton: document.querySelector("#refresh-button"),
   connectionDot: document.querySelector("#connection-dot"),
@@ -27,6 +28,7 @@ const state = {
   objectives: [],
   eventSource: null,
   eventCount: 0,
+  apiBearerToken: "",
 };
 
 function normalizeServer(value) {
@@ -56,6 +58,10 @@ function endpoint(path) {
   return `${state.baseUrl}${path}`;
 }
 
+function authHeaders() {
+  return state.apiBearerToken ? { authorization: `Bearer ${state.apiBearerToken}` } : {};
+}
+
 function setConnection(kind, message) {
   elements.connectionDot.classList.remove("connected", "error");
   if (kind) {
@@ -78,6 +84,7 @@ async function requestJson(path, options = {}) {
     headers: {
       accept: "application/json",
       ...(options.body ? { "content-type": "application/json" } : {}),
+      ...authHeaders(),
       ...(options.headers || {}),
     },
   });
@@ -189,6 +196,7 @@ async function connect() {
   setBusy(elements.connectButton, true, "Connecting…");
   try {
     state.baseUrl = normalizeServer(elements.serverUrl.value);
+    state.apiBearerToken = elements.apiToken.value.trim();
     localStorage.setItem("autodev.commandCenter.server", state.baseUrl);
     await loadObjectives();
     connectEvents();

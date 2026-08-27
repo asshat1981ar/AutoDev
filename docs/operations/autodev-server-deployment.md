@@ -13,9 +13,9 @@ This file documents the deployment contract the server expects. A production dep
 | Variable | Default | Effect |
 |---|---|---|
 | `AUTODEV_PORT` | `8080` | TCP port |
-| `AUTODEV_BIND` | `0.0.0.0` | Network interface. Set to `127.0.0.1` for local-only operation |
+| `AUTODEV_BIND` | `0.0.0.0` | Network interface. Any non-loopback value requires `AUTODEV_API_BEARER_TOKEN` |
 
-The default `0.0.0.0` keeps the public webhook contract intact (GitHub must reach the listener) **and** exposes the bearer-token-protected `/mcp` route to the LAN. The server logs a warning at startup if `AUTODEV_BIND` is the unspecified address and `AUTODEV_MCP_BEARER_TOKEN` is set, so the operator can see the LAN-bearer exposure in their own logs.
+The default `0.0.0.0` keeps the public webhook contract intact (GitHub must reach the listener), but startup now fails unless `AUTODEV_API_BEARER_TOKEN` is configured. This prevents the mutating objective endpoint from being exposed without authentication. The server also logs a warning if the bearer-protected `/mcp` route is reachable on an unspecified address.
 
 ## TLS is the operator's responsibility
 
@@ -28,6 +28,12 @@ If you do not have a TLS terminator in front of the server, you are transmitting
 `/mcp` is bearer-token-gated by `AUTODEV_MCP_BEARER_TOKEN`. If the variable is unset, the route returns `503 Service Unavailable` and no MCP traffic is admitted. The token must be a high-entropy random value (≥ 32 bytes) generated and stored as a secret; do not commit it.
 
 The MCP transport also enforces a `Host`-header allowlist (`AUTODEV_MCP_ALLOWED_HOSTS`, default `localhost,127.0.0.1,::1,autodev-server`) and an `Origin` allowlist (`AUTODEV_MCP_ALLOWED_ORIGINS`, default `http://localhost,http://127.0.0.1,http://localhost:8080`). A stolen bearer is therefore insufficient on its own: the attacker must also reach the loopback interface **and** present an allowed `Host`/`Origin`.
+
+## Objective API bearer token
+
+`AUTODEV_API_BEARER_TOKEN` optionally protects `POST /api/v1/objectives`. When configured, missing or incorrect bearer tokens receive `401 Unauthorized`; read-only listing remains available. The server stores only a deterministic HMAC tag and compares presented tokens in constant time.
+
+The variable is optional only for loopback development. Server startup fails when `AUTODEV_BIND` is non-loopback and the token is absent. It is also required by the supported LiveKit worker whenever `AUTODEV_URL` is remote. Production reverse proxies should apply the same authentication policy and should not expose mutating routes without TLS.
 
 ## Webhook secret
 

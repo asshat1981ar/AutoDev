@@ -21,6 +21,8 @@
           <input id="server-url" name="server-url" type="url" inputmode="url" value="http://127.0.0.1:8080" spellcheck="false">
           <button id="connect-button" type="button" class="secondary">Connect</button>
         </div>
+        <label for="api-token">API bearer token <span class="optional">optional</span></label>
+        <input id="api-token" name="api-token" type="password" autocomplete="off" spellcheck="false" placeholder="Required when AUTODEV_API_BEARER_TOKEN is enabled">
         <div class="status-line">
           <span id="connection-dot" class="status-dot" aria-hidden="true"></span>
           <span id="connection-status" role="status">Not connected</span>

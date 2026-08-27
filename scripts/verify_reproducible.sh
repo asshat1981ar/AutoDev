@@ -55,6 +55,14 @@ echo "--- 6/6 python + node + drift (offline) ---"
 python3 -m py_compile install.py bootstrap_cline_mcp.py scripts/validate_pr_evidence.py .cline/hooks/*.py .cline/plugins/project-fabric/tools.py \
   && echo "py_compile: PASS"
 node --check scripts/termux-kanban.mjs && echo "node --check: PASS"
+if pnpm install --frozen-lockfile --offline >/tmp/autodev-pnpm-offline-install.log 2>&1; then
+  pnpm typecheck
+  pnpm test
+  echo "LiveKit Node workspace: PASS"
+else
+  echo "LiveKit Node workspace: SKIP — pnpm store is not fully cached"
+  echo "  Reproducible via: pnpm install --frozen-lockfile && pnpm typecheck && pnpm test"
+fi
 python3 scripts/check_harness_drift.py --verbose | tail -n 5
 echo "drift: PASS"
 

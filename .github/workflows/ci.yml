@@ -105,6 +105,27 @@ jobs:
       - name: Reproducible verification (offline-capable)
         run: bash scripts/verify_reproducible.sh
 
+  node:
+    name: Node - LiveKit typecheck, test, container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+          run_install: false
+      - name: Install locked Node workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck LiveKit service
+        run: pnpm typecheck
+      - name: Test LiveKit service
+        run: pnpm test
+      - name: Build LiveKit agent container
+        run: docker build -f services/livekit-agent/Dockerfile -t autodev-livekit-agent:ci .
+
   python:
     name: Python - compile & test
     runs-on: ubuntu-latest

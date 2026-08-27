@@ -1,0 +1,11 @@
+{
+  "name": "autodev-node-services",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "build": "pnpm --recursive --if-present build",
+    "test": "pnpm --recursive --if-present test",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "check": "pnpm typecheck && pnpm test"
+  }
+}
