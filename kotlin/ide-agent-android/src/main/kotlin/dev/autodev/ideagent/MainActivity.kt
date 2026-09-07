@@ -25,7 +25,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -102,7 +101,7 @@ private fun IdeAgentApp(backend: ExecutionBackend = PreviewExecutionBackend()) {
                         val task = state.task.trim()
                         if (task.isEmpty()) return@launch
                         state = state.copy(
-                            steps = AgentStage.entries.map(::AgentStep),
+                            steps = AgentStage.entries.map { AgentStep(it) },
                             isRunning = true,
                         )
                         val result = backend.execute(task) { stage, detail ->
