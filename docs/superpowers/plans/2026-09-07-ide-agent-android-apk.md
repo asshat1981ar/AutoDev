@@ -28,4 +28,10 @@
 
 ### Task 3: CI verification
 - [x] Add GitHub Actions workflow for unit tests and APK assembly.
-- [ ] Confirm workflow succeeds and capture artifact.
+- [x] Confirm workflow succeeds and capture artifact.
+
+## Verification record
+- Workflow run: `34161146771`
+- Gradle: `BUILD SUCCESSFUL`; 41 actionable tasks (40 executed, 1 from cache)
+- Artifact ID: `10032686973`
+- APK SHA-256: `11efe7e5c6d957912dd6738492eced45dc9c60622fe41a47edbdb08a80896e97`
