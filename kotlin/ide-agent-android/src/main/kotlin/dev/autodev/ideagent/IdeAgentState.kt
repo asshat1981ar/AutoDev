@@ -24,7 +24,7 @@ data class IdeAgentState(
     val projectName: String = "No project selected",
     val task: String = "",
     val backendName: String = "Preview backend",
-    val steps: List<AgentStep> = AgentStage.entries.map(::AgentStep),
+    val steps: List<AgentStep> = AgentStage.entries.map { AgentStep(it) },
     val plan: String = "No plan yet.",
     val changes: String = "No changes yet.",
     val buildOutput: String = "No build yet.",
