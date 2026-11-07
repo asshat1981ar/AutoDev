@@ -44,6 +44,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          # Google no longer serves the legacy `tools` package that this
+          # action installs by default; request platform-tools only.
+          packages: platform-tools
       - name: Install Android SDK 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Cache Gradle
@@ -164,6 +168,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          # Google no longer serves the legacy `tools` package that this
+          # action installs by default; request platform-tools only.
+          packages: platform-tools
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
