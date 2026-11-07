@@ -4,7 +4,8 @@ The `autodev-server` binary (`crates/autodev-server`) is a stateless control-pla
 
 - accept GitHub webhook traffic on `/webhooks/github` and verify the HMAC-SHA256 `X-Hub-Signature-256`;
 - expose read-only objectives + a bounded objective enqueue on `/api/v1/*`;
-- serve the read-only MCP transport on `/mcp` behind a bearer-token middleware.
+- serve the read-only MCP transport on `/mcp` behind a bearer-token middleware;
+- sign and verify client-side policy-gate results on `/api/v1/gate/*` (evidence only, never authorization — ADR-007).
 
 This file documents the deployment contract the server expects. A production deployment that ignores any of these is unsupported.
 
@@ -34,6 +35,12 @@ The MCP transport also enforces a `Host`-header allowlist (`AUTODEV_MCP_ALLOWED_
 `AUTODEV_API_BEARER_TOKEN` optionally protects `POST /api/v1/objectives`. When configured, missing or incorrect bearer tokens receive `401 Unauthorized`; read-only listing remains available. The server stores only a deterministic HMAC tag and compares presented tokens in constant time.
 
 The variable is optional only for loopback development. Server startup fails when `AUTODEV_BIND` is non-loopback and the token is absent. It is also required by the supported LiveKit worker whenever `AUTODEV_URL` is remote. Production reverse proxies should apply the same authentication policy and should not expose mutating routes without TLS.
+
+## Gate attestation key
+
+`AUTODEV_GATE_SIGNING_KEY` enables `POST /api/v1/gate/attest` and `POST /api/v1/gate/verify` (ADR-007). The key must be at least 32 bytes; a shorter value is a startup error. If it is unset, both routes return `503 Service Unavailable`. Both routes also require `AUTODEV_API_BEARER_TOKEN`, even on loopback, and return `503` without it.
+
+The key lives only in the server process. Clients (Claude Code hooks, CI) never receive it; they send claims and receive signed attestations, and they ask `/verify` to check one. Rotate the key by restarting with a new value: the logged `key_id` changes, and attestations signed with the old key stop verifying.
 
 ## Webhook secret
 

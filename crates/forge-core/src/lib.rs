@@ -19,6 +19,7 @@ pub mod evaluation;
 pub mod evidence;
 pub mod exec_plan;
 pub mod execute;
+pub mod gate_attestation;
 mod git;
 pub mod harness;
 pub mod hybrid_simulation;
@@ -78,6 +79,11 @@ pub use exec_plan::{
     PlanDiscovery, PlanMilestone, PlanReferences,
 };
 pub use execute::execute_process;
+pub use gate_attestation::{
+    attest as attest_gate, attest_now as attest_gate_now, is_protected_ref, normalize_ref,
+    verify_attestation, GateAttestation, GateAttestationError, GateAttestationRequest,
+    GateDecision, GateMode, GateSigningKey,
+};
 pub use git::{BranchInfo, Checkpoint, GitDiff, GitStatus, GitTier, RepositoryInfo};
 pub use harness::{
     default_harness_profiles, evaluate_harness_candidate, route_harness, HarnessAssetKind,

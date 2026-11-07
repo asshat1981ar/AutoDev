@@ -1,4 +1,5 @@
 use autodev_server::{normalize_api_bearer_token, router, AppState};
+use forge_core::GateSigningKey;
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -44,6 +45,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(token) = api_bearer_token {
         state = state.with_api_bearer_token(token);
+    }
+    // ADR-007: the gate-attestation key lives only in this process. A key
+    // shorter than 32 bytes is a startup error, never a silent downgrade.
+    if let Some(secret) = std::env::var("AUTODEV_GATE_SIGNING_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        let key = GateSigningKey::new(secret.trim().as_bytes())
+            .map_err(|error| format!("AUTODEV_GATE_SIGNING_KEY: {error}"))?;
+        eprintln!("gate attestation enabled (key_id {})", key.key_id());
+        state = state.with_gate_signing_key(key);
     }
 
     let listener = TcpListener::bind((bind_addr, port)).await?;
