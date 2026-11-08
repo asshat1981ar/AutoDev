@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo fmt --manifest-path crates/Cargo.toml:*)",
+      "Bash(cargo clippy --locked --manifest-path crates/Cargo.toml:*)",
+      "Bash(cargo build --locked --manifest-path crates/Cargo.toml:*)",
+      "Bash(cargo test --locked --manifest-path crates/Cargo.toml:*)",
+      "Bash(./kotlin/gradlew -p kotlin:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -m unittest discover -s tests -v)",
+      "Bash(python scripts/check_harness_drift.py:*)",
+      "Bash(python scripts/validate_pr_evidence.py:*)",
+      "Bash(python scripts/validate_toolset_memory.py:*)",
+      "Bash(corepack enable:*)",
+      "Bash(pnpm install --frozen-lockfile)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm test)",
+      "Bash(node --check scripts/termux-kanban.mjs)",
+      "Bash(node scripts/termux-kanban.mjs --check)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./.env*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.jks)",
+      "Read(**/*.p12)",
+      "Read(**/secrets/**)",
+      "Bash(npm install:*)",
+      "Bash(yarn:*)",
+      "Bash(pip install:*)",
+      "Edit(Cargo.toml)",
+      "Write(Cargo.toml)",
+      "Write(pyproject.toml)",
+      "Write(requirements.txt)",
+      "Write(kotlin/gradle/libs.versions.toml)"
+    ]
+  }
+}
