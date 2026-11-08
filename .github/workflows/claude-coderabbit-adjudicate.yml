@@ -1,8 +1,12 @@
 name: claude-coderabbit-adjudicate
 
 # Label a PR "claude:adjudicate" to have Claude classify every CodeRabbit finding with
-# evidence. The verdict is typed (structured_output) and fails the check when any
-# blocking finding is unresolved. Claude adjudicates; it never authorizes.
+# evidence. The ENFORCED verdict is deterministic: unresolved CodeRabbit review threads (script
+# count) and the model's own blocking findings; either > 0 fails the check (set repo variable
+# CLAUDE_GATE_MODE=warn to downgrade failures to warnings). Empty Claude output is never PASS:
+# it WARNs when the script count is clean and fails when the script count is non-zero or unknown.
+# Claude only reads a pre-fetched, author-filtered comment file; it has no gh api. Advisory:
+# never make this job a required check (the subscription limit makes Claude jobs fail).
 on:
   pull_request:
     types: [labeled]
@@ -19,13 +23,15 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ vars.CLAUDE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
+    env:
+      CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
     concurrency:
       group: claude-adjudicate-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    # Never pushes: GITHUB_TOKEN path, no id-token. Comments come from github-actions[bot].
+    # Never pushes or posts: GITHUB_TOKEN path, read-only, no id-token.
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,82 +39,112 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # Deterministic pre-steps: no model, no secrets. Count unresolved CodeRabbit threads and
+      # save coderabbitai[bot] comments (only) to a file that Claude reads through --add-dir.
+      - name: Count threads and fetch CodeRabbit comments (script, no model)
+        id: fallback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          QUERY: 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(first:1){nodes{author{login}}}}}}}}'
+        run: |
+          set -euo pipefail
+          owner="${REPO%%/*}"
+          name="${REPO##*/}"
+          more="$(gh api graphql -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" -f query="$QUERY" \
+            --jq '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')"
+          if [ "$more" = "true" ]; then
+            echo "::error::More than 100 review threads: script count incomplete, failing closed"
+            exit 1
+          fi
+          count="$(gh api graphql -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" -f query="$QUERY" \
+            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == "coderabbitai")] | length')"
+          echo "unresolved=$count" >> "$GITHUB_OUTPUT"
+          echo "Unresolved CodeRabbit review threads (script count): $count" >> "$GITHUB_STEP_SUMMARY"
+          d="$RUNNER_TEMP/coderabbit"
+          mkdir -p "$d"
+          {
+            gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments"
+            gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews"
+          } | jq -s '[.[][] | select(.user.login == "coderabbitai[bot]") | {url: .html_url, path: (.path // null), body: ((.body // "")[:4000])}] | .[:200]' > "$d/coderabbit-comments.json"
+
       - name: Adjudicate CodeRabbit findings
         id: adj
+        continue-on-error: true
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          include_comments_by_actor: "asshat1981ar,coderabbitai[bot]"
-          exclude_comments_by_actor: "dependabot[bot],renovate[bot]"
           prompt: "/adjudicate-coderabbit REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }}"
           claude_args: |
             --permission-mode auto
             --model ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5-5' }}
             --max-turns 25
-            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api repos/asshat1981ar/AutoDev/pulls/*/comments:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh pr diff:*)"
+            --add-dir ${{ runner.temp }}/coderabbit
             --disallowedTools "Edit,MultiEdit,Write,WebFetch,WebSearch"
             --json-schema '{"type":"object","required":["findings","unresolved_blocking"],"properties":{"findings":{"type":"array","items":{"type":"object","required":["comment_url","severity","boundary","verdict","evidence"],"properties":{"comment_url":{"type":"string"},"severity":{"enum":["blocking","major","minor","nit"]},"boundary":{"enum":["forgecore","mcp_http_sse_rpc","protocol_identity","kmp","none"]},"verdict":{"enum":["fixed_in_head","must_fix","false_positive","wont_fix_with_reason"]},"evidence":{"type":"string"}}}},"unresolved_blocking":{"type":"integer","minimum":0},"boundary_declaration":{"enum":["no_impact","impact_present"]}}}'
 
-      # Deterministic fallback: count unresolved CodeRabbit review threads without a model.
-      # Runs even when the Claude step failed (for example the subscription limit was hit).
-      - name: Fallback verdict (script, no model)
-        id: fallback
-        if: ${{ !cancelled() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          QUERY: 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{author{login}}}}}}}}'
-        run: |
-          set -euo pipefail
-          owner="${REPO%%/*}"
-          name="${REPO##*/}"
-          count="$(gh api graphql -f owner="$owner" -f name="$name" -F number="$PR_NUMBER" -f query="$QUERY" \
-            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == "coderabbitai")] | length')"
-          echo "unresolved=$count" >> "$GITHUB_OUTPUT"
-          echo "Unresolved CodeRabbit review threads (script count): $count" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report verdict (check claude-adjudication)
+      - name: Report verdict (script count is enforced)
         if: ${{ !cancelled() }}
         env:
           OUT: ${{ steps.adj.outputs.structured_output }}
           FALLBACK_UNRESOLVED: ${{ steps.fallback.outputs.unresolved }}
+          GATE_MODE: ${{ vars.CLAUDE_GATE_MODE || 'enforce' }}
           PR_BODY_DECL_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${OUT:-}" ]; then
-            # Empty output is "no verdict", never PASS. Warn, and surface the script count.
-            echo "::warning::No structured verdict from Claude (limit hit or step failed). Script count of unresolved CodeRabbit threads: ${FALLBACK_UNRESOLVED:-unknown}"
-            echo "No Claude verdict: WARN. Unresolved CodeRabbit threads (script): ${FALLBACK_UNRESOLVED:-unknown}" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          {
-            echo "## CodeRabbit adjudication"
-            echo
-            echo "| Comment | Severity | Boundary | Verdict | Evidence |"
-            echo "|---|---|---|---|---|"
-            jq -r '.findings[] | "| \(.comment_url) | \(.severity) | \(.boundary) | \(.verdict) | \(.evidence | gsub("[|\n]"; " ")) |"' <<<"$OUT"
-          } >> "$GITHUB_STEP_SUMMARY"
+          fail=0
+          problem() {
+            if [ "$GATE_MODE" = "warn" ]; then
+              echo "::warning::$1 (warn mode)"
+            else
+              echo "::error::$1"
+              fail=1
+            fi
+          }
+          # Deterministic verdict first: it decides, whatever Claude returned.
+          case "${FALLBACK_UNRESOLVED:-}" in
+            ''|*[!0-9]*) problem "Script count of unresolved CodeRabbit threads is unavailable" ;;
+            0) ;;
+            *) problem "$FALLBACK_UNRESOLVED unresolved CodeRabbit review thread(s) (script count)" ;;
+          esac
+          echo "Script count: ${FALLBACK_UNRESOLVED:-unknown}" >> "$GITHUB_STEP_SUMMARY"
 
-          # Compare the model's boundary declaration with the box ticked in the PR body.
-          body="$(gh pr view "$PR_NUMBER" --repo "$PR_BODY_DECL_REPO" --json body --jq .body)"
-          declared="$(jq -r '.boundary_declaration // "unspecified"' <<<"$OUT")"
-          ticked="unspecified"
-          if grep -Eq '^- \[[xX]\] No trusted execution or authorization changes' <<<"$body"; then
-            ticked="no_impact"
-          elif grep -Eq '^- \[[xX]\] Trusted-boundary impact present' <<<"$body"; then
-            ticked="impact_present"
-          fi
-          if [ "$declared" != "unspecified" ] && [ "$ticked" != "unspecified" ] && [ "$declared" != "$ticked" ]; then
-            echo "::warning::Boundary declaration mismatch: Claude says $declared, PR body ticks $ticked"
-            echo "Boundary declaration mismatch: Claude says \`$declared\`, PR body ticks \`$ticked\`." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          if [ -z "${OUT:-}" ] || ! jq -e '.findings and (.unresolved_blocking | type == "number")' <<<"$OUT" >/dev/null 2>&1; then
+            echo "::warning::No Claude verdict (limit hit, step failed or malformed output). Claude adds no explanation."
+            echo "No Claude verdict: WARN." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## CodeRabbit adjudication (explanation; the script count decides)"
+              echo
+              echo "| Comment | Severity | Boundary | Verdict | Evidence |"
+              echo "|---|---|---|---|---|"
+              jq -r '.findings[] | "| \(.comment_url) | \(.severity) | \(.boundary) | \(.verdict) | \(.evidence | gsub("[|\n]"; " ")) |"' <<<"$OUT"
+            } >> "$GITHUB_STEP_SUMMARY"
 
-          unresolved="$(jq -r '.unresolved_blocking' <<<"$OUT")"
-          if [ "$unresolved" -gt 0 ]; then
-            echo "::error::$unresolved unresolved blocking CodeRabbit finding(s)"
-            exit 1
+            # Compare the model's boundary declaration with the box ticked in the PR body.
+            body="$(gh pr view "$PR_NUMBER" --repo "$PR_BODY_DECL_REPO" --json body --jq .body)"
+            declared="$(jq -r '.boundary_declaration // "unspecified"' <<<"$OUT")"
+            ticked="unspecified"
+            if grep -Eq '^- \[[xX]\] No trusted execution or authorization changes' <<<"$body"; then
+              ticked="no_impact"
+            elif grep -Eq '^- \[[xX]\] Trusted-boundary impact present' <<<"$body"; then
+              ticked="impact_present"
+            fi
+            if [ "$declared" != "unspecified" ] && [ "$ticked" != "unspecified" ] && [ "$declared" != "$ticked" ]; then
+              echo "::warning::Boundary declaration mismatch: Claude says $declared, PR body ticks $ticked"
+              echo "Boundary declaration mismatch: Claude says \`$declared\`, PR body ticks \`$ticked\`." >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Recompute from findings; never trust the model's own total alone.
+            derived="$(jq -r '[.findings[] | select(.severity == "blocking" and .verdict == "must_fix")] | length' <<<"$OUT")"
+            claimed="$(jq -r '.unresolved_blocking' <<<"$OUT")"
+            if [ "$derived" -gt 0 ] || [ "$claimed" -gt 0 ]; then
+              problem "Claude reports blocking CodeRabbit finding(s): derived=$derived claimed=$claimed"
+            fi
           fi
+          exit "$fail"

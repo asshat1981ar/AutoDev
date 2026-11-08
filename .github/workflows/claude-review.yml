@@ -1,18 +1,14 @@
 name: claude-review
 
-# Kernel-path review. CodeRabbit already reviews every PR, so Claude only runs on
-# security-relevant paths, or on any PR carrying the "claude-review" label.
+# Kernel-path review. CodeRabbit already reviews every PR, so Claude only runs when the PR
+# touches security-relevant paths, or carries the "claude-review" label. Relevance is decided
+# inside the job (no paths: filter), so the label works on any PR. Advisory, never a required check.
+# Claude is read-only: no build/test/script tools. CodeRabbit comments are pre-fetched by a
+# deterministic step (author-filtered) because comment filters do not apply in agent mode.
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened, labeled]
     branches: [main]
-    paths:
-      - "crates/forge-core/**"
-      - "crates/autodev-server/**"
-      - "protocols/amcx/**"
-      - "kotlin/**/src/commonMain/**"
-      - "schemas/**"
-      - "policies/**"
 
 permissions: {}
 
@@ -26,12 +22,14 @@ jobs:
       (github.event.action != 'labeled' || github.event.label.name == 'claude-review')
     runs-on: ${{ vars.CLAUDE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
+    env:
+      CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
     concurrency:
       group: claude-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: write # Claude posts review comments
       id-token: write # Claude GitHub App token exchange (OIDC)
     steps:
       - name: Checkout
@@ -40,17 +38,44 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Decide relevance and fetch CodeRabbit comments
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'claude-review') }}
+        run: |
+          set -euo pipefail
+          relevant=false
+          if [ "$HAS_LABEL" = "true" ]; then
+            relevant=true
+          elif gh pr diff "$PR" --repo "$REPO" --name-only | grep -Eq '^(crates/forge-core/|crates/autodev-server/|protocols/amcx/|kotlin/.*/src/commonMain/|schemas/|policies/)'; then
+            relevant=true
+          fi
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          if [ "$relevant" != "true" ]; then
+            echo "Not relevant: no kernel paths changed and no claude-review label." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          d="$RUNNER_TEMP/coderabbit"
+          mkdir -p "$d"
+          {
+            gh api --paginate "repos/$REPO/pulls/$PR/comments"
+            gh api --paginate "repos/$REPO/pulls/$PR/reviews"
+          } | jq -s '[.[][] | select(.user.login == "coderabbitai[bot]") | {url: .html_url, path: (.path // null), body: ((.body // "")[:4000])}] | .[:200]' > "$d/coderabbit-comments.json"
+
       - name: Review with Claude
+        if: steps.rel.outputs.relevant == 'true'
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           use_sticky_comment: "true"
-          include_comments_by_actor: "asshat1981ar,coderabbitai[bot]"
-          exclude_comments_by_actor: "dependabot[bot],renovate[bot]"
           prompt: "/review-pr REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }}"
           claude_args: |
             --permission-mode auto
             --model ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5-5' }}
             --max-turns 30
-            --allowedTools "Read,Glob,Grep,Task,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --allowedTools "Read,Glob,Grep,Task,mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --add-dir ${{ runner.temp }}/coderabbit
             --disallowedTools "Edit,MultiEdit,Write,WebFetch,WebSearch"
