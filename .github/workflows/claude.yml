@@ -2,6 +2,8 @@ name: claude
 
 # Tag mode: answers "@claude ..." from the repository owner on issues, PRs and reviews.
 # Needs secret CLAUDE_CODE_OAUTH_TOKEN and the Claude GitHub App (see docs/claude-automation.md).
+# gh pr view / gh issue view / gh api / gh search are denied: they return comments that bypass the actor filters
+# (tag mode already embeds the author-filtered issue/PR context in the prompt).
 # Safety model: owner-only; cross-repo (fork) PRs are refused before Claude starts; Claude gets
 # read-only git/gh tools and the action's file/commit tools, no build, test or repo-script
 # commands, so CI (which runs on its pushes without secrets) provides test results.
@@ -84,6 +86,6 @@ jobs:
             --permission-mode auto
             --model ${{ vars.CLAUDE_MODEL || 'claude-opus-5-5' }}
             --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*)"
-            --disallowedTools "WebFetch,WebSearch,Bash(npm install:*),Bash(yarn:*),Bash(pip install:*),Bash(docker:*),Bash(gh api:*),Bash(cargo update:*),Bash(git push --force*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(git rev-parse:*),Bash(gh pr diff:*)"
+            --disallowedTools "WebFetch,WebSearch,Bash(gh pr view:*),Bash(gh issue view:*),Bash(gh search:*),Bash(git diff --no-index:*),Bash(git diff --output:*),Bash(git log --output:*),Bash(git show --output:*),Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(node:*),Bash(yarn:*),Bash(pip:*),Bash(python:*),Bash(python3:*),Bash(cargo:*),Bash(rustc:*),Bash(./kotlin/gradlew:*),Bash(gradle:*),Bash(make:*),Bash(bash:*),Bash(sh:*),Bash(docker:*),Bash(gh api:*),Bash(git push --force*)"
             --append-system-prompt "CI context. AGENTS.md is the harness; its key rules: never create root Cargo.toml/pyproject.toml/requirements.txt or kotlin/gradle/libs.versions.toml, and never touch crates/Cargo.lock except via an explicit task. You have no build, test or script tools here: edit with the file tools, and say that CI (which runs on your push) provides test results. In your final comment list what you changed and what CI must verify, in the PR-template Commands run / Evidence format, marking anything unrun as not run."

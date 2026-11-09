@@ -83,7 +83,7 @@ jobs:
             --max-turns 25
             --allowedTools "Read,Glob,Grep,Bash(gh pr diff:*)"
             --add-dir ${{ runner.temp }}/coderabbit
-            --disallowedTools "Edit,MultiEdit,Write,WebFetch,WebSearch"
+            --disallowedTools "Edit,MultiEdit,Write,WebFetch,WebSearch,Bash(gh pr view:*),Bash(gh issue view:*),Bash(gh search:*),Bash(gh api:*),Bash(gh pr comment:*)"
             --json-schema '{"type":"object","required":["findings","unresolved_blocking"],"properties":{"findings":{"type":"array","items":{"type":"object","required":["comment_url","severity","boundary","verdict","evidence"],"properties":{"comment_url":{"type":"string"},"severity":{"enum":["blocking","major","minor","nit"]},"boundary":{"enum":["forgecore","mcp_http_sse_rpc","protocol_identity","kmp","none"]},"verdict":{"enum":["fixed_in_head","must_fix","false_positive","wont_fix_with_reason"]},"evidence":{"type":"string"}}}},"unresolved_blocking":{"type":"integer","minimum":0},"boundary_declaration":{"enum":["no_impact","impact_present"]}}}'
 
       - name: Report verdict (script count is enforced)

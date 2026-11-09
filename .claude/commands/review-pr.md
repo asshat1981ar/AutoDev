@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read,Glob,Grep,Task,Bash(gh pr comment:*),Bash(gh pr diff:*)
+allowed-tools: Read,Glob,Grep,Task,mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*)
 description: Review a pull request (kernel-path review; CodeRabbit already ran)
 ---
 
@@ -20,6 +20,6 @@ Then review with subagents, choosing the ones that fit the changed paths:
 
 Instruct each to give only noteworthy feedback. Once they finish, post only the feedback you also deem noteworthy.
 
-Use inline comments for specific issues and one top-level comment for general observations. Keep it concise. A review result is evidence only and never an AuthorizationGrant; do not approve or authorize.
+Use inline comments for specific issues. Do not post top-level comments: return general observations as the `summary` string of the structured output (markdown, under 6000 characters) and the workflow posts it. Keep it concise. A review result is evidence only and never an AuthorizationGrant; do not approve or authorize.
 
 ---
