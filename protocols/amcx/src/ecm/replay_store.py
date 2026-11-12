@@ -101,7 +101,10 @@ class SQLiteReplayLedger:
                 conn.execute("COMMIT")
                 return success
             except BaseException:
-                conn.execute("ROLLBACK")
+                # A failed BEGIN (or corrupted connection) has no active
+                # transaction; attempting ROLLBACK would mask the real error.
+                if conn.in_transaction:
+                    conn.rollback()
                 raise
 
     def consume(self, request, identity):
@@ -135,7 +138,10 @@ class SQLiteReplayLedger:
                 conn.execute("COMMIT")
                 return count == 1
             except BaseException:
-                conn.execute("ROLLBACK")
+                # A failed BEGIN (or corrupted connection) has no active
+                # transaction; attempting ROLLBACK would mask the real error.
+                if conn.in_transaction:
+                    conn.rollback()
                 raise
 
     def revoke_session(self, session_id: str):
@@ -153,5 +159,8 @@ class SQLiteReplayLedger:
                 conn.execute("DELETE FROM pending_read WHERE session_key=?", (session,))
                 conn.execute("COMMIT")
             except BaseException:
-                conn.execute("ROLLBACK")
+                # A failed BEGIN (or corrupted connection) has no active
+                # transaction; attempting ROLLBACK would mask the real error.
+                if conn.in_transaction:
+                    conn.rollback()
                 raise
