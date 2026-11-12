@@ -20,6 +20,9 @@ class ContextViewService:
         purpose: str,
         max_records: int = 10
     ) -> Dict[str, Any]:
+        if max_records < 0:
+            raise ValueError("max_records must be non-negative")
+
         if not is_authorized:
             return {
                 "tenant_id": self.tenant_id,
@@ -29,6 +32,17 @@ class ContextViewService:
                 "admitted_records": [],
                 "rejected_count": len(records),
                 "reason": "Unauthorized access attempt (failed closed)"
+            }
+
+        if max_records == 0:
+            return {
+                "tenant_id": self.tenant_id,
+                "project_id": self.project_id,
+                "task_id": task_id,
+                "purpose": purpose,
+                "admitted_records": [],
+                "rejected_count": len(records),
+                "status": "CONSTRUCTED_CLEAN"
             }
 
         admitted = []
