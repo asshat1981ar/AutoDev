@@ -9,8 +9,12 @@ class AutoDevMCPAdapter(BaseAdapter):
     FastMCP / Model Context Protocol Adapter for AutoDev / Cline.
     Exposes tool interfaces for safe memory reading and collaboration dispatch.
     """
-    def __init__(self, tenant_id: str, project_id: str):
-        self.context_service = ContextViewService(tenant_id, project_id)
+    def __init__(self, tenant_id: str, project_id: str, scope_authority=None, scope_bindings=()):
+        # Host-injected read scope. The MCP tool cannot accept or issue bindings.
+        self.context_service = ContextViewService(
+            tenant_id, project_id, scope_authority=scope_authority,
+            scope_bindings=scope_bindings,
+        )
 
     def tool_get_context_view(self, task_id: str, dags: List[AMXEventDAG], is_authorized: bool, purpose: str) -> Dict[str, Any]:
         projections = []
