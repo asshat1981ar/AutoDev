@@ -8,6 +8,9 @@ one database file on a filesystem with correct SQLite locking semantics.
 from contextlib import closing
 import hashlib
 import json
+import os
+from pathlib import Path
+import stat
 import sqlite3
 import time
 
@@ -15,30 +18,108 @@ import time
 class SQLiteReplayLedger:
     """Transactional nonce consumption and session revocation, scoped to one tenant/project."""
 
-    def __init__(self, path: str, *, tenant_id: str, project_id: str):
-        if not isinstance(path, str) or not path:
-            raise ValueError("SQLite path required")
+    # Schema is owned by AMCX read admission, not ForgeCore or the memory DAG.
+    SCHEMA_VERSION = 1
+    DEFAULT_MAX_PENDING = 4096
+    _TABLE_COLUMNS = {
+        "pending_read": (
+            "nonce_key", "signature_key", "principal_key", "session_key",
+            "tenant_id", "project_id", "expires_at",
+        ),
+        "revoked_session": ("session_key", "revoked_at"),
+    }
+
+    def __init__(self, path: str, *, tenant_id: str, project_id: str,
+                 max_pending: int = DEFAULT_MAX_PENDING):
+        if not isinstance(path, str) or not path or path == ":memory:":
+            raise ValueError("persistent SQLite database path required")
         if not all(isinstance(v, str) and v.strip() for v in (tenant_id, project_id)):
             raise ValueError("tenant and project scope required")
+        if type(max_pending) is not int or max_pending <= 0:
+            raise ValueError("max_pending must be a positive integer")
         self.path = path
         self.tenant_id = tenant_id
         self.project_id = project_id
+        self.max_pending = max_pending
+        self._ensure_private_regular_file()
         with closing(self._connect()) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("""CREATE TABLE IF NOT EXISTS pending_read (
-                nonce_key TEXT PRIMARY KEY,
-                signature_key TEXT NOT NULL,
-                principal_key TEXT NOT NULL,
-                session_key TEXT NOT NULL,
-                tenant_id TEXT NOT NULL,
-                project_id TEXT NOT NULL,
-                expires_at INTEGER NOT NULL
-            )""")
-            conn.execute("""CREATE TABLE IF NOT EXISTS revoked_session (
-                session_key TEXT PRIMARY KEY,
-                revoked_at INTEGER NOT NULL
-            )""")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_expiry ON pending_read(expires_at)")
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                check = conn.execute("PRAGMA quick_check").fetchone()
+                if not check or check[0] != "ok":
+                    raise sqlite3.DatabaseError("SQLite integrity check failed")
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+                if version not in (0, self.SCHEMA_VERSION):
+                    raise ValueError("unsupported SQLite replay schema version")
+                existing = {row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                named = {name for name in existing if not name.startswith("sqlite_")}
+                if version == 0 and not named:
+                    # First creation: both tables and schema version commit together.
+                    conn.execute("""CREATE TABLE pending_read (
+                        nonce_key TEXT PRIMARY KEY,
+                        signature_key TEXT NOT NULL,
+                        principal_key TEXT NOT NULL,
+                        session_key TEXT NOT NULL,
+                        tenant_id TEXT NOT NULL,
+                        project_id TEXT NOT NULL,
+                        expires_at INTEGER NOT NULL
+                    )""")
+                    conn.execute("""CREATE TABLE revoked_session (
+                        session_key TEXT PRIMARY KEY,
+                        revoked_at INTEGER NOT NULL
+                    )""")
+                else:
+                    if named != set(self._TABLE_COLUMNS):
+                        raise ValueError("incomplete or foreign replay schema")
+                    for name, columns in self._TABLE_COLUMNS.items():
+                        found = tuple(row[1] for row in conn.execute(
+                            "PRAGMA table_info(" + name + ")"))
+                        if found != columns:
+                            raise ValueError("replay schema column mismatch: " + name)
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_pending_expiry "
+                    "ON pending_read(expires_at)"
+                )
+                if version == 0:
+                    # Upgrade exact R-005/R-006 legacy shape without deleting rows.
+                    conn.execute("PRAGMA user_version=1")
+                conn.execute("DELETE FROM pending_read WHERE expires_at <= ?",
+                             (int(time.time()),))
+                conn.execute("COMMIT")
+            except BaseException:
+                if conn.in_transaction:
+                    conn.rollback()
+                raise
+
+    def _ensure_private_regular_file(self):
+        """Reject existing unsafe files, create new database with mode 0600.
+
+        The containing directory and all untrusted filesystem actors remain
+        a deployment responsibility. The directory must be host-controlled.
+        """
+        target = Path(self.path)
+        try:
+            info = target.lstat()
+        except FileNotFoundError:
+            # Exclusive creation prevents clobbering a file or link already
+            # placed at this path. SQLite then opens that private file.
+            flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                fd = os.open(self.path, flags, 0o600)
+            except FileExistsError:
+                info = target.lstat()
+            else:
+                os.close(fd)
+                info = target.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("SQLite path must be a regular file, not a link")
+        if info.st_mode & 0o077:
+            raise PermissionError("SQLite replay database must be owner-only")
+        if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            raise PermissionError("SQLite replay database owner mismatch")
 
     def _connect(self):
         conn = sqlite3.connect(self.path, timeout=15, isolation_level=None)
@@ -87,6 +168,12 @@ class SQLiteReplayLedger:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute("DELETE FROM pending_read WHERE expires_at <= ?", (int(time.time()),))
                 if conn.execute("SELECT 1 FROM revoked_session WHERE session_key=?", (session,)).fetchone():
+                    conn.execute("ROLLBACK")
+                    return False
+                # Capacity is enforced after expired entries are removed,
+                # inside the same write transaction as the pending insert.
+                count = conn.execute("SELECT count(*) FROM pending_read").fetchone()[0]
+                if count >= self.max_pending:
                     conn.execute("ROLLBACK")
                     return False
                 cursor = conn.execute(
