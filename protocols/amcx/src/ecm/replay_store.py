@@ -82,6 +82,10 @@ class SQLiteReplayLedger:
                         # Matching column names alone cannot establish it.
                         if info[0][5] != 1:
                             raise ValueError("replay schema requires a primary key: " + name)
+                        if any(row[5] != 0 for row in info[1:]):
+                            raise ValueError(
+                                "replay schema requires a single-column primary key: " + name
+                            )
                         if any(row[3] != 1 for row in info[1:]):
                             raise ValueError("replay schema NOT NULL constraints missing: " + name)
                 conn.execute(

@@ -92,6 +92,7 @@ class ContextViewService:
                 BaseAdapter.sanitize_payload({
                     "title": record.title, "content": record.content,
                     "metadata": record.metadata,
+                    "author": record.author_principal,
                 })
             except Exception:
                 rejected_count += 1

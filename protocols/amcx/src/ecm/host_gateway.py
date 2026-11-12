@@ -79,6 +79,12 @@ class HostAdmissionGateway:
         except Exception:
             return False
 
+    def _purge_expired_pending(self, now: int):
+        """Drop in-memory entries whose expiration has passed (caller holds the lock)."""
+        for nonce, entry in tuple(self._pending.items()):
+            if entry[2] <= now:
+                del self._pending[nonce]
+
     def issue(self, connection, task_id: str, purpose: str):
         """Only trusted host-resolved sessions may receive read-only proof."""
         identity = self._identity(connection)
@@ -99,12 +105,18 @@ class HostAdmissionGateway:
                 try:
                     if not self._replay_store.register(request, identity):
                         return None
-                except sqlite3.Error:
+                except (sqlite3.Error, OSError):
                     # Storage must be available for durable issuance.
                     # Never silently fall back to the in-memory ledger.
                     return None
             else:
-                self._pending[request.nonce] = (request.signature, identity)
+                now = int(time.time())
+                self._purge_expired_pending(now)
+                if len(self._pending) >= SQLiteReplayLedger.DEFAULT_MAX_PENDING:
+                    return None
+                self._pending[request.nonce] = (
+                    request.signature, identity, request.expires_at,
+                )
             return request
 
     def revoke_session(self, session_id: str):
@@ -116,7 +128,7 @@ class HostAdmissionGateway:
             return
         with self._lock:
             self._revoked.add(session_id)
-            for nonce, (_, identity) in tuple(self._pending.items()):
+            for nonce, (_, identity, _) in tuple(self._pending.items()):
                 if identity.session_id == session_id:
                     del self._pending[nonce]
 
@@ -137,7 +149,7 @@ class HostAdmissionGateway:
             try:
                 if not self._replay_store.consume(request, identity):
                     return result
-            except sqlite3.Error:
+            except (sqlite3.Error, OSError):
                 # A failed durable redemption is a denial, not permission
                 # to attempt an unsecured in-memory redemption.
                 return result
@@ -145,9 +157,13 @@ class HostAdmissionGateway:
             with self._lock:
                 if identity.session_id in self._revoked:
                     return result
+                self._purge_expired_pending(int(time.time()))
                 stored = self._pending.get(request.nonce)
-                if (stored is None or stored[1] != identity
-                        or not hmac.compare_digest(stored[0], request.signature)):
+                if stored is None:
+                    return result
+                stored_signature, stored_identity, _ = stored
+                if (stored_identity != identity
+                        or not hmac.compare_digest(stored_signature, request.signature)):
                     return result
                 # Invalidate before any processing, even when DAG reduction fails.
                 del self._pending[request.nonce]

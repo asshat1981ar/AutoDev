@@ -37,8 +37,10 @@ class HostAdmissionGatewayTests(unittest.TestCase):
                 "alice", "tenant-a", "project-a", "session-other"),
             "foreign-connection": AuthenticatedSession(
                 "bob", "tenant-b", "project-b", "session-bob"),
+            "denied-connection": AuthenticatedSession(
+                "carol", "tenant-a", "project-a", "session-carol"),
         }
-        self.permissions = {"alice": True, "bob": False}
+        self.permissions = {"alice": True, "bob": False, "carol": False}
         self.gateway = HostAdmissionGateway(
             tenant_id="tenant-a", project_id="project-a",
             scope_authority=self.authority, scope_bindings=(self.scope,),
@@ -58,6 +60,9 @@ class HostAdmissionGatewayTests(unittest.TestCase):
         self.assertIsNone(self.gateway.issue("attacker", "task-1", "DEV"))
 
     def test_policy_denial_cannot_issue(self):
+        self.assertIsNone(self.gateway.issue("denied-connection", "task-1", "DEV"))
+
+    def test_foreign_tenant_session_cannot_issue(self):
         self.assertIsNone(self.gateway.issue("foreign-connection", "task-1", "DEV"))
 
     def test_foreign_session_cannot_redeem_request(self):
