@@ -73,5 +73,60 @@ class TestContextViewService(unittest.TestCase):
         self.assertEqual(view["rejected_count"], 1)
 
 
+
+    def test_rejected_records_do_not_exhaust_positive_limit(self):
+        bad = record_dag("a", "Rejected", "unsafe", "QUARANTINED")
+        good = record_dag("b", "Allowed", "safe")
+        extra = record_dag("c", "Extra", "safe")
+        view = self.service(bad, good, extra).build_context_view(
+            "task-1", [bad, good, extra], request=self.request(), max_records=1,
+        )
+        self.assertEqual([r["record_id"] for r in view["admitted_records"]],
+                         [good.record_id])
+        self.assertEqual(view["rejected_count"], 1)
+
+    def test_invalid_sources_do_not_prevent_later_valid_admission(self):
+        empty = AMXEventDAG("a" * 64)
+        good = record_dag("b", "Allowed", "safe")
+        view = self.service(empty, good).build_context_view(
+            "task-1", [None, {}, empty, good], request=self.request(),
+        )
+        self.assertEqual([r["record_id"] for r in view["admitted_records"]],
+                         [good.record_id])
+        self.assertEqual(view["rejected_count"], 3)
+
+    def test_all_exported_payload_fields_are_sanitized(self):
+        credential = "sk-" + "x" * 24
+        for field in ("title", "metadata", "author"):
+            with self.subTest(field=field):
+                dag = record_dag("a", "Allowed", "safe")
+                event = dag.get_event("1" * 64)
+                if field == "author":
+                    event.actor = credential
+                else:
+                    event.payload_delta[field] = credential
+                # Sign the actual source: rejection must be due to sanitization.
+                event.event_digest = event.compute_digest()
+                view = self.service(dag).build_context_view(
+                    "task-1", [dag], request=self.request(),
+                )
+                self.assertEqual(view["admitted_records"], [])
+                self.assertEqual(view["rejected_count"], 1)
+
+    def test_readability_gates_apply_even_to_bound_sources(self):
+        for field, state in (("validity", "EXPIRED"), ("validity", "REVOKED"),
+                             ("admission", "REJECTED"),
+                             ("content_lifecycle", "RETRACTED")):
+            with self.subTest(field=field, state=state):
+                dag = record_dag("a", "Allowed", "safe")
+                event = dag.get_event("1" * 64)
+                event.payload_delta[field] = state
+                event.event_digest = event.compute_digest()
+                view = self.service(dag).build_context_view(
+                    "task-1", [dag], request=self.request(),
+                )
+                self.assertEqual(view["admitted_records"], [])
+                self.assertEqual(view["rejected_count"], 1)
+
 if __name__ == "__main__":
     unittest.main()

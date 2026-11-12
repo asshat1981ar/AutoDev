@@ -97,5 +97,51 @@ class HostAdmissionGatewayTests(unittest.TestCase):
         self.assertFalse(hasattr(self.gateway, "execute"))
 
 
+
+    def test_failed_foreign_session_redemption_preserves_owner_request(self):
+        request = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        self.assertEqual(self.gateway.read(
+            "another-session", request, [self.dag])["admitted_records"], [])
+        self.assertEqual(len(self.gateway.read(
+            "trusted-connection", request, [self.dag])["admitted_records"]), 1)
+
+    def test_revoking_one_session_preserves_other_session(self):
+        first = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        second = self.gateway.issue("another-session", "task-1", "DEV")
+        self.gateway.revoke_session("session-alice")
+        self.assertIsNone(self.gateway.issue("trusted-connection", "task-1", "DEV"))
+        self.assertEqual(self.gateway.read(
+            "trusted-connection", first, [self.dag])["admitted_records"], [])
+        self.assertEqual(len(self.gateway.read(
+            "another-session", second, [self.dag])["admitted_records"]), 1)
+
+    def test_truthy_policy_results_do_not_grant_authority(self):
+        from unittest.mock import patch
+        for value in (1, "yes", [True], {"allowed": True}, None):
+            with self.subTest(value=value), patch.object(
+                self.gateway, "_authorize", return_value=value,
+            ):
+                self.assertIsNone(self.gateway.issue("trusted-connection", "task-1", "DEV"))
+
+    def test_callback_errors_deny_issue_and_read(self):
+        from unittest.mock import patch
+        request = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        for callback in ("_authenticate", "_authorize"):
+            with self.subTest(callback=callback), patch.object(
+                self.gateway, callback, side_effect=RuntimeError("unavailable"),
+            ):
+                self.assertIsNone(self.gateway.issue("trusted-connection", "task-1", "DEV"))
+                self.assertEqual(self.gateway.read(
+                    "trusted-connection", request, [self.dag])["admitted_records"], [])
+        self.assertEqual(len(self.gateway.read(
+            "trusted-connection", request, [self.dag])["admitted_records"]), 1)
+
+    def test_successful_empty_read_still_consumes_request(self):
+        request = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        self.assertEqual(self.gateway.read(
+            "trusted-connection", request, [])["admitted_records"], [])
+        self.assertEqual(self.gateway.read(
+            "trusted-connection", request, [self.dag])["admitted_records"], [])
+
 if __name__ == "__main__":
     unittest.main()

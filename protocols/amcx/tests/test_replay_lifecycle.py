@@ -152,5 +152,50 @@ class LedgerLifecycleTests(unittest.TestCase):
         self.assertEqual(count, 1)
 
 
+    def test_duplicate_registration_does_not_replace_original_session(self):
+        from dataclasses import replace
+        store = self.store()
+        request = self.request()
+        self.assertTrue(store.register(request, self.identity))
+        other = replace(self.identity, session_id="another-session")
+        self.assertFalse(store.register(request, other))
+        self.assertFalse(store.consume(request, other))
+        self.assertTrue(store.consume(request, self.identity))
+        self.assertFalse(store.consume(request, self.identity))
+
+    def test_mismatched_signature_or_expiry_does_not_consume_original(self):
+        from dataclasses import replace
+        store = self.store()
+        request = self.request()
+        self.assertTrue(store.register(request, self.identity))
+        for changed in (replace(request, signature="0" * 64),
+                        replace(request, expires_at=request.expires_at + 1)):
+            with self.subTest(request=changed):
+                self.assertFalse(store.consume(changed, self.identity))
+        self.assertTrue(store.consume(request, self.identity))
+
+    def test_session_revocation_is_scoped_in_shared_database(self):
+        store = self.store()
+        other = SQLiteReplayLedger(
+            str(self.path), tenant_id="tenant-a", project_id="project-b",
+        )
+        other.revoke_session(self.identity.session_id)
+        request = self.request()
+        self.assertTrue(store.register(request, self.identity))
+        self.assertTrue(store.consume(request, self.identity))
+
+    def test_expiry_boundary_reclaims_capacity_during_registration(self):
+        with patch("ecm.replay_store.time.time", return_value=1000):
+            store = self.store(max_pending=1)
+            expired = self.request(expiry=1001)
+            replacement = self.request(expiry=1002)
+            self.assertTrue(store.register(expired, self.identity))
+            self.assertFalse(store.register(replacement, self.identity))
+        with patch("ecm.replay_store.time.time", return_value=1001):
+            self.assertFalse(store.consume(expired, self.identity))
+            self.assertTrue(store.register(replacement, self.identity))
+            self.assertTrue(store.consume(replacement, self.identity))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -53,5 +53,21 @@ class ContextLimitCompatibilityTests(unittest.TestCase):
         self.assertEqual(len(result["admitted_records"]), 1)
 
 
+
+    def test_non_integer_limits_rejected(self):
+        for limit in (True, False, 1.0, "1", None):
+            with self.subTest(limit=limit), self.assertRaises(ValueError):
+                self.service.build_context_view(
+                    "task-1", [self.dag], request=self.request, max_records=limit,
+                )
+
+    def test_zero_limit_still_requires_trusted_request(self):
+        result = self.service.build_context_view(
+            "task-1", [self.dag], request=None, max_records=0,
+        )
+        self.assertEqual(result["admitted_records"], [])
+        self.assertEqual(result["rejected_count"], 1)
+        self.assertIn("failed closed", result["reason"])
+
 if __name__ == "__main__":
     unittest.main()

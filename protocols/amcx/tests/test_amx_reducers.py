@@ -60,5 +60,26 @@ class TestAMXReducers(unittest.TestCase):
         with self.assertRaises(ReducerError):
             AMXRecordReducer.reduce(self.dag)
 
+
+    def test_source_digest_tracks_dag_and_stays_out_of_canonical_projection(self):
+        created = AMXEvent(
+            "1" * 64, "RECORD_CREATED", self.record_id, [], "producer",
+            {"title": "Original", "content": "safe"},
+            timestamp="2026-11-11T00:00:00+00:00",
+        )
+        self.dag.append_event(created)
+        before = AMXRecordReducer.reduce(self.dag)
+        self.assertEqual(before.source_digest, self.dag.compute_dag_digest())
+        self.assertNotIn("source_digest", before.to_dict())
+        self.dag.append_event(AMXEvent(
+            "2" * 64, "RECORD_MUTATED", self.record_id, [created.event_id],
+            "producer", {"content": "Updated"},
+            timestamp="2026-11-11T00:00:01+00:00",
+        ))
+        after = AMXRecordReducer.reduce(self.dag)
+        self.assertEqual(after.source_digest, self.dag.compute_dag_digest())
+        self.assertNotEqual(before.source_digest, after.source_digest)
+        self.assertNotIn("source_digest", after.to_dict())
+
 if __name__ == '__main__':
     unittest.main()
