@@ -24,8 +24,8 @@ class TestAdapters(unittest.TestCase):
         self.assertEqual(len(msg["claimed_capabilities"]), 0)
 
     def test_mcp_adapter_context_view(self):
-        dag = AMXEventDAG("r" * 64)
-        e0 = AMXEvent("e0" + "0"*62, "RECORD_CREATED", "r" * 64, [], "architect", {
+        dag = AMXEventDAG("a" * 64)
+        e0 = AMXEvent("e0" + "0"*62, "RECORD_CREATED", "a" * 64, [], "architect", {
             "title": "MCP Tool Test",
             "content": "Context for Cline/AutoDev"
         })
