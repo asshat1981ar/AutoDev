@@ -74,10 +74,16 @@ class SQLiteReplayLedger:
                     if named != set(self._TABLE_COLUMNS):
                         raise ValueError("incomplete or foreign replay schema")
                     for name, columns in self._TABLE_COLUMNS.items():
-                        found = tuple(row[1] for row in conn.execute(
-                            "PRAGMA table_info(" + name + ")"))
+                        info = tuple(conn.execute("PRAGMA table_info(" + name + ")"))
+                        found = tuple(row[1] for row in info)
                         if found != columns:
                             raise ValueError("replay schema column mismatch: " + name)
+                        # The nonce/session identifiers MUST retain uniqueness.
+                        # Matching column names alone cannot establish it.
+                        if info[0][5] != 1:
+                            raise ValueError("replay schema requires a primary key: " + name)
+                        if any(row[3] != 1 for row in info[1:]):
+                            raise ValueError("replay schema NOT NULL constraints missing: " + name)
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_pending_expiry "
                     "ON pending_read(expires_at)"
@@ -100,6 +106,13 @@ class SQLiteReplayLedger:
         a deployment responsibility. The directory must be host-controlled.
         """
         target = Path(self.path)
+        parent = target.absolute().parent
+        directory = parent.lstat()
+        if (not stat.S_ISDIR(directory.st_mode) or parent.is_symlink()
+                or directory.st_mode & 0o022):
+            raise PermissionError("SQLite replay parent directory must not be writable by others")
+        if hasattr(os, "getuid") and directory.st_uid != os.getuid():
+            raise PermissionError("SQLite replay parent directory owner mismatch")
         try:
             info = target.lstat()
         except FileNotFoundError:
