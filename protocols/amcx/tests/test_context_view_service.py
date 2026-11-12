@@ -9,10 +9,28 @@ SRC_DIR = REPO_ROOT / 'src'
 sys.path.insert(0, str(SRC_DIR))
 from ecm.context_view import ContextViewService
 from core.amx_reducers import AMXRecordProjection
+from ecm.scope_binding import ScopeBindingAuthority
+import hashlib
 
 class TestContextViewService(unittest.TestCase):
     def setUp(self):
         self.service = ContextViewService(tenant_id="tenant-alpha", project_id="autodev-core")
+        self.authority = ScopeBindingAuthority(b"amcx-test-receiver-secret-minimum-32-bytes")
+
+    def authorize(self, *records):
+        bindings = []
+        for record in records:
+            record.source_digest = hashlib.sha256(record.record_id.encode("utf-8")).hexdigest()
+            bindings.append(self.authority.issue(
+                record_id=record.record_id,
+                dag_digest=record.source_digest,
+                tenant_id="tenant-alpha", project_id="autodev-core",
+                allowed_purposes=("DEV",),
+            ))
+        self.service = ContextViewService(
+            tenant_id="tenant-alpha", project_id="autodev-core",
+            scope_authority=self.authority, scope_bindings=bindings,
+        )
 
     def test_unauthorized_access_fails_closed(self):
         rec = AMXRecordProjection("r1" + "0"*62)
@@ -38,6 +56,7 @@ class TestContextViewService(unittest.TestCase):
         rec2.title = "Quarantined record"
         rec2.content = "Suspicious content"
         rec2.state_tracker.transition("admission", "QUARANTINED")
+        self.authorize(rec1, rec2)
 
         view = self.service.build_context_view(
             task_id="task-1",
@@ -54,6 +73,7 @@ class TestContextViewService(unittest.TestCase):
         rec.title = "Leaky Record"
         rec.content = "Secret: sk-abcdef1234567890abcdef1234567890"
         rec.state_tracker.transition("admission", "ADMITTED")
+        self.authorize(rec)
 
         view = self.service.build_context_view(
             task_id="task-1",
