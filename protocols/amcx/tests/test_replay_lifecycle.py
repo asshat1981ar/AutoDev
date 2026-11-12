@@ -45,6 +45,18 @@ class LedgerLifecycleTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue({"pending_read", "revoked_session"}.issubset(tables))
 
+    def test_legacy_unversioned_complete_schema_upgrades_without_data_loss(self):
+        store = self.store()
+        pending = self.request()
+        self.assertTrue(store.register(pending, self.identity))
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("PRAGMA user_version=0")
+        upgraded = self.store()
+        with sqlite3.connect(self.path) as conn:
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertTrue(upgraded.consume(pending, self.identity))
+        self.assertFalse(upgraded.consume(pending, self.identity))
+
     def test_unknown_future_schema_version_is_rejected_without_mutation(self):
         self.store()
         with sqlite3.connect(self.path) as conn:
