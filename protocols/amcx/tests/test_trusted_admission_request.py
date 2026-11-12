@@ -80,5 +80,29 @@ class TrustedAdmissionTests(unittest.TestCase):
         self.assertEqual(view["admitted_records"], [])
 
 
+    def test_expired_signed_request_fails_closed(self):
+        request = self.authority.issue_request(
+            principal_id="trusted-user", tenant_id="tenant-a",
+            project_id="project-a", task_id="task-1", purpose="DEV",
+            expires_at=1,
+        )
+        view = self.adapter.tool_get_context_view("task-1", [self.dag], request=request)
+        self.assertEqual(view["admitted_records"], [])
+
+    def test_existing_event_mutation_after_binding_fails_closed(self):
+        event = self.dag.get_event("1" * 64)
+        event.payload_delta["content"] = "tampered without new event"
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=self.request(),
+        )
+        self.assertEqual(view["admitted_records"], [])
+
+    def test_signed_request_with_other_purpose_rejects_binding(self):
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=self.request(purpose="AUDIT"),
+        )
+        self.assertEqual(view["admitted_records"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
