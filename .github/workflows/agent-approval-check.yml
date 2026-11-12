@@ -1,0 +1,36 @@
+name: agent-approval-check
+
+# Requires a human approval on PRs that contain agent-authored commits. Both triggers run
+# the workflow file from the base branch, so a PR cannot edit this check to approve itself.
+# Mark "agent-approval-check" as a required status check on main. Approve with a native
+# review or by commenting "/approve <head-sha>".
+on:
+  # zizmor: ignore[dangerous-triggers] -- no checkout, no PR code; composite action reads the event JSON and posts a commit status
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  check:
+    # issue_comment also fires on plain issues; skip those early.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: agent-approval-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - name: Check approvals on agent-authored PRs
+        uses: anthropics/claude-code-action/agent-approval-check@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        with:
+          required_approvals: "1"
+          agent_emails: noreply@anthropic.com
+          agent_logins: claude[bot],claude-code[bot]
+          protected_bases: main

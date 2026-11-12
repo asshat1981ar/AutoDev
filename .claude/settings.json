@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [],
+    "deny": [
+      "Read(./.env*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.jks)",
+      "Read(**/*.p12)",
+      "Read(**/secrets/**)",
+      "Bash(npm install:*)",
+      "Bash(yarn:*)",
+      "Bash(pip install:*)",
+      "Edit(Cargo.toml)",
+      "Write(Cargo.toml)",
+      "Write(pyproject.toml)",
+      "Write(requirements.txt)",
+      "Write(kotlin/gradle/libs.versions.toml)",
+      "Read(./.git/config)",
+      "Read(./.git/**)"
+    ]
+  }
+}
