@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from typing import Iterable, Tuple
 
@@ -30,6 +31,7 @@ class TrustedAdmissionRequest:
     task_id: str
     purpose: str
     expires_at: int
+    nonce: str
     signature: str
 
 
@@ -82,15 +84,17 @@ class ScopeBindingAuthority:
             return False
 
     @staticmethod
-    def _request_message(principal_id, tenant_id, project_id, task_id, purpose, expires_at):
+    def _request_message(principal_id, tenant_id, project_id, task_id, purpose, expires_at, nonce):
         if any(not isinstance(v, str) or not v.strip()
                for v in (principal_id, tenant_id, project_id, task_id, purpose)):
             raise ValueError("trusted request fields must be nonblank strings")
         if type(expires_at) is not int or expires_at <= 0:
             raise ValueError("trusted request expiry must be positive unix seconds")
+        if not isinstance(nonce, str) or len(nonce) != 32 or any(c not in "0123456789abcdef" for c in nonce):
+            raise ValueError("nonce must be 128-bit lowercase hexadecimal")
         return json.dumps(
-            ["AMCX-TRUSTED-REQUEST-v1", principal_id, tenant_id, project_id,
-             task_id, purpose, expires_at],
+            ["AMCX-TRUSTED-REQUEST-v2", principal_id, tenant_id, project_id,
+             task_id, purpose, expires_at, nonce],
             separators=(",", ":"), ensure_ascii=True,
         ).encode("utf-8")
 
@@ -100,12 +104,13 @@ class ScopeBindingAuthority:
         """Trusted host only: after authenticating principal and checking policy."""
         if expires_at is None:
             expires_at = int(time.time()) + 300
+        nonce = secrets.token_hex(16)
         msg = self._request_message(
-            principal_id, tenant_id, project_id, task_id, purpose, expires_at
+            principal_id, tenant_id, project_id, task_id, purpose, expires_at, nonce
         )
         sig = hmac.new(self._secret, msg, hashlib.sha256).hexdigest()
         return TrustedAdmissionRequest(principal_id, tenant_id, project_id,
-                                       task_id, purpose, expires_at, sig)
+                                       task_id, purpose, expires_at, nonce, sig)
 
     def verify_request(self, request: TrustedAdmissionRequest) -> bool:
         if not isinstance(request, TrustedAdmissionRequest):
@@ -113,7 +118,7 @@ class ScopeBindingAuthority:
         try:
             msg = self._request_message(
                 request.principal_id, request.tenant_id, request.project_id,
-                request.task_id, request.purpose, request.expires_at
+                request.task_id, request.purpose, request.expires_at, request.nonce
             )
             return (request.expires_at > int(time.time())
                     and isinstance(request.signature, str)
