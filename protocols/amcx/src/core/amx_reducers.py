@@ -18,6 +18,8 @@ class AMXRecordProjection:
         self.author_principal: str = ""
         self.version: int = 0
         self.last_event_id: str = ""
+        # Ephemeral receiver-side fingerprint; not a canonical AMX schema field.
+        self.source_digest: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,4 +86,5 @@ class AMXRecordReducer:
             proj.version += 1
             proj.last_event_id = event.event_id
 
+        proj.source_digest = dag.compute_dag_digest()
         return proj
