@@ -3,8 +3,8 @@
 
 use forge_core::{
     default_profiles, effective_risk_for_action, enforce_policy, evaluate_policy,
-    minimum_risk_for_action, ActionType, AgentAction, AgentRole, AgentRuntime,
-    AuthorizationGrant, Capability, MockProvider, PolicyDecision, RiskLevel,
+    minimum_risk_for_action, ActionType, AgentAction, AgentRole, AgentRuntime, AuthorizationGrant,
+    Capability, MockProvider, PolicyDecision, RiskLevel,
 };
 
 fn action(kind: ActionType, operation: Option<&str>) -> AgentAction {
@@ -40,7 +40,10 @@ fn underreported_write_requires_approval_in_canonical_policy() {
 fn underreported_execute_requires_approval_in_canonical_policy() {
     let request = action(ActionType::Execute, None);
     assert_eq!(effective_risk_for_action(&request), RiskLevel::High);
-    assert_eq!(evaluate_policy(&request).unwrap(), PolicyDecision::RequireApproval);
+    assert_eq!(
+        evaluate_policy(&request).unwrap(),
+        PolicyDecision::RequireApproval
+    );
 }
 
 #[test]
@@ -57,7 +60,10 @@ fn underreported_checkpoint_cannot_bypass_trusted_grant() {
 fn underreported_rollback_requires_approval() {
     let request = action(ActionType::Git, Some("rollback"));
     assert_eq!(effective_risk_for_action(&request), RiskLevel::High);
-    assert_eq!(evaluate_policy(&request).unwrap(), PolicyDecision::RequireApproval);
+    assert_eq!(
+        evaluate_policy(&request).unwrap(),
+        PolicyDecision::RequireApproval
+    );
 }
 
 #[test]
