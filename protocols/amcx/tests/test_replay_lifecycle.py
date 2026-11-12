@@ -66,6 +66,30 @@ class LedgerLifecycleTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(count, 0)
 
+    def test_world_writable_parent_directory_rejected(self):
+        unsafe = Path(self.tmp.name) / "unsafe-parent"
+        unsafe.mkdir()
+        os.chmod(unsafe, 0o777)
+        self.path = unsafe / "replay.sqlite3"
+        with self.assertRaises((OSError, ValueError)):
+            self.store()
+
+    def test_nonce_key_must_retain_primary_key_constraint(self):
+        self.store()
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("DROP TABLE pending_read")
+            conn.execute("""CREATE TABLE pending_read (
+                nonce_key TEXT,
+                signature_key TEXT NOT NULL,
+                principal_key TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                expires_at INTEGER NOT NULL
+            )""")
+        with self.assertRaises((OSError, ValueError, sqlite3.DatabaseError)):
+            self.store()
+
     def test_symlink_database_path_rejected(self):
         actual = Path(self.tmp.name) / "actual.sqlite3"
         self.store()
