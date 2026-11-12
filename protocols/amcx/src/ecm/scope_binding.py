@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import hashlib
 import hmac
 import json
+import time
 from typing import Iterable, Tuple
 
 
@@ -18,6 +19,17 @@ class ScopeBinding:
     tenant_id: str
     project_id: str
     allowed_purposes: Tuple[str, ...]
+    signature: str
+
+
+@dataclass(frozen=True)
+class TrustedAdmissionRequest:
+    principal_id: str
+    tenant_id: str
+    project_id: str
+    task_id: str
+    purpose: str
+    expires_at: int
     signature: str
 
 
@@ -67,4 +79,47 @@ class ScopeBindingAuthority:
                         binding.signature,
                     ))
         except (ValueError, TypeError):
+            return False
+
+    @staticmethod
+    def _request_message(principal_id, tenant_id, project_id, task_id, purpose, expires_at):
+        if any(not isinstance(v, str) or not v.strip()
+               for v in (principal_id, tenant_id, project_id, task_id, purpose)):
+            raise ValueError("trusted request fields must be nonblank strings")
+        if type(expires_at) is not int or expires_at <= 0:
+            raise ValueError("trusted request expiry must be positive unix seconds")
+        return json.dumps(
+            ["AMCX-TRUSTED-REQUEST-v1", principal_id, tenant_id, project_id,
+             task_id, purpose, expires_at],
+            separators=(",", ":"), ensure_ascii=True,
+        ).encode("utf-8")
+
+    def issue_request(self, *, principal_id: str, tenant_id: str,
+                      project_id: str, task_id: str, purpose: str,
+                      expires_at=None) -> TrustedAdmissionRequest:
+        """Trusted host only: after authenticating principal and checking policy."""
+        if expires_at is None:
+            expires_at = int(time.time()) + 300
+        msg = self._request_message(
+            principal_id, tenant_id, project_id, task_id, purpose, expires_at
+        )
+        sig = hmac.new(self._secret, msg, hashlib.sha256).hexdigest()
+        return TrustedAdmissionRequest(principal_id, tenant_id, project_id,
+                                       task_id, purpose, expires_at, sig)
+
+    def verify_request(self, request: TrustedAdmissionRequest) -> bool:
+        if not isinstance(request, TrustedAdmissionRequest):
+            return False
+        try:
+            msg = self._request_message(
+                request.principal_id, request.tenant_id, request.project_id,
+                request.task_id, request.purpose, request.expires_at
+            )
+            return (request.expires_at > int(time.time())
+                    and isinstance(request.signature, str)
+                    and hmac.compare_digest(
+                        hmac.new(self._secret, msg, hashlib.sha256).hexdigest(),
+                        request.signature,
+                    ))
+        except (TypeError, ValueError):
             return False
