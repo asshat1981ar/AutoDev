@@ -190,6 +190,16 @@ class ReplayRecoveryTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertNotIn("pending_read", tables)
 
+    def test_failed_administrative_revocation_is_not_reported_successful(self):
+        from unittest.mock import patch
+        gateway = self.gateway()
+        with patch.object(
+            self.ledger, "revoke_session",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            with self.assertRaises(sqlite3.OperationalError):
+                gateway.revoke_session(self.identity.session_id)
+
     def test_storage_error_never_falls_back_to_memory(self):
         from unittest.mock import patch
         gateway = self.gateway()
