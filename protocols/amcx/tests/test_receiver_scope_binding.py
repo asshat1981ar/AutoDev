@@ -43,8 +43,12 @@ class ReceiverScopeTests(unittest.TestCase):
         )
 
     def get(self, adapter, dag=None, purpose="DEV", authorized=True):
+        request = self.authority.issue_request(
+            principal_id="trusted-fixture-user", tenant_id="tenant-a",
+            project_id="project-a", task_id="task-1", purpose=purpose,
+        ) if authorized else None
         return adapter.tool_get_context_view(
-            "task-1", [dag or self.dag], is_authorized=authorized, purpose=purpose,
+            "task-1", [dag or self.dag], request=request,
         )
 
     def test_valid_receiver_binding_admits_record(self):
