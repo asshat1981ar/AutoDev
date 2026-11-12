@@ -147,7 +147,8 @@ jobs:
       - name: Test Cline development fabric
         run: python -m unittest discover -s tests -v
       - name: AMCX complete regression suite (includes R-002)
-        run: python -m unittest discover -s protocols/amcx/tests -p 'test_*.py' -v
+        working-directory: protocols/amcx
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Validate Termux Kanban launcher
         run: |
           node --check scripts/termux-kanban.mjs
