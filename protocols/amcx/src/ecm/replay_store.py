@@ -133,10 +133,32 @@ class SQLiteReplayLedger:
             raise PermissionError("SQLite replay database must be owner-only")
         if hasattr(os, "getuid") and info.st_uid != os.getuid():
             raise PermissionError("SQLite replay database owner mismatch")
+        # Conservative local-file policy: hard-linked replay databases may
+        # permit mutation through another pathname outside this boundary.
+        if info.st_nlink != 1:
+            raise PermissionError("SQLite replay database must have exactly one hard link")
+        self._checked_file_identity = (info.st_dev, info.st_ino)
+
+    def _identity_matches_checked_file(self):
+        # Detect observable substitutions before and after sqlite3.connect.
+        # This is not an atomic OS-level descriptor binding.
+        info = os.lstat(self.path)
+        if (not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_mode & 0o077
+                or (hasattr(os, "getuid") and info.st_uid != os.getuid())
+                or (info.st_dev, info.st_ino) != self._checked_file_identity):
+            raise PermissionError("SQLite replay database identity changed after validation")
 
     def _connect(self):
+        self._identity_matches_checked_file()
         conn = sqlite3.connect(self.path, timeout=15, isolation_level=None)
-        conn.execute("PRAGMA busy_timeout=15000")
+        try:
+            self._identity_matches_checked_file()
+            conn.execute("PRAGMA busy_timeout=15000")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     @staticmethod
