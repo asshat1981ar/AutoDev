@@ -12,6 +12,7 @@ from typing import Callable
 
 from adapters.mcp_adapter import AutoDevMCPAdapter
 from ecm.scope_binding import ScopeBindingAuthority, TrustedAdmissionRequest
+from ecm.replay_store import SQLiteReplayLedger
 
 
 @dataclass(frozen=True)
@@ -32,11 +33,17 @@ class HostAdmissionGateway:
 
     def __init__(self, *, tenant_id: str, project_id: str,
                  scope_authority: ScopeBindingAuthority, scope_bindings,
-                 authenticate: Callable, authorize: Callable):
+                 authenticate: Callable, authorize: Callable, replay_store=None):
         if not isinstance(scope_authority, ScopeBindingAuthority):
             raise TypeError("trusted receiver authority required")
         if not callable(authenticate) or not callable(authorize):
             raise TypeError("trusted authentication and policy callbacks required")
+        if replay_store is not None and (
+                not isinstance(replay_store, SQLiteReplayLedger)
+                or replay_store.tenant_id != tenant_id
+                or replay_store.project_id != project_id):
+            raise ValueError("trusted replay ledger scope must match gateway")
+        self._replay_store = replay_store
         self._authority = scope_authority
         self._authenticate = authenticate
         self._authorize = authorize
@@ -87,13 +94,20 @@ class HostAdmissionGateway:
                 expires_at=int(time.time()) + 60,
             )
             # Unique signed nonce prevents same-second issuance collisions.
-            self._pending[request.nonce] = (request.signature, identity)
+            if self._replay_store is not None:
+                if not self._replay_store.register(request, identity):
+                    return None
+            else:
+                self._pending[request.nonce] = (request.signature, identity)
             return request
 
     def revoke_session(self, session_id: str):
         """Deny all future uses of an existing host session in this gateway."""
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("session_id must be a non-empty string")
+        if self._replay_store is not None:
+            self._replay_store.revoke_session(session_id)
+            return
         with self._lock:
             self._revoked.add(session_id)
             for nonce, (_, identity) in tuple(self._pending.items()):
@@ -113,15 +127,19 @@ class HostAdmissionGateway:
                 or not self._permitted(identity, request.task_id, request.purpose)):
             return result
 
-        with self._lock:
-            if identity.session_id in self._revoked:
+        if self._replay_store is not None:
+            if not self._replay_store.consume(request, identity):
                 return result
-            stored = self._pending.get(request.nonce)
-            if (stored is None or stored[1] != identity
-                    or not hmac.compare_digest(stored[0], request.signature)):
-                return result
-            # Invalidate before any processing, even when DAG reduction fails.
-            del self._pending[request.nonce]
+        else:
+            with self._lock:
+                if identity.session_id in self._revoked:
+                    return result
+                stored = self._pending.get(request.nonce)
+                if (stored is None or stored[1] != identity
+                        or not hmac.compare_digest(stored[0], request.signature)):
+                    return result
+                # Invalidate before any processing, even when DAG reduction fails.
+                del self._pending[request.nonce]
 
         return self._adapter.tool_get_context_view(
             request.task_id, dags, request=request,
