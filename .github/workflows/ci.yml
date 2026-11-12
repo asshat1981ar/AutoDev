@@ -146,8 +146,8 @@ jobs:
         run: python scripts/validate_toolset_memory.py memory/toolsets/patterns.jsonl
       - name: Test Cline development fabric
         run: python -m unittest discover -s tests -v
-      - name: R-002 receiver-bound memory scope regression tests
-        run: python -m unittest discover -s protocols/amcx/tests -p 'test_receiver_scope_binding.py' -v
+      - name: AMCX complete regression suite (includes R-002)
+        run: python -m unittest discover -s protocols/amcx/tests -p 'test_*.py' -v
       - name: Validate Termux Kanban launcher
         run: |
           node --check scripts/termux-kanban.mjs
