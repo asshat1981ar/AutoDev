@@ -5,6 +5,7 @@ does NOT authenticate identity or verify signed requests: the host gateway
 must do both. SQLite locking works for cooperating local processes sharing
 one database file on a filesystem with correct SQLite locking semantics.
 """
+from contextlib import closing
 import hashlib
 import json
 import sqlite3
@@ -22,7 +23,7 @@ class SQLiteReplayLedger:
         self.path = path
         self.tenant_id = tenant_id
         self.project_id = project_id
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""CREATE TABLE IF NOT EXISTS pending_read (
                 nonce_key TEXT PRIMARY KEY,
@@ -81,7 +82,7 @@ class SQLiteReplayLedger:
             return False
         nonce = self._nonce_key(request.nonce)
         session = self._session_key(identity.session_id)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute("DELETE FROM pending_read WHERE expires_at <= ?", (int(time.time()),))
@@ -109,7 +110,7 @@ class SQLiteReplayLedger:
             return False
         nonce = self._nonce_key(request.nonce)
         session = self._session_key(identity.session_id)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute(
@@ -142,7 +143,7 @@ class SQLiteReplayLedger:
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("nonempty session ID required")
         session = self._session_key(session_id)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute(
