@@ -49,6 +49,9 @@ elif mode == 'consume-crash':
 elif mode == 'revoke-crash':
     store.revoke_session(identity.session_id)
     os._exit(0)
+elif mode == 'revoke':
+    store.revoke_session(identity.session_id)
+    print('revoked', flush=True)
 elif mode == 'uncommitted-crash':
     connection = sqlite3.connect(path)
     connection.execute('BEGIN IMMEDIATE')
@@ -142,6 +145,31 @@ class ReplayRecoveryTests(unittest.TestCase):
         self.assertEqual(child.returncode, 0, err)
         self.assertFalse(self.ledger.consume(req, self.identity))
         self.assertIsNone(self.gateway().issue("trusted", "task-1", "DEV"))
+
+    def test_cross_process_revocation_race_is_serialized(self):
+        req = self.request()
+        flag = str(Path(self.temp.name) / "race-go")
+        ready = [str(Path(self.temp.name) / ("race-ready-" + str(i))) for i in range(2)]
+        consume = self.spawn("consume", req, flag, ready[0])
+        revoke = self.spawn("revoke", req, flag, ready[1])
+        workers = [consume, revoke]
+        try:
+            deadline = time.monotonic() + 10
+            while not all(Path(p).exists() for p in ready) and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(all(Path(p).exists() for p in ready), "race barrier timed out")
+            Path(flag).write_text("go")
+            results = [worker.communicate(timeout=15) for worker in workers]
+            self.assertEqual([worker.returncode for worker in workers], [0, 0], results)
+            self.assertIn(results[0][0].strip(), ("0", "1"))
+            self.assertEqual(results[1][0].strip(), "revoked")
+            self.assertFalse(self.ledger.consume(req, self.identity))
+            self.assertIsNone(self.gateway().issue("trusted", "task-1", "DEV"))
+        finally:
+            for worker in workers:
+                if worker.poll() is None:
+                    worker.kill()
+                    worker.communicate()
 
     def test_corrupt_database_denies_gateway_issue_and_read(self):
         gateway = self.gateway()
