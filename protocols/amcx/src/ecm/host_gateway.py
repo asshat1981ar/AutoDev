@@ -5,6 +5,7 @@ this module does not implement network authentication or create ForgeCore grants
 The in-memory one-use ledger does not provide multi-process replay protection.
 """
 from dataclasses import dataclass
+import sqlite3
 import hmac
 import threading
 import time
@@ -95,7 +96,12 @@ class HostAdmissionGateway:
             )
             # Unique signed nonce prevents same-second issuance collisions.
             if self._replay_store is not None:
-                if not self._replay_store.register(request, identity):
+                try:
+                    if not self._replay_store.register(request, identity):
+                        return None
+                except sqlite3.Error:
+                    # Storage must be available for durable issuance.
+                    # Never silently fall back to the in-memory ledger.
                     return None
             else:
                 self._pending[request.nonce] = (request.signature, identity)
@@ -128,7 +134,12 @@ class HostAdmissionGateway:
             return result
 
         if self._replay_store is not None:
-            if not self._replay_store.consume(request, identity):
+            try:
+                if not self._replay_store.consume(request, identity):
+                    return result
+            except sqlite3.Error:
+                # A failed durable redemption is a denial, not permission
+                # to attempt an unsecured in-memory redemption.
                 return result
         else:
             with self._lock:
