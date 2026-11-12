@@ -13,6 +13,7 @@ from adapters.a2a_adapter import A2AMeshAdapter
 from adapters.mistral_adapter import MistralVibeAdapter
 from core.amx_dag import AMXEventDAG, AMXEvent
 from core.amx_bundle import AMXMemoryBundle
+from ecm.scope_binding import ScopeBindingAuthority
 
 class TestAdapters(unittest.TestCase):
     def test_chatgpt_adapter_untrusted_flag(self):
@@ -23,15 +24,27 @@ class TestAdapters(unittest.TestCase):
         self.assertEqual(len(msg["claimed_capabilities"]), 0)
 
     def test_mcp_adapter_context_view(self):
-        adapter = AutoDevMCPAdapter(tenant_id="tenant-1", project_id="proj-1")
-        dag = AMXEventDAG("r" * 64)
-        e0 = AMXEvent("e0" + "0"*62, "RECORD_CREATED", "r" * 64, [], "architect", {
+        dag = AMXEventDAG("a" * 64)
+        e0 = AMXEvent("e0" + "0"*62, "RECORD_CREATED", "a" * 64, [], "architect", {
             "title": "MCP Tool Test",
             "content": "Context for Cline/AutoDev"
         })
         dag.append_event(e0)
+        authority = ScopeBindingAuthority(b"amcx-test-receiver-secret-minimum-32-bytes")
+        binding = authority.issue(
+            record_id=dag.record_id, dag_digest=dag.compute_dag_digest(),
+            tenant_id="tenant-1", project_id="proj-1", allowed_purposes=("DEV",),
+        )
+        adapter = AutoDevMCPAdapter(
+            tenant_id="tenant-1", project_id="proj-1",
+            scope_authority=authority, scope_bindings=(binding,),
+        )
 
-        view = adapter.tool_get_context_view("task-1", [dag], is_authorized=True, purpose="DEV")
+        request = authority.issue_request(
+            principal_id="trusted-user", tenant_id="tenant-1",
+            project_id="proj-1", task_id="task-1", purpose="DEV",
+        )
+        view = adapter.tool_get_context_view("task-1", [dag], request=request)
         self.assertEqual(len(view["admitted_records"]), 1)
         self.assertEqual(view["admitted_records"][0]["title"], "MCP Tool Test")
 
