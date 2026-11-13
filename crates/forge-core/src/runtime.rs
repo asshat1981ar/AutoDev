@@ -306,16 +306,14 @@ impl AgentRuntime {
 
     /// Submit an action to policy. Returns the decision.
     pub fn submit_to_policy(&self, action: &AgentAction) -> Result<PolicyDecision, RuntimeError> {
-        evaluate_policy(action).map_err(|e| RuntimeError::PolicyDenied(e.to_string()))?;
+        let decision =
+            evaluate_policy(action).map_err(|e| RuntimeError::PolicyDenied(e.to_string()))?;
         if !has_required_capability(action) {
             return Err(RuntimeError::PolicyDenied("missing capability".into()));
         }
-        Ok(match action.risk {
-            RiskLevel::Low => PolicyDecision::Allow,
-            RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
-                PolicyDecision::RequireApproval
-            }
-        })
+        // Do not recompute policy from model-supplied risk after canonical
+        // evaluation has applied the trusted action-semantic floor.
+        Ok(decision)
     }
 
     /// Consume an [`ExecutionResult`]: record it as evidence and store it back.

@@ -96,6 +96,15 @@ fn runtime_submission_uses_canonical_policy_decision() {
 }
 
 #[test]
+fn supported_git_read_operations_remain_low_risk() {
+    for operation in ["repository_info", "status", "diff", "branch", "log"] {
+        let request = action(ActionType::Git, Some(operation));
+        assert_eq!(minimum_risk_for_action(&request), RiskLevel::Low);
+        assert_eq!(evaluate_policy(&request).unwrap(), PolicyDecision::Allow);
+    }
+}
+
+#[test]
 fn authorized_read_remains_low_risk() {
     let request = action(ActionType::ReadFile, None);
     assert_eq!(minimum_risk_for_action(&request), RiskLevel::Low);
