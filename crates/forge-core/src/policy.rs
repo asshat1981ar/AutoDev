@@ -60,9 +60,12 @@ pub fn minimum_risk_for_action(action: &AgentAction) -> RiskLevel {
             .get("operation")
             .and_then(serde_json::Value::as_str)
         {
+            Some("repository_info" | "status" | "diff" | "branch" | "log") => RiskLevel::Low,
             Some("checkpoint" | "prepare_commit") => RiskLevel::Medium,
             Some("rollback") => RiskLevel::High,
-            _ => RiskLevel::Low,
+            // Never classify an absent or future Git command as harmless.
+            // The adapter still rejects unsupported operations independently.
+            _ => RiskLevel::Critical,
         },
     }
 }
@@ -135,7 +138,7 @@ pub fn required_capability(action: &AgentAction) -> Option<Capability> {
 pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, ExecutionError> {
     validate_action(action)?;
 
-    Ok(match action.risk {
+    Ok(match effective_risk_for_action(action) {
         RiskLevel::Low => PolicyDecision::Allow,
         RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
             PolicyDecision::RequireApproval
