@@ -41,7 +41,8 @@ class SQLiteReplayLedger:
         self.tenant_id = tenant_id
         self.project_id = project_id
         self.max_pending = max_pending
-        self._ensure_private_regular_file()
+        # Pin the file checked during initialization for this ledger instance.
+        self._file_identity = self._ensure_private_regular_file()
         with closing(self._connect()) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("BEGIN IMMEDIATE")
@@ -129,14 +130,36 @@ class SQLiteReplayLedger:
                 info = target.lstat()
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("SQLite path must be a regular file, not a link")
+        if info.st_nlink != 1:
+            raise ValueError("SQLite replay database must not have hard links")
         if info.st_mode & 0o077:
             raise PermissionError("SQLite replay database must be owner-only")
         if hasattr(os, "getuid") and info.st_uid != os.getuid():
             raise PermissionError("SQLite replay database owner mismatch")
+        return (info.st_dev, info.st_ino)
+
+    def _check_file_identity(self):
+        # Detect replacement of the validated pathname. This is a bounded
+        # stdlib-only mitigation, NOT an atomic open-by-file-descriptor.
+        info = os.lstat(self.path)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_mode & 0o077
+                or (info.st_dev, info.st_ino) != self._file_identity):
+            raise PermissionError("SQLite replay database identity changed")
+        if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            raise PermissionError("SQLite replay database owner mismatch")
 
     def _connect(self):
+        self._check_file_identity()
         conn = sqlite3.connect(self.path, timeout=15, isolation_level=None)
-        conn.execute("PRAGMA busy_timeout=15000")
+        try:
+            # A substitution inside sqlite3.connect is caught when visible
+            # at this check; no SQL or replay mutation runs beforehand.
+            self._check_file_identity()
+            conn.execute("PRAGMA busy_timeout=15000")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     @staticmethod
