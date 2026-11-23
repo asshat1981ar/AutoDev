@@ -51,6 +51,40 @@ class SQLiteIdentityTests(unittest.TestCase):
                 self.ledger()
         self.assertTrue(changed[0], "the test did not reach its swap hook")
 
+    def test_r8_03_rejects_identity_swap_during_sqlite_open(self):
+        # Regression test for the post-open identity check: unlike the
+        # pre-open test above, the swap happens inside sqlite3.connect,
+        # after _connect's pre-open check has already passed. Only the
+        # post-open check in _connect can reject this substitution.
+        self.ledger()
+        replacement = self.directory / "replacement.sqlite3"
+        other = self.ledger(replacement)
+        other.revoke_session("replacement-marker")
+        original_connect = sqlite3.connect
+        changed = [False]
+        opened = []
+        target = self.db
+
+        def swap_during_open(*args, **kwargs):
+            if not changed[0] and args and Path(args[0]) == target:
+                changed[0] = True
+                os.replace(replacement, target)
+            conn = original_connect(*args, **kwargs)
+            opened.append(conn)
+            return conn
+
+        with patch("ecm.replay_store.sqlite3.connect", swap_during_open):
+            with self.assertRaises(
+                PermissionError,
+                msg="R8-03: substitution during sqlite3.connect accepted after opening file"):
+                self.ledger()
+        self.assertTrue(changed[0], "the test did not reach its swap hook")
+        self.assertTrue(opened, "sqlite3.connect was not reached")
+        # _connect must close the connection it opened on the swapped file.
+        for conn in opened:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                conn.execute("SELECT 1")
+
     def test_existing_symlink_is_denied(self):
         self.ledger()
         original = self.directory / "original.sqlite3"
