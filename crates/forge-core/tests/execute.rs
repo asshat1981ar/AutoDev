@@ -105,7 +105,10 @@ fn execute_writes_a_file_end_to_end() {
     a.capabilities = vec![Capability::WriteFile];
     a.payload = json!({ "path": "c.txt", "content": "new" });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    // WriteFile carries a Medium risk floor under the canonical policy, so
+    // the end-to-end write runs behind a kernel-owned approval grant.
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(a, ws, "approval-1")).unwrap();
     assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
@@ -130,7 +133,10 @@ fn execute_patches_a_file_end_to_end() {
         "patch": "--- a/p.txt\n+++ b/p.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n"
     });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    // PatchFile carries a Medium risk floor under the canonical policy, so
+    // the end-to-end patch runs behind a kernel-owned approval grant.
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(a, ws, "approval-1")).unwrap();
     assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("p.txt")).unwrap(),

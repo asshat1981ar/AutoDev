@@ -67,8 +67,12 @@ mod tests {
     fn missing_run_test_capability_is_denied_before_process_boundary() {
         let dir = tempfile::tempdir().unwrap();
         let workspace = Workspace::new(dir.path(), 4096).unwrap();
-        let error = run_test_authorized(&action(vec![]), &workspace, &AuthorizationGrant::none())
-            .unwrap_err();
+        let error = run_test_authorized(
+            &action(vec![]),
+            &workspace,
+            &AuthorizationGrant::approved("approval-1"),
+        )
+        .unwrap_err();
         assert!(matches!(error, ExecutionError::CapabilityDenied));
     }
 
@@ -79,8 +83,12 @@ mod tests {
         let mut action = action(vec![Capability::RunTest]);
         action.payload = json!({"args":["test"]});
 
-        let error =
-            run_test_authorized(&action, &workspace, &AuthorizationGrant::none()).unwrap_err();
+        let error = run_test_authorized(
+            &action,
+            &workspace,
+            &AuthorizationGrant::approved("approval-1"),
+        )
+        .unwrap_err();
 
         assert!(matches!(
             error,
@@ -95,8 +103,12 @@ mod tests {
         let mut action = action(vec![Capability::RunTest]);
         action.payload = json!({"runner":"cargo; rm -rf /","args":[]});
 
-        let error =
-            run_test_authorized(&action, &workspace, &AuthorizationGrant::none()).unwrap_err();
+        let error = run_test_authorized(
+            &action,
+            &workspace,
+            &AuthorizationGrant::approved("approval-1"),
+        )
+        .unwrap_err();
 
         assert!(matches!(error, ExecutionError::UnsafeCommand(_)));
     }
@@ -108,7 +120,7 @@ mod tests {
         let error = run_test_authorized(
             &action(vec![Capability::RunTest]),
             &workspace,
-            &AuthorizationGrant::none(),
+            &AuthorizationGrant::approved("approval-1"),
         )
         .unwrap_err();
         assert!(matches!(error, ExecutionError::ProcessSandboxRequired));
