@@ -6,9 +6,10 @@
 use forge_core::{
     action::{ActionType, AgentAction, Capability, RiskLevel},
     error::ExecutionError,
-    patch_exec::{patch_file, PatchMode},
+    execute,
     read::read_file,
     workspace::Workspace,
+    ExecutableAction,
 };
 use serde_json::json;
 
@@ -28,6 +29,21 @@ fn base_action(
         payload,
         expected: json!({}),
     }
+}
+
+/// Route an effectful action through the public authorized execution path.
+/// PatchFile carries a Medium risk floor under the canonical policy, so the
+/// confinement checks in these tests run behind a kernel-owned approval
+/// grant; the policy gate itself is covered by `policy_floor_red`.
+fn execute_approved(
+    action: AgentAction,
+    ws: &Workspace,
+) -> Result<forge_core::ExecutionResult, ExecutionError> {
+    execute(&ExecutableAction::with_approval(
+        action,
+        ws.clone(),
+        "approval-1",
+    ))
 }
 
 // ============================================================================
@@ -104,7 +120,7 @@ fn adversarial_symlink_escape_patch_write() {
         json!({ "path": "link.txt", "patch": patch }),
         vec![Capability::PatchFile],
     );
-    let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
+    let err = execute_approved(action, &ws).unwrap_err();
     assert!(matches!(
         err,
         ExecutionError::SymlinkEscape(_) | ExecutionError::PathOutsideWorkspace(_)
@@ -136,7 +152,7 @@ fn adversarial_toctou_symlink_escape_patch() {
         json!({ "path": "symlink_dir/new_file.txt", "patch": patch }),
         vec![Capability::PatchFile],
     );
-    let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
+    let err = execute_approved(action, &ws).unwrap_err();
 
     // It should NOT be FileNotFound, because path resolution must catch the symlink first.
     assert!(!matches!(err, ExecutionError::FileNotFound(_)));
@@ -202,7 +218,7 @@ fn adversarial_patch_traversal() {
         json!({ "path": "../escape.txt", "patch": "--- a\n+++ b\n@@ -1 +1 @@\n-x\n" }),
         vec![Capability::PatchFile],
     );
-    let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
+    let err = execute_approved(action, &ws).unwrap_err();
     assert!(matches!(
         err,
         ExecutionError::PathTraversal(_) | ExecutionError::PathOutsideWorkspace(_)
