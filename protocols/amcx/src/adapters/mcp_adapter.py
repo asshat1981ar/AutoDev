@@ -22,7 +22,9 @@ class AutoDevMCPAdapter(BaseAdapter):
         )
 
     def tool_get_context_view(self, task_id: str, dags: List[AMXEventDAG],
-                              request: TrustedAdmissionRequest):
+                              request: TrustedAdmissionRequest,
+                              head_attestations=()):
         return self.context_service.build_context_view(
             task_id=task_id, records=dags, request=request,
+            head_attestations=head_attestations,
         )

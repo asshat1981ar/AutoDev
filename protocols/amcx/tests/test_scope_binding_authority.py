@@ -110,6 +110,69 @@ class ScopeBindingAuthorityTests(unittest.TestCase):
                 self.assertFalse(self.authority.verify(proof))
                 self.assertFalse(self.authority.verify_request(proof))
 
+    # -- Head attestations (Option B: authority attests the current head) --
+
+    def test_head_attestation_issue_verify_round_trip(self):
+        attestation = self.authority.issue_head_attestation(
+            record_id="a" * 64, head_digest="b" * 64,
+        )
+        self.assertTrue(self.authority.verify_head_attestation(attestation))
+
+    def test_head_attestation_default_lifetime(self):
+        with patch("ecm.scope_binding.time.time", return_value=1000):
+            attestation = self.authority.issue_head_attestation(
+                record_id="a" * 64, head_digest="b" * 64,
+            )
+            self.assertEqual(attestation.expires_at, 1300)
+            self.assertTrue(self.authority.verify_head_attestation(attestation))
+
+    def test_head_attestation_expiry_is_exclusive_at_unix_second_boundary(self):
+        attestation = self.authority.issue_head_attestation(
+            record_id="a" * 64, head_digest="b" * 64, expires_at=1001,
+        )
+        for now, expected in ((1000, True), (1001, False), (1002, False)):
+            with self.subTest(now=now), patch("ecm.scope_binding.time.time", return_value=now):
+                self.assertEqual(self.authority.verify_head_attestation(attestation), expected)
+
+    def test_each_head_attestation_field_is_authenticated(self):
+        attestation = self.authority.issue_head_attestation(
+            record_id="a" * 64, head_digest="b" * 64, expires_at=2000,
+        )
+        for field, value in dict(
+            record_id="c" * 64, head_digest="d" * 64,
+            expires_at=3000, signature="0" * 64,
+        ).items():
+            with self.subTest(field=field):
+                self.assertFalse(self.authority.verify_head_attestation(
+                    replace(attestation, **{field: value})))
+
+    def test_malformed_head_attestation_fields_fail_closed(self):
+        attestation = self.authority.issue_head_attestation(
+            record_id="a" * 64, head_digest="b" * 64,
+        )
+        for field, values in {
+            "record_id": ("A" * 64, "g" * 64, "a" * 63, None),
+            "head_digest": ("B" * 64, "", 123),
+            "expires_at": (True, 1001.0, "1001", 0, -1),
+            "signature": (None, b"bytes", "not-a-signature"),
+        }.items():
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.assertFalse(self.authority.verify_head_attestation(
+                        replace(attestation, **{field: value})))
+
+    def test_head_attestation_from_other_issuer_rejected(self):
+        other = ScopeBindingAuthority(b"different-unit-test-authority-key-long-enough")
+        attestation = other.issue_head_attestation(
+            record_id="a" * 64, head_digest="b" * 64,
+        )
+        self.assertFalse(self.authority.verify_head_attestation(attestation))
+
+    def test_untyped_objects_cannot_supply_head_attestation(self):
+        for proof in (None, True, {}, object()):
+            with self.subTest(proof=proof):
+                self.assertFalse(self.authority.verify_head_attestation(proof))
+
 
 if __name__ == "__main__":
     unittest.main()

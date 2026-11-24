@@ -44,6 +44,17 @@ class TestContextViewService(unittest.TestCase):
             project_id="autodev-core", task_id="task-1", purpose=purpose,
         )
 
+    def heads(self, *dags):
+        """Head attestations for the given DAGs, issued at call time.
+
+        Computed from each DAG's current head, so a DAG mutated after
+        its binding was issued is attested at its (mutated) head — the
+        binding check is what rejects it, not the head check.
+        """
+        return [self.authority.issue_head_attestation(
+            record_id=dag.record_id, head_digest=dag.compute_head_digest(),
+        ) for dag in dags]
+
     def test_unauthorized_access_fails_closed(self):
         dag = record_dag("a", "Secret doc", "sensitive")
         view = self.service(dag).build_context_view(
@@ -57,6 +68,7 @@ class TestContextViewService(unittest.TestCase):
         bad = record_dag("b", "Quarantined record", "Suspicious", "QUARANTINED")
         view = self.service(good, bad).build_context_view(
             "task-1", [good, bad], request=self.request(),
+            head_attestations=self.heads(good, bad),
         )
         self.assertEqual(len(view["admitted_records"]), 1)
         self.assertEqual(view["admitted_records"][0]["title"], "Valid record")
@@ -68,6 +80,7 @@ class TestContextViewService(unittest.TestCase):
         )
         view = self.service(dag).build_context_view(
             "task-1", [dag], request=self.request(),
+            head_attestations=self.heads(dag),
         )
         self.assertEqual(view["admitted_records"], [])
         self.assertEqual(view["rejected_count"], 1)
@@ -80,6 +93,7 @@ class TestContextViewService(unittest.TestCase):
         extra = record_dag("c", "Extra", "safe")
         view = self.service(bad, good, extra).build_context_view(
             "task-1", [bad, good, extra], request=self.request(), max_records=1,
+            head_attestations=self.heads(bad, good, extra),
         )
         self.assertEqual([r["record_id"] for r in view["admitted_records"]],
                          [good.record_id])
@@ -90,6 +104,7 @@ class TestContextViewService(unittest.TestCase):
         good = record_dag("b", "Allowed", "safe")
         view = self.service(empty, good).build_context_view(
             "task-1", [None, {}, empty, good], request=self.request(),
+            head_attestations=self.heads(good),
         )
         self.assertEqual([r["record_id"] for r in view["admitted_records"]],
                          [good.record_id])
@@ -109,6 +124,7 @@ class TestContextViewService(unittest.TestCase):
                 event.event_digest = event.compute_digest()
                 view = self.service(dag).build_context_view(
                     "task-1", [dag], request=self.request(),
+                    head_attestations=self.heads(dag),
                 )
                 self.assertEqual(view["admitted_records"], [])
                 self.assertEqual(view["rejected_count"], 1)
@@ -124,9 +140,108 @@ class TestContextViewService(unittest.TestCase):
                 event.event_digest = event.compute_digest()
                 view = self.service(dag).build_context_view(
                     "task-1", [dag], request=self.request(),
+                    head_attestations=self.heads(dag),
                 )
                 self.assertEqual(view["admitted_records"], [])
                 self.assertEqual(view["rejected_count"], 1)
+
+    # -- Stale-DAG head attestation (Option B) --
+
+    def test_head_digest_changes_when_retraction_appended(self):
+        dag = record_dag("a", "Allowed", "safe")
+        before = dag.compute_head_digest()
+        dag.append_event(AMXEvent(
+            "2" * 64, "RECORD_RETRACTED", dag.record_id, ["1" * 64],
+            "producer", {}, timestamp="2026-11-11T00:00:01+00:00",
+        ))
+        self.assertNotEqual(dag.compute_head_digest(), before)
+
+    def test_pre_retraction_snapshot_rejected_when_head_has_moved(self):
+        """The stale-DAG regression: binding matches, head does not.
+
+        A snapshot taken before RECORD_RETRACTED has the same
+        source_digest as the binding issued for it, so the binding
+        check passes and the snapshot reads as CURRENT. The authority's
+        head attestation names the live (post-retraction) head, which
+        differs from the snapshot's head, so admission must reject it.
+        """
+        import copy
+        live = record_dag("a", "Allowed", "safe")
+        snapshot = copy.deepcopy(live)
+        # The binding was issued for the snapshot's digest: it still matches.
+        service = self.service(snapshot)
+        live.append_event(AMXEvent(
+            "2" * 64, "RECORD_RETRACTED", live.record_id, ["1" * 64],
+            "producer", {}, timestamp="2026-11-11T00:00:01+00:00",
+        ))
+        # The authority attests the LIVE head, at admission time.
+        attestation = self.authority.issue_head_attestation(
+            record_id=live.record_id, head_digest=live.compute_head_digest(),
+        )
+        view = service.build_context_view(
+            "task-1", [snapshot], request=self.request(),
+            head_attestations=[attestation],
+        )
+        self.assertEqual(view["admitted_records"], [])
+        self.assertEqual(view["rejected_count"], 1)
+
+    def test_current_snapshot_admitted_with_matching_head_attestation(self):
+        dag = record_dag("a", "Allowed", "safe")
+        view = self.service(dag).build_context_view(
+            "task-1", [dag], request=self.request(),
+            head_attestations=self.heads(dag),
+        )
+        self.assertEqual(len(view["admitted_records"]), 1)
+        self.assertEqual(view["rejected_count"], 0)
+
+    def test_missing_head_attestation_fails_closed(self):
+        dag = record_dag("a", "Allowed", "safe")
+        view = self.service(dag).build_context_view(
+            "task-1", [dag], request=self.request(),
+        )
+        self.assertEqual(view["admitted_records"], [])
+        self.assertEqual(view["rejected_count"], 1)
+
+    def test_head_attestation_for_other_record_rejected(self):
+        dag = record_dag("a", "Allowed", "safe")
+        other = record_dag("b", "Other", "safe")
+        attestation = self.authority.issue_head_attestation(
+            record_id=other.record_id, head_digest=other.compute_head_digest(),
+        )
+        view = self.service(dag).build_context_view(
+            "task-1", [dag], request=self.request(),
+            head_attestations=[attestation],
+        )
+        self.assertEqual(view["admitted_records"], [])
+        self.assertEqual(view["rejected_count"], 1)
+
+    def test_expired_head_attestation_rejected(self):
+        dag = record_dag("a", "Allowed", "safe")
+        attestation = self.authority.issue_head_attestation(
+            record_id=dag.record_id, head_digest=dag.compute_head_digest(),
+            expires_at=1,
+        )
+        view = self.service(dag).build_context_view(
+            "task-1", [dag], request=self.request(),
+            head_attestations=[attestation],
+        )
+        self.assertEqual(view["admitted_records"], [])
+        self.assertEqual(view["rejected_count"], 1)
+
+    def test_head_attestation_from_other_issuer_rejected(self):
+        dag = record_dag("a", "Allowed", "safe")
+        other_authority = ScopeBindingAuthority(
+            b"another-independent-test-authority-key-32-bytes"
+        )
+        attestation = other_authority.issue_head_attestation(
+            record_id=dag.record_id, head_digest=dag.compute_head_digest(),
+        )
+        view = self.service(dag).build_context_view(
+            "task-1", [dag], request=self.request(),
+            head_attestations=[attestation],
+        )
+        self.assertEqual(view["admitted_records"], [])
+        self.assertEqual(view["rejected_count"], 1)
 
 if __name__ == "__main__":
     unittest.main()

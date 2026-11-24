@@ -44,7 +44,12 @@ class TestAdapters(unittest.TestCase):
             principal_id="trusted-user", tenant_id="tenant-1",
             project_id="proj-1", task_id="task-1", purpose="DEV",
         )
-        view = adapter.tool_get_context_view("task-1", [dag], request=request)
+        attestation = authority.issue_head_attestation(
+            record_id=dag.record_id, head_digest=dag.compute_head_digest(),
+        )
+        view = adapter.tool_get_context_view(
+            "task-1", [dag], request=request, head_attestations=[attestation],
+        )
         self.assertEqual(len(view["admitted_records"]), 1)
         self.assertEqual(view["admitted_records"][0]["title"], "MCP Tool Test")
 

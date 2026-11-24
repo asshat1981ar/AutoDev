@@ -35,6 +35,12 @@ class DurableReplayTests(unittest.TestCase):
     def ledger(self):
         return SQLiteReplayLedger(self.path, tenant_id="tenant-a", project_id="project-a")
 
+    def attestation(self):
+        return self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )
+
     def gateway(self):
         return HostAdmissionGateway(
             tenant_id="tenant-a", project_id="project-a",
@@ -50,15 +56,15 @@ class DurableReplayTests(unittest.TestCase):
         first, second = self.gateway(), self.gateway()
         req = first.issue("connection", "task-1", "DEV")
         self.assertIsNotNone(req)
-        self.assertEqual(len(second.read("connection", req, [self.dag])["admitted_records"]), 1)
-        self.assertEqual(first.read("connection", req, [self.dag])["admitted_records"], [])
+        self.assertEqual(len(second.read("connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"]), 1)
+        self.assertEqual(first.read("connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
 
     def test_revocation_survives_gateway_restart(self):
         first = self.gateway()
         req = first.issue("connection", "task-1", "DEV")
         first.revoke_session("session-1")
         restarted = self.gateway()
-        self.assertEqual(restarted.read("connection", req, [self.dag])["admitted_records"], [])
+        self.assertEqual(restarted.read("connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
         self.assertIsNone(restarted.issue("connection", "task-1", "DEV"))
 
     def test_concurrent_redemption_has_single_winner(self):
@@ -66,7 +72,7 @@ class DurableReplayTests(unittest.TestCase):
         req = first.issue("connection", "task-1", "DEV")
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             outcomes = list(pool.map(
-                lambda gateway: len(gateway.read("connection", req, [self.dag])["admitted_records"]),
+                lambda gateway: len(gateway.read("connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"]),
                 (first, second),
             ))
         self.assertEqual(sorted(outcomes), [0, 1])
@@ -81,7 +87,7 @@ class DurableReplayTests(unittest.TestCase):
         request = first.issue("connection", "task-1", "DEV")
         foreign = SQLiteReplayLedger(self.path, tenant_id="tenant-a", project_id="project-b")
         self.assertFalse(foreign.consume(request, self.identity))
-        self.assertEqual(len(first.read("connection", request, [self.dag])["admitted_records"]), 1)
+        self.assertEqual(len(first.read("connection", request, [self.dag], head_attestations=[self.attestation()])["admitted_records"]), 1)
 
     def test_persists_without_secret_or_payload(self):
         gateway = self.gateway()

@@ -50,10 +50,17 @@ class HostAdmissionGatewayTests(unittest.TestCase):
                 and task == "task-1" and purpose == "DEV",
         )
 
+    def attestation(self):
+        return self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )
+
     def test_authenticated_authorized_session_reads_once(self):
         req = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.assertIsNotNone(req)
-        result = self.gateway.read("trusted-connection", req, [self.dag])
+        result = self.gateway.read("trusted-connection", req, [self.dag],
+                                  head_attestations=[self.attestation()])
         self.assertEqual(len(result["admitted_records"]), 1)
 
     def test_unauthenticated_connection_cannot_issue(self):
@@ -68,23 +75,24 @@ class HostAdmissionGatewayTests(unittest.TestCase):
     def test_foreign_session_cannot_redeem_request(self):
         req = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.assertEqual(
-            self.gateway.read("another-session", req, [self.dag])["admitted_records"], []
+            self.gateway.read("another-session", req, [self.dag],
+                              head_attestations=[self.attestation()])["admitted_records"], []
         )
 
     def test_request_replay_fails_closed(self):
         req = self.gateway.issue("trusted-connection", "task-1", "DEV")
-        self.assertEqual(len(self.gateway.read("trusted-connection", req, [self.dag])["admitted_records"]), 1)
-        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag])["admitted_records"], [])
+        self.assertEqual(len(self.gateway.read("trusted-connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"]), 1)
+        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
 
     def test_revocation_before_redeem_denied(self):
         req = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.gateway.revoke_session("session-alice")
-        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag])["admitted_records"], [])
+        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
 
     def test_policy_rechecked_before_read(self):
         req = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.permissions["alice"] = False
-        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag])["admitted_records"], [])
+        self.assertEqual(self.gateway.read("trusted-connection", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
 
     def test_forged_authorization_labels_are_ignored(self):
         self.assertIsNone(self.gateway.issue(
@@ -101,9 +109,11 @@ class HostAdmissionGatewayTests(unittest.TestCase):
     def test_failed_foreign_session_redemption_preserves_owner_request(self):
         request = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.assertEqual(self.gateway.read(
-            "another-session", request, [self.dag])["admitted_records"], [])
+            "another-session", request, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"], [])
         self.assertEqual(len(self.gateway.read(
-            "trusted-connection", request, [self.dag])["admitted_records"]), 1)
+            "trusted-connection", request, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"]), 1)
 
     def test_revoking_one_session_preserves_other_session(self):
         first = self.gateway.issue("trusted-connection", "task-1", "DEV")
@@ -111,9 +121,11 @@ class HostAdmissionGatewayTests(unittest.TestCase):
         self.gateway.revoke_session("session-alice")
         self.assertIsNone(self.gateway.issue("trusted-connection", "task-1", "DEV"))
         self.assertEqual(self.gateway.read(
-            "trusted-connection", first, [self.dag])["admitted_records"], [])
+            "trusted-connection", first, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"], [])
         self.assertEqual(len(self.gateway.read(
-            "another-session", second, [self.dag])["admitted_records"]), 1)
+            "another-session", second, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"]), 1)
 
     def test_truthy_policy_results_do_not_grant_authority(self):
         from unittest.mock import patch
@@ -132,16 +144,44 @@ class HostAdmissionGatewayTests(unittest.TestCase):
             ):
                 self.assertIsNone(self.gateway.issue("trusted-connection", "task-1", "DEV"))
                 self.assertEqual(self.gateway.read(
-                    "trusted-connection", request, [self.dag])["admitted_records"], [])
+                    "trusted-connection", request, [self.dag],
+                    head_attestations=[self.attestation()])["admitted_records"], [])
         self.assertEqual(len(self.gateway.read(
-            "trusted-connection", request, [self.dag])["admitted_records"]), 1)
+            "trusted-connection", request, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"]), 1)
 
     def test_successful_empty_read_still_consumes_request(self):
         request = self.gateway.issue("trusted-connection", "task-1", "DEV")
         self.assertEqual(self.gateway.read(
-            "trusted-connection", request, [])["admitted_records"], [])
+            "trusted-connection", request, [],
+            head_attestations=[self.attestation()])["admitted_records"], [])
         self.assertEqual(self.gateway.read(
-            "trusted-connection", request, [self.dag])["admitted_records"], [])
+            "trusted-connection", request, [self.dag],
+            head_attestations=[self.attestation()])["admitted_records"], [])
+
+    # -- Stale-DAG head attestation through the gateway (Option B) --
+
+    def test_read_without_head_attestation_rejected(self):
+        req = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        result = self.gateway.read("trusted-connection", req, [self.dag])
+        self.assertEqual(result["admitted_records"], [])
+
+    def test_stale_snapshot_rejected_through_gateway(self):
+        """End-to-end stale-DAG regression: binding matches, head does not."""
+        import copy
+        snapshot = copy.deepcopy(self.dag)
+        self.dag.append_event(AMXEvent(
+            "2" * 64, "RECORD_RETRACTED", self.dag.record_id, ["1" * 64],
+            "producer", {}, timestamp="2026-11-11T00:00:01+00:00",
+        ))
+        attestation = self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )
+        req = self.gateway.issue("trusted-connection", "task-1", "DEV")
+        result = self.gateway.read("trusted-connection", req, [snapshot],
+                                   head_attestations=[attestation])
+        self.assertEqual(result["admitted_records"], [])
 
 if __name__ == "__main__":
     unittest.main()

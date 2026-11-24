@@ -125,3 +125,18 @@ class AMXEventDAG:
         events = self.list_events_topological()
         serialized = "".join([e.event_digest for e in events])
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def compute_head_digest(self) -> str:
+        """Deterministic digest of the current causal head set.
+
+        Changes whenever the head set changes (for example when a
+        RECORD_RETRACTED event is appended and becomes the new head),
+        so it identifies the record's current version. A snapshot taken
+        before a retraction carries the old head digest, which is how
+        the admission path distinguishes a stale snapshot from the
+        record's current head.
+        """
+        head_digests = sorted(
+            self._events[head_id].event_digest for head_id in self._heads
+        )
+        return hashlib.sha256("".join(head_digests).encode("utf-8")).hexdigest()

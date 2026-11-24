@@ -96,6 +96,12 @@ class ReplayRecoveryTests(unittest.TestCase):
         self.assertTrue(self.ledger.register(req, self.identity))
         return req
 
+    def attestation(self):
+        return self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )
+
     def spawn(self, mode, req, flag="-", ready="-"):
         env = dict(os.environ, PYTHONPATH=str(SRC))
         return subprocess.Popen(
@@ -177,7 +183,8 @@ class ReplayRecoveryTests(unittest.TestCase):
         self.assertIsNotNone(req)
         Path(self.db_path).write_bytes(b"corrupt SQLite header - R006")
         self.assertIsNone(gateway.issue("trusted", "task-1", "DEV"))
-        result = gateway.read("trusted", req, [self.dag])
+        result = gateway.read("trusted", req, [self.dag],
+                              head_attestations=[self.attestation()])
         self.assertEqual(result["admitted_records"], [])
 
     def test_incompatible_schema_never_silently_recreated(self):
@@ -208,7 +215,7 @@ class ReplayRecoveryTests(unittest.TestCase):
         req = gateway.issue("trusted", "task-1", "DEV")
         self.assertIsNotNone(req)
         with patch.object(self.ledger, "consume", side_effect=sqlite3.OperationalError("locked")):
-            self.assertEqual(gateway.read("trusted", req, [self.dag])["admitted_records"], [])
+            self.assertEqual(gateway.read("trusted", req, [self.dag], head_attestations=[self.attestation()])["admitted_records"], [])
         # Failed consumption must not fall back into the in-memory store.
         self.assertEqual(gateway._pending, {})
 

@@ -35,6 +35,26 @@ class TrustedAdmissionRequest:
     signature: str
 
 
+@dataclass(frozen=True)
+class HeadAttestation:
+    """Authority-signed statement of a record's current causal head.
+
+    The authority attests, at admission time, which head digest is the
+    record's current version. The admission path compares the attested
+    head against the snapshot's actual head and rejects any snapshot
+    whose head differs — a snapshot taken before RECORD_RETRACTED
+    carries the old head digest and is therefore rejected even though
+    its source digest still matches the scope binding issued for it.
+    The attestation is short-lived: it bounds how stale the authority's
+    statement can be, it does not promise the head will not move after
+    admission.
+    """
+    record_id: str
+    head_digest: str
+    expires_at: int
+    signature: str
+
+
 class ScopeBindingAuthority:
     """Host-controlled HMAC issuer/verifier for one trusted receiver scope."""
 
@@ -125,6 +145,51 @@ class ScopeBindingAuthority:
                     and hmac.compare_digest(
                         hmac.new(self._secret, msg, hashlib.sha256).hexdigest(),
                         request.signature,
+                    ))
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _head_attestation_message(record_id, head_digest, expires_at):
+        if any(not isinstance(v, str) or not v.strip() for v in (record_id, head_digest)):
+            raise ValueError("head attestation identity fields must be non-blank strings")
+        if any(len(v) != 64 or any(c not in "0123456789abcdef" for c in v)
+               for v in (record_id, head_digest)):
+            raise ValueError("head attestation record ID and head digest must be lowercase SHA-256 hex")
+        if type(expires_at) is not int or expires_at <= 0:
+            raise ValueError("head attestation expiry must be positive unix seconds")
+        return json.dumps(
+            ["AMCX-HEAD-ATTESTATION-v1", record_id, head_digest, expires_at],
+            separators=(",", ":"), ensure_ascii=True,
+        ).encode("utf-8")
+
+    def issue_head_attestation(self, *, record_id: str, head_digest: str,
+                               expires_at=None) -> HeadAttestation:
+        """Trusted host only: attest the record's current head, right now.
+
+        The caller must derive head_digest from the live record store
+        (AMXEventDAG.compute_head_digest), never from the snapshot being
+        admitted — attesting a snapshot's own head would attest nothing.
+        """
+        if expires_at is None:
+            expires_at = int(time.time()) + 300
+        msg = self._head_attestation_message(record_id, head_digest, expires_at)
+        sig = hmac.new(self._secret, msg, hashlib.sha256).hexdigest()
+        return HeadAttestation(record_id, head_digest, expires_at, sig)
+
+    def verify_head_attestation(self, attestation: HeadAttestation) -> bool:
+        if not isinstance(attestation, HeadAttestation):
+            return False
+        try:
+            msg = self._head_attestation_message(
+                attestation.record_id, attestation.head_digest,
+                attestation.expires_at,
+            )
+            return (attestation.expires_at > int(time.time())
+                    and isinstance(attestation.signature, str)
+                    and hmac.compare_digest(
+                        hmac.new(self._secret, msg, hashlib.sha256).hexdigest(),
+                        attestation.signature,
                     ))
         except (TypeError, ValueError):
             return False

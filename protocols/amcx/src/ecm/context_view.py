@@ -39,9 +39,31 @@ class ContextViewService:
                 return True
         return False
 
+    def _head_attested(self, head_attestations, record_id, head_digest):
+        """True only if the authority attests this exact head, right now.
+
+        A scope binding proves the snapshot's digest was once bound; it
+        cannot prove the snapshot is the record's current version. The
+        head attestation is the authority's statement of the current
+        head, and it must name the snapshot's own head digest. A stale
+        snapshot (taken before RECORD_RETRACTED) carries the old head
+        digest, so no fresh attestation matches it and it is rejected.
+        Missing, expired, forged, or mismatched attestations all fail
+        closed.
+        """
+        if not isinstance(self._scope_authority, ScopeBindingAuthority):
+            return False
+        for attestation in head_attestations:
+            if (self._scope_authority.verify_head_attestation(attestation)
+                    and attestation.record_id == record_id
+                    and hmac.compare_digest(attestation.head_digest, head_digest)):
+                return True
+        return False
+
     def build_context_view(
         self, task_id: str, records: List[AMXEventDAG],
         request: TrustedAdmissionRequest = None, max_records: int = 10,
+        head_attestations=(),
     ) -> Dict[str, Any]:
         if type(max_records) is not int or max_records < 0:
             raise ValueError("max_records must be a non-negative integer")
@@ -83,6 +105,11 @@ class ContextViewService:
                     continue
                 record = AMXRecordReducer.reduce(snapshot)
                 if not self._bound_for(record, purpose):
+                    rejected_count += 1
+                    continue
+                if not self._head_attested(
+                        head_attestations, record.record_id,
+                        snapshot.compute_head_digest()):
                     rejected_count += 1
                     continue
                 if not record.state_tracker.compute_effective_readability(

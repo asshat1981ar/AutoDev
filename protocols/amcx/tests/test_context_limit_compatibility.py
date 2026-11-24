@@ -19,6 +19,7 @@ class ContextLimitCompatibilityTests(unittest.TestCase):
             timestamp="2026-11-11T00:00:00+00:00",
         ))
         authority = ScopeBindingAuthority(b"r004-context-limit-test-secret-long-enough")
+        self.authority = authority
         binding = authority.issue(
             record_id=self.dag.record_id, dag_digest=self.dag.compute_dag_digest(),
             tenant_id="tenant-a", project_id="project-a",
@@ -33,9 +34,16 @@ class ContextLimitCompatibilityTests(unittest.TestCase):
             project_id="project-a", task_id="task-1", purpose="DEV",
         )
 
+    def heads(self):
+        return [self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )]
+
     def test_zero_limit_admits_nothing(self):
         result = self.service.build_context_view(
             "task-1", [self.dag], request=self.request, max_records=0,
+            head_attestations=self.heads(),
         )
         self.assertEqual(result["admitted_records"], [])
         self.assertEqual(result["rejected_count"], 1)
@@ -44,11 +52,13 @@ class ContextLimitCompatibilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.build_context_view(
                 "task-1", [self.dag], request=self.request, max_records=-1,
+                head_attestations=self.heads(),
             )
 
     def test_positive_limit_preserves_authorized_read(self):
         result = self.service.build_context_view(
             "task-1", [self.dag], request=self.request, max_records=1,
+            head_attestations=self.heads(),
         )
         self.assertEqual(len(result["admitted_records"]), 1)
 
@@ -59,11 +69,13 @@ class ContextLimitCompatibilityTests(unittest.TestCase):
             with self.subTest(limit=limit), self.assertRaises(ValueError):
                 self.service.build_context_view(
                     "task-1", [self.dag], request=self.request, max_records=limit,
+                    head_attestations=self.heads(),
                 )
 
     def test_zero_limit_still_requires_trusted_request(self):
         result = self.service.build_context_view(
             "task-1", [self.dag], request=None, max_records=0,
+            head_attestations=self.heads(),
         )
         self.assertEqual(result["admitted_records"], [])
         self.assertEqual(result["rejected_count"], 1)

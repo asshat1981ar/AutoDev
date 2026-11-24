@@ -36,8 +36,17 @@ class TrustedAdmissionTests(unittest.TestCase):
         opts.update(overrides)
         return self.authority.issue_request(**opts)
 
+    def heads(self):
+        return [self.authority.issue_head_attestation(
+            record_id=self.dag.record_id,
+            head_digest=self.dag.compute_head_digest(),
+        )]
+
     def test_valid_signed_request_admits_matching_dag(self):
-        view = self.adapter.tool_get_context_view("task-1", [self.dag], request=self.request())
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=self.request(),
+            head_attestations=self.heads(),
+        )
         self.assertEqual([x["content"] for x in view["admitted_records"]], ["original"])
 
     def test_legacy_boolean_cannot_authorize(self):
@@ -48,18 +57,23 @@ class TrustedAdmissionTests(unittest.TestCase):
 
     def test_request_tampering_fails_closed(self):
         tampered = replace(self.request(), principal_id="attacker")
-        view = self.adapter.tool_get_context_view("task-1", [self.dag], request=tampered)
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=tampered,
+            head_attestations=self.heads(),
+        )
         self.assertEqual(view["admitted_records"], [])
 
     def test_request_task_mismatch_fails_closed(self):
         view = self.adapter.tool_get_context_view(
             "task-1", [self.dag], request=self.request(task_id="other-task"),
+            head_attestations=self.heads(),
         )
         self.assertEqual(view["admitted_records"], [])
 
     def test_request_other_tenant_fails_closed(self):
         view = self.adapter.tool_get_context_view(
             "task-1", [self.dag], request=self.request(tenant_id="other-tenant"),
+            head_attestations=self.heads(),
         )
         self.assertEqual(view["admitted_records"], [])
 
@@ -76,7 +90,10 @@ class TrustedAdmissionTests(unittest.TestCase):
             "2" * 64, "RECORD_MUTATED", self.dag.record_id, ["1" * 64],
             "producer", {"content": "changed"}, timestamp="2026-11-11T00:00:01+00:00",
         ))
-        view = self.adapter.tool_get_context_view("task-1", [self.dag], request=self.request())
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=self.request(),
+            head_attestations=self.heads(),
+        )
         self.assertEqual(view["admitted_records"], [])
 
 
@@ -86,7 +103,10 @@ class TrustedAdmissionTests(unittest.TestCase):
             project_id="project-a", task_id="task-1", purpose="DEV",
             expires_at=1,
         )
-        view = self.adapter.tool_get_context_view("task-1", [self.dag], request=request)
+        view = self.adapter.tool_get_context_view(
+            "task-1", [self.dag], request=request,
+            head_attestations=self.heads(),
+        )
         self.assertEqual(view["admitted_records"], [])
 
     def test_existing_event_mutation_after_binding_fails_closed(self):
@@ -94,12 +114,14 @@ class TrustedAdmissionTests(unittest.TestCase):
         event.payload_delta["content"] = "tampered without new event"
         view = self.adapter.tool_get_context_view(
             "task-1", [self.dag], request=self.request(),
+            head_attestations=self.heads(),
         )
         self.assertEqual(view["admitted_records"], [])
 
     def test_signed_request_with_other_purpose_rejects_binding(self):
         view = self.adapter.tool_get_context_view(
             "task-1", [self.dag], request=self.request(purpose="AUDIT"),
+            head_attestations=self.heads(),
         )
         self.assertEqual(view["admitted_records"], [])
 

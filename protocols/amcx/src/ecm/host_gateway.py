@@ -132,8 +132,16 @@ class HostAdmissionGateway:
                 if identity.session_id == session_id:
                     del self._pending[nonce]
 
-    def read(self, connection, request: TrustedAdmissionRequest, dags):
-        """Atomically consume once, revalidate policy, then read scoped DAGs."""
+    def read(self, connection, request: TrustedAdmissionRequest, dags,
+             head_attestations=()):
+        """Atomically consume once, revalidate policy, then read scoped DAGs.
+
+        The caller must supply, alongside the DAGs, the authority's
+        head attestations for the records being read — issued at
+        admission time from the live record store, never derived from
+        the snapshots themselves. The admission path rejects any
+        snapshot whose head the authority does not confirm as current.
+        """
         result = {
             "admitted_records": [], "rejected_count": len(dags),
             "reason": "Host admission rejected (failed closed)",
@@ -170,4 +178,5 @@ class HostAdmissionGateway:
 
         return self._adapter.tool_get_context_view(
             request.task_id, dags, request=request,
+            head_attestations=head_attestations,
         )
