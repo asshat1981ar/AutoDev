@@ -88,7 +88,7 @@ fn execute_process_without_capability_is_denied() {
     let exec = ExecutableAction::with_approval(a, ws, "approval-1");
     let err = forge_core::execute(&exec).unwrap_err();
     assert!(
-        !matches!(err, ExecutionError::ProcessSandboxRequired),
+        matches!(err, ExecutionError::CapabilityDenied),
         "got {err:?}"
     );
 }
