@@ -191,7 +191,15 @@ pub fn execute(exec: &ExecutableAction) -> Result<ExecutionResult, ExecutionErro
             PatchMode::Apply,
             &exec.authorization,
         )?,
-        ActionType::Execute => execute::execute_process(&exec.action, &exec.workspace)?,
+        ActionType::Execute => {
+            // Same gate as the Git arm: the canonical floor and capability check run before the
+            // sandbox, so enabling a process sandbox later cannot run an unapproved Execute.
+            crate::policy::enforce_policy(&exec.action, &exec.authorization)?;
+            if !crate::policy::has_required_capability(&exec.action) {
+                return Err(ExecutionError::CapabilityDenied);
+            }
+            execute::execute_process(&exec.action, &exec.workspace)?
+        }
         ActionType::Git => {
             // Git actions pass through the same policy gate as every other
             // effectful action: structural validation, risk-based approval
