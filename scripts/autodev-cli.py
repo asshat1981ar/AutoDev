@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -29,9 +30,12 @@ class CliError(RuntimeError):
 class Client:
     base_url: str
     timeout: float
+    api_bearer_token: str | None = None
 
     def get_json(self, path: str) -> Any:
-        request = Request(self._url(path), method="GET", headers={"accept": "application/json"})
+        request = Request(
+            self._url(path), method="GET", headers=self._headers("application/json")
+        )
         return self._json_request(request, expected_statuses={200})
 
     def post_json(self, path: str, payload: dict[str, Any]) -> Any:
@@ -40,10 +44,7 @@ class Client:
             self._url(path),
             data=body,
             method="POST",
-            headers={
-                "accept": "application/json",
-                "content-type": "application/json",
-            },
+            headers=self._headers("application/json", content_type="application/json"),
         )
         return self._json_request(request, expected_statuses={200, 201, 202})
 
@@ -51,7 +52,7 @@ class Client:
         request = Request(
             self._url(path),
             method="GET",
-            headers={"accept": "text/event-stream"},
+            headers=self._headers("text/event-stream"),
         )
         try:
             with urlopen(request, timeout=None) as response:
@@ -84,6 +85,14 @@ class Client:
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
+
+    def _headers(self, accept: str, content_type: str | None = None) -> dict[str, str]:
+        headers = {"accept": accept}
+        if content_type:
+            headers["content-type"] = content_type
+        if self.api_bearer_token:
+            headers["authorization"] = f"Bearer {self.api_bearer_token}"
+        return headers
 
 
 def normalize_server(value: str) -> str:
@@ -131,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_TIMEOUT_SECONDS,
         help=f"HTTP timeout in seconds (default: {DEFAULT_TIMEOUT_SECONDS:g})",
+    )
+    parser.add_argument(
+        "--api-bearer-token",
+        default=os.environ.get("AUTODEV_API_BEARER_TOKEN", ""),
+        help="Bearer token for authenticated AutoDev API deployments; defaults to AUTODEV_API_BEARER_TOKEN",
     )
 
     commands = parser.add_subparsers(dest="command", required=True)
@@ -209,7 +223,8 @@ def json_output(payload: Any) -> str:
 def run(args: argparse.Namespace) -> int:
     if args.timeout <= 0:
         raise CliError("timeout must be greater than zero")
-    client = Client(args.server, args.timeout)
+    token = args.api_bearer_token.strip() or None
+    client = Client(args.server, args.timeout, token)
 
     if args.command == "objectives" and args.objective_command == "list":
         payload = client.get_json("/api/v1/objectives")

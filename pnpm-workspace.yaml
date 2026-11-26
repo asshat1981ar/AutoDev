@@ -1,0 +1,7 @@
+packages:
+  - services/*
+
+allowBuilds:
+  '@livekit/local-inference': true
+  '@livekit/rtc-node': true
+  sharp: true

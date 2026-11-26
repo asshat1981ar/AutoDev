@@ -35,6 +35,7 @@ class FakeAutoDevHandler(BaseHTTPRequestHandler):
             "graph": {"root": {"description": "Inspect current state"}},
         }
     ]
+    last_authorization = None
 
     def log_message(self, format, *args):
         return
@@ -57,6 +58,7 @@ class FakeAutoDevHandler(BaseHTTPRequestHandler):
         if self.path != "/api/v1/objectives":
             self._json(404, {"error": "not found"})
             return
+        type(self).last_authorization = self.headers.get("authorization")
         length = int(self.headers.get("content-length", "0"))
         request = json.loads(self.rfile.read(length).decode("utf-8"))
         created = {
@@ -120,6 +122,7 @@ class CommandCenterClientTests(unittest.TestCase):
         self.assertEqual(payload[0]["status"], "queued")
 
     def test_cli_creates_objective_without_execution_authority(self):
+        FakeAutoDevHandler.last_authorization = None
         result = self.run_cli(
             "objectives",
             "create",
@@ -135,6 +138,23 @@ class CommandCenterClientTests(unittest.TestCase):
         self.assertEqual(payload["status"], "queued")
         self.assertNotIn("approved", payload)
         self.assertNotIn("execute", payload)
+        self.assertIsNone(FakeAutoDevHandler.last_authorization)
+
+    def test_cli_sends_api_bearer_token_for_authenticated_deployments(self):
+        FakeAutoDevHandler.last_authorization = None
+        result = self.run_cli(
+            "--api-bearer-token",
+            "test-token",
+            "objectives",
+            "create",
+            "--repository",
+            "owner/repo",
+            "--description",
+            "Add a bounded vertical slice",
+            "--json",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(FakeAutoDevHandler.last_authorization, "Bearer test-token")
 
     def test_cli_rejects_non_http_server_urls(self):
         env = {
@@ -172,6 +192,8 @@ class CommandCenterClientTests(unittest.TestCase):
         self.assertIn("/api/v1/objectives", javascript)
         self.assertIn("/events", javascript)
         self.assertIn("EventSource", javascript)
+        self.assertIn("apiBearerToken", javascript)
+        self.assertIn("api-token", html)
         self.assertNotIn("/mcp", javascript)
         self.assertNotIn("node_modules", html)
 

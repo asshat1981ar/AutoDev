@@ -16,6 +16,7 @@ Key ownership boundaries:
 | Android command center | `kotlin/android-command-center/**` | Thin Compose app over KMP contracts |
 | Python/Cline fabric | `install.py`, `bootstrap_cline_mcp.py`, `.cline/**`, `tests/**` | Fabric installer + hooks + skill routing; stdlib-only where noted |
 | Termux launcher | `scripts/termux-kanban.mjs` | Node, pinned PTY with SHA-256 verification |
+| LiveKit realtime intake | `services/livekit-agent/**` | Node 24 + Agents JS; untrusted voice/video edge, objective enqueue only, no ForgeCore or LiveKit admin authority |
 | Reference observability | `scripts/autodev-cli.py`, `web/command-center/**` | Read-only HTTP/SSE observer; **no** ForgeCore/Git/MCP authority |
 
 ## 2. Setup
@@ -26,7 +27,7 @@ Key ownership boundaries:
 - JDK 17 provisioned via Gradle Foojay resolver (no system Gradle required)
 - Android SDK 35 + build-tools 35.0.0 only if building the APK
 - Python 3.10 or 3.11
-- Node 24 (for `scripts/termux-kanban.mjs` validation)
+- Node 24 + pnpm 11.24.0 (Termux launcher and LiveKit service)
 
 ### One-time setup
 
@@ -40,7 +41,10 @@ cd kotlin && ./gradlew --version && cd ..
 # Python — stdlib only; optional virtual env
 python3 -m venv .venv && source .venv/bin/activate
 
-# No root package.json / pyproject.toml — do not create one
+# Node services — root workspace adopted by ADR-006
+corepack enable && pnpm install --frozen-lockfile
+
+# No root pyproject.toml — do not create one
 ```
 
 ## 3. Build, lint, test, and verification commands
@@ -87,6 +91,17 @@ node --check scripts/termux-kanban.mjs
 node scripts/termux-kanban.mjs --check
 ```
 
+### Node / LiveKit realtime intake (repo root)
+
+```bash
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+docker build -f services/livekit-agent/Dockerfile -t autodev-livekit-agent:ci .
+```
+
+The root pnpm workspace is authorized by `docs/adr/ADR-006-livekit-realtime-intake.md`. LiveKit packages are exact-pinned where peer compatibility requires it. The worker is an untrusted intake adapter: it may enqueue an objective for one configured repository but must not gain ForgeCore, shell, filesystem, Git, deployment, or LiveKit administrative authority.
+
 ### Full local verification (mirrors CI)
 
 ```bash
@@ -102,6 +117,9 @@ python -m unittest discover -s tests -v
 
 # Termux launcher
 node --check scripts/termux-kanban.mjs && node scripts/termux-kanban.mjs --check
+
+# LiveKit service
+pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
 
 # Harness drift (must pass before every PR)
 python scripts/check_harness_drift.py
@@ -120,15 +138,15 @@ Network gates that require egress (`cargo build --workspace`, `cargo test --work
 
 - **Rust:** Workspace at `crates/Cargo.toml` with members `forge-core` + `autodev-server` + `autodev-eval`. No root `Cargo.toml`. Do not run `cargo` from repo root. Every workspace member must be named here (enforced by `scripts/check_harness_drift.py`). `Cargo.lock` is committed under `crates/Cargo.lock` — keep it.
 - **Kotlin:** Gradle wrapper only. Kotlin 2.0.21, Gradle 8.10.2, ktlint 12.1.1 via `org.jlleitschuh.gradle.ktlint`. Android compileSdk 35 / minSdk 26 / targetSdk 35. Do not bump without updating CI `sdkmanager` line.
-- **Python:** No `package.json`/`pyproject.toml`/`requirements.txt` at root. `scripts/autodev-cli.py` must remain dependency-free (urllib only). `tests/` uses `unittest` stdlib.
-- **Node:** No root `package.json`. Only `scripts/termux-kanban.mjs` uses Node builtins (`node:crypto`, `node:fs`, `node:path`, `node:child_process`). PTY version pinned to `1.1.2` with SHA-256 `660a3025230f6035b7b8c000e8cca6ca3992bedaa05f7b165e7c3a5f1ae8ec8a`.
+- **Python:** No root `pyproject.toml`/`requirements.txt`. `scripts/autodev-cli.py` must remain dependency-free (urllib only). `tests/` uses `unittest` stdlib.
+- **Node:** Root pnpm workspace is accepted only under ADR-006. Use pnpm 11.24.0 and committed `pnpm-lock.yaml`; do not use npm/yarn at root. `services/livekit-agent` pins `@livekit/agents` and `@livekit/agents-plugin-lemonslice` together. `scripts/termux-kanban.mjs` remains builtins-only with pinned PTY `1.1.2` SHA-256 `660a3025230f6035b7b8c000e8cca6ca3992bedaa05f7b165e7c3a5f1ae8ec8a`.
 
-Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles.
+Do not run root `npm install`/`yarn`/`pip install`. Use pnpm for the ADR-006 workspace and commit intentional lockfile changes.
 
 ## 5. Safe editing rules
 
 - **Do not edit generated artifacts:** `**/build/`, `**/target/`, `**/.gradle/`, `**/__pycache__/`, `*.apk`, `*.aab`, `crates/Cargo.lock` (except via `cargo update`), `kotlin/gradle/wrapper/gradle-wrapper.jar` (except via wrapper upgrader).
-- **Do not create:** root `Cargo.toml`, root `package.json`, root `pyproject.toml`, or `kotlin/gradle/libs.versions.toml` without an ADR.
+- **Do not create:** root `Cargo.toml`, root `pyproject.toml`, or `kotlin/gradle/libs.versions.toml` without an ADR. Root Node manifests are limited to the ADR-006 pnpm workspace.
 - **Do not bypass ForgeCore boundaries:** Never add direct filesystem/network/process execution that skips `Workspace` confinement or `AuthorizationGrant`. Public adapters stay fail-closed.
 - **Use durable ExecPlans for architectural or multi-hour work:** follow root `PLANS.md`; keep Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective current as evidence changes. Typed `ExecPlan` state owns lifecycle, milestone-attempt, and replan invariants. Plans never grant execution/approval authority or self-verify; reconcile interrupted effects before retry.
 - **Preserve `commonMain` purity:** No `java.*`/`android.*`/`darwin.*` types in `kotlin/*/src/commonMain`. Use `expect`/`actual` contracts.
@@ -142,6 +160,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 - **Every Kotlin change:** `./gradlew test` + `./gradlew ktlintCheck` must pass. Keep `commonTest`/`jvmTest` deterministic (no network).
 - **Every Python/fabric change:** `python -m py_compile` + `python -m unittest discover -s tests -v` must pass.
 - **Every launcher change:** `node --check` + `node scripts/termux-kanban.mjs --check` must pass.
+- **Every LiveKit service change:** `pnpm typecheck` + `pnpm test` must pass. Credentialed media tests stay explicit and never run with production secrets in public CI.
 - **Verification evidence contract:** `ExecutionEnvelope.evidence.required` names checks that must be present AND passing. A missing required check fails the task even if all executed checks passed. Unknown required names fail closed — do not invent new evidence names without updating `crates/forge-core/src/verification.rs`.
 - **Harness drift:** `python scripts/check_harness_drift.py` must pass for any change to `README.md`, `AGENTS.md`, `PLANS.md`, `docs/**`, `scripts/**`, `.github/workflows/ci.yml`, `kotlin/**/*.gradle.kts`, or `crates/**`.
 
@@ -149,7 +168,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 
 - Follow existing history: Conventional-ish prefixes (`feat:`, `fix:`, `docs:`, `chore:`) with optional scope `feat(forge-core):`, `feat(kotlin):`, `docs:`. No enforced linter, but CI titles are human-reviewed.
 - Keep PRs slice-sized. One concern per PR. Link to an ADR under `docs/adr/` for structural/kernel changes.
-- CI must be green on the three jobs (`rust`, `kotlin`, `python`) — PRs are blocked otherwise (`branches: [main]`).
+- CI must be green on the required jobs (`rust`, `kotlin`, `python`, `node`, `harness`, `evaluation`, and `amcx1`) — PRs are blocked otherwise (`branches: [main]`).
 - Do not force-push to `main`. Branch `merge/kotlin-mpp` is the only additional CI push branch.
 
 ## 8. How to record new failures and decisions
@@ -164,7 +183,7 @@ Do not run `npm install`/`yarn`/`pip install` that creates or rewrites lockfiles
 |------|-------------|
 | Commands in docs match CI | `scripts/check_harness_drift.py` — compares `README.md`/`AGENTS.md` code fences against `ci.yml` |
 | ExecPlan coordination contract | `scripts/check_harness_drift.py` — validates root `PLANS.md` authority, living-section, reconciliation, and verification invariants |
-| No forbidden lockfiles/root manifests | `scripts/check_harness_drift.py` — fails if `package.json`/`pyproject.toml`/root `Cargo.toml` appear without ADR |
+| Root manifests and ADR exception | `scripts/check_harness_drift.py` — forbids root Cargo/Python manifests and requires the complete ADR-006 pnpm workspace |
 | Failure docs have Detection | `scripts/check_harness_drift.py` — validates `docs/failures/*.md` structure |
 | Kotlin `commonMain` purity | `cargo`/`gradle` compilation + `check_harness_drift.py` grep for illegal imports |
 | CLI authority boundary | `check_harness_drift.py` grep for `forge_core`/`AuthorizationGrant` in `scripts/autodev-cli.py` |

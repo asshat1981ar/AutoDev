@@ -1,4 +1,4 @@
-use autodev_server::{router, AppState};
+use autodev_server::{normalize_api_bearer_token, router, AppState};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -19,6 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "0.0.0.0".parse().expect("static 0.0.0.0 is valid"));
     let github_secret = std::env::var("GITHUB_WEBHOOK_SECRET").ok();
     let mcp_bearer_token = std::env::var("AUTODEV_MCP_BEARER_TOKEN").ok();
+    let api_bearer_token =
+        normalize_api_bearer_token(std::env::var("AUTODEV_API_BEARER_TOKEN").ok());
+
+    if !bind_addr.is_loopback() && api_bearer_token.is_none() {
+        return Err(
+            "AUTODEV_API_BEARER_TOKEN is required when AUTODEV_BIND is not loopback".into(),
+        );
+    }
 
     if bind_addr.is_unspecified() && mcp_bearer_token.is_some() {
         eprintln!(
@@ -33,6 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = AppState::new(github_secret);
     if let Some(token) = mcp_bearer_token {
         state = state.with_mcp_bearer_token(token);
+    }
+    if let Some(token) = api_bearer_token {
+        state = state.with_api_bearer_token(token);
     }
 
     let listener = TcpListener::bind((bind_addr, port)).await?;

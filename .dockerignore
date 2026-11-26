@@ -9,3 +9,10 @@ tests
 *.md
 !crates/**
 crates/target
+node_modules
+**/node_modules
+**/dist
+*.log
+.env
+.env.*
+!services/livekit-agent/.env.example
