@@ -247,16 +247,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        mock_verifier, ActionType, AgentAction, Capability, ContextRefs, EvidenceBinding,
-        Lifecycle, PolicyBinding, RiskLevel, VerificationFabric, VerificationKind,
+        effective_risk_for_action, mock_verifier, ActionType, AgentAction, Capability, ContextRefs,
+        EvidenceBinding, Lifecycle, PolicyBinding, RiskLevel, VerificationFabric, VerificationKind,
     };
 
-    fn factory(max_attempts: u32, risk: RiskLevel) -> EnvelopeFactory {
-        Box::new(move |task| ExecutionEnvelope {
-            operation_id: format!("op-{}", task.id),
-            run_id: "run-1".into(),
-            task_id: task.id.clone(),
-            action: AgentAction {
+    fn factory(max_attempts: u32, risk: RiskLevel, approved: bool) -> EnvelopeFactory {
+        Box::new(move |task| {
+            let action = AgentAction {
                 id: format!("action-{}", task.id),
                 task_id: task.id.clone(),
                 agent_id: task.agent.clone().unwrap_or_else(|| "developer".into()),
@@ -269,19 +266,31 @@ mod tests {
                     "content": "done"
                 }),
                 expected: json!({}),
-            },
-            context: ContextRefs::default(),
-            policy: PolicyBinding {
-                risk,
-                capabilities: vec![Capability::WriteFile],
-                requires_approval: risk != RiskLevel::Low,
-                approval_ref: None,
-            },
-            evidence: EvidenceBinding {
-                required: vec!["unit_tests".into()],
-                produced: vec![],
-            },
-            lifecycle: Lifecycle::new(max_attempts),
+            };
+            // The approval requirement is derived from the canonical
+            // effective risk, not the model-declared risk: a WriteFile
+            // always requires approval under the semantic floor, even when
+            // declared Low. Whether the envelope already carries the
+            // kernel-owned approval is an explicit test parameter.
+            let requires_approval = effective_risk_for_action(&action) != RiskLevel::Low;
+            ExecutionEnvelope {
+                operation_id: format!("op-{}", task.id),
+                run_id: "run-1".into(),
+                task_id: task.id.clone(),
+                action,
+                context: ContextRefs::default(),
+                policy: PolicyBinding {
+                    risk,
+                    capabilities: vec![Capability::WriteFile],
+                    requires_approval,
+                    approval_ref: approved.then(|| "test-approval".into()),
+                },
+                evidence: EvidenceBinding {
+                    required: vec!["unit_tests".into()],
+                    produced: vec![],
+                },
+                lifecycle: Lifecycle::new(max_attempts),
+            }
         })
     }
 
@@ -326,7 +335,7 @@ mod tests {
             decomposer(),
             assigner(),
             DevelopmentLoop::new(fabric),
-            factory(2, RiskLevel::Low),
+            factory(2, RiskLevel::Low, true),
         );
         let mut graph = graph();
 
@@ -353,7 +362,7 @@ mod tests {
             decomposer(),
             assigner(),
             DevelopmentLoop::new(fabric),
-            factory(2, RiskLevel::Low),
+            factory(2, RiskLevel::Low, true),
         );
         let mut graph = graph();
 
@@ -386,7 +395,7 @@ mod tests {
             decomposer(),
             assigner(),
             DevelopmentLoop::new(fabric),
-            factory(2, RiskLevel::High),
+            factory(2, RiskLevel::High, false),
         );
         let mut graph = graph();
 
@@ -418,7 +427,7 @@ mod tests {
         task.agent = Some("developer".into());
         state
             .envelopes
-            .insert("task-1".into(), (factory(2, RiskLevel::Low))(&task));
+            .insert("task-1".into(), (factory(2, RiskLevel::Low, true))(&task));
 
         let json = serde_json::to_string(&state).unwrap();
         let restored: VerifiedOrchestratorState = serde_json::from_str(&json).unwrap();

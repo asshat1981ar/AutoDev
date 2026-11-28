@@ -194,13 +194,26 @@ mod tests {
         }
     }
 
+    /// Kernel-owned approval for adapter tests. PatchFile carries a Medium
+    /// risk floor under the canonical policy, so these tests exercise adapter
+    /// mechanics through the authorized path.
+    fn approved_grant() -> AuthorizationGrant {
+        AuthorizationGrant::approved("approval-1")
+    }
+
     #[test]
     fn patch_applies_to_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\ntwo\nthree\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap();
+        let result = patch_file_authorized(
+            &base_action("a.txt", patch_text),
+            &ws,
+            PatchMode::Apply,
+            &approved_grant(),
+        )
+        .unwrap();
         assert_eq!(result.status, ExecutionStatus::Succeeded);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -216,7 +229,13 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"one\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let result = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::DryRun).unwrap();
+        let result = patch_file_authorized(
+            &base_action("a.txt", patch_text),
+            &ws,
+            PatchMode::DryRun,
+            &approved_grant(),
+        )
+        .unwrap();
         assert_eq!(result.status, ExecutionStatus::Accepted);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
@@ -230,7 +249,13 @@ mod tests {
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"uno\nold\n").unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-old\n+new\n";
-        let err = patch_file(&base_action("a.txt", patch_text), &ws, PatchMode::Apply).unwrap_err();
+        let err = patch_file_authorized(
+            &base_action("a.txt", patch_text),
+            &ws,
+            PatchMode::Apply,
+            &approved_grant(),
+        )
+        .unwrap_err();
         assert!(matches!(err, ExecutionError::PatchConflict(_)));
     }
 
@@ -239,10 +264,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         let patch_text = "--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n x\n";
-        let err = patch_file(
+        let err = patch_file_authorized(
             &base_action("missing.txt", patch_text),
             &ws,
             PatchMode::Apply,
+            &approved_grant(),
         )
         .unwrap_err();
         assert!(matches!(err, ExecutionError::FileNotFound(_)));
@@ -255,7 +281,8 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
         let mut action = base_action("a.txt", "--- a/a\n+++ b/a\n@@ -1,1 +1,1 @@\n-x\n");
         action.capabilities.clear();
-        let err = patch_file(&action, &ws, PatchMode::Apply).unwrap_err();
+        let err =
+            patch_file_authorized(&action, &ws, PatchMode::Apply, &approved_grant()).unwrap_err();
         assert!(matches!(err, ExecutionError::CapabilityDenied));
     }
 
@@ -263,10 +290,11 @@ mod tests {
     fn traversal_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
-        let err = patch_file(
+        let err = patch_file_authorized(
             &base_action("../escape.txt", "--- a\n+++ b\n@@ -1,1 +1,1 @@\n x\n"),
             &ws,
             PatchMode::Apply,
+            &approved_grant(),
         )
         .unwrap_err();
         assert!(matches!(err, ExecutionError::PathTraversal(_)));
@@ -277,10 +305,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path(), 4096).unwrap();
         std::fs::write(dir.path().join("a.txt"), b"x\n").unwrap();
-        let err = patch_file(
+        let err = patch_file_authorized(
             &base_action("a.txt", "not a patch at all"),
             &ws,
             PatchMode::Apply,
+            &approved_grant(),
         )
         .unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidPatch(_)));
