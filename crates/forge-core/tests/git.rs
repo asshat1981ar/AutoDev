@@ -86,7 +86,10 @@ fn git_mutate_requires_git_write_capability() {
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     let mut action = git_action("prepare_commit");
     action.payload = json!({ "operation": "prepare_commit", "message": "x", "commit": true });
-    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
+    // prepare_commit carries a Medium risk floor, so the capability check is
+    // reached behind a kernel-owned approval grant.
+    let err = forge_core::execute(&ExecutableAction::with_approval(action, ws, "approval-1"))
+        .unwrap_err();
     assert!(
         matches!(err, ExecutionError::CapabilityDenied)
             || matches!(err, ExecutionError::GitCapabilityDenied(_))
@@ -163,7 +166,11 @@ fn git_destructive_denied_without_capability() {
     let ws = Workspace::new(dir.path(), 4096).unwrap();
     let mut action = git_action("rollback");
     action.payload = json!({ "operation": "rollback", "command": "checkout", "approved": true });
-    let err = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap_err();
+    // rollback carries a High risk floor, so the capability check is reached
+    // behind a kernel-owned approval grant. The caller-supplied "approved"
+    // payload field is not authority and is stripped by the executor.
+    let err = forge_core::execute(&ExecutableAction::with_approval(action, ws, "approval-1"))
+        .unwrap_err();
     assert!(
         matches!(err, ExecutionError::CapabilityDenied)
             || matches!(err, ExecutionError::GitCapabilityDenied(_))
@@ -178,7 +185,10 @@ fn git_checkpoint_with_write_capability() {
     let mut action = git_action("checkpoint");
     action.capabilities = vec![Capability::Git, Capability::GitWrite];
     action.payload = json!({ "operation": "checkpoint", "message": "wip" });
-    let result = forge_core::execute(&ExecutableAction::new(action, ws)).unwrap();
+    // checkpoint carries a Medium risk floor, so the checkpoint runs behind
+    // a kernel-owned approval grant.
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(action, ws, "approval-1")).unwrap();
     let verification = result.verification.unwrap();
     assert!(verification["reference"].is_string());
 }
