@@ -17,7 +17,7 @@
     "@livekit/agents": "1.7.0",
     "@livekit/agents-plugin-lemonslice": "1.7.0",
     "@livekit/rtc-node": "0.13.34",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/node": "22.18.6",

@@ -12,16 +12,16 @@ importers:
     dependencies:
       '@livekit/agents':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.4.3)
+        version: 1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.6.6)
       '@livekit/agents-plugin-lemonslice':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.4.3))(@livekit/rtc-node@0.13.34)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.6.6))(@livekit/rtc-node@0.13.34)
       '@livekit/rtc-node':
         specifier: 0.13.34
         version: 0.13.34
       zod:
-        specifier: 4.4.3
-        version: 4.4.3
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: 22.18.6
@@ -423,12 +423,14 @@ packages:
   '@opentelemetry/sdk-trace-base@2.10.0':
     resolution: {integrity: sha512-GuYQQT7QD2EeO8lcZLRQzcbOyhqAzL+6WWTKTU9mSUBYBazkEDl+VrQcXQhbB08OWM9anD1aHleVadzulpOaUQ==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-node@2.10.0':
     resolution: {integrity: sha512-GZK/G6oZyBLGlH1pUgeDch7D91KoHd2uotUGIkWCPi9GI5T9X0p4L7nNAMDR1BQjkRYoDqo+ddfVx9t5Uhys+Q==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
@@ -478,8 +480,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  brace-expansion@5.0.9:
-    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
+  brace-expansion@5.1.0:
+    resolution: {integrity: sha512-aa11Dv491GKnYqxaul3aRJ0szew7yMJMfZPnqD44NjGrZXoj62l41OEDDpdpC4eE2P88vBFfLuSyRhpG91NUvg==}
     engines: {node: 20 || >=22}
 
   buffer@6.0.3:
@@ -560,11 +562,11 @@ packages:
     resolution: {integrity: sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==}
     engines: {node: '>=0.8.x'}
 
-  fast-copy@3.0.2:
-    resolution: {integrity: sha512-dl0O9Vhju8IrcLndv2eU4ldt1ftXMqqfgN4H1cpmGV7P6jeB9FwpN9a2c8DPGE1Ys88rNUJVYDHq73CGAGOPfQ==}
+  fast-copy@3.1.0:
+    resolution: {integrity: sha512-IuCOCDFM1F/s4LtG7Bjr3yUUwPHybyhqN74xk2cMYoP51vVeErMy8+6HGFchi/+45lW8uzhs6lBeEqks2GWt6A==}
 
-  fast-copy@4.0.4:
-    resolution: {integrity: sha512-eVAiWVNPSEGIzDl5yPuLrx8fNMogScXvD9xp1Kzd41FjRIz2I3sSIcxsFeM5EzFfHAfobdvs8ZySffUopljvIA==}
+  fast-copy@4.3.4:
+    resolution: {integrity: sha512-o+7Dj5GG97OeQdPAVAo9EQE3O8YmRqUjCg0iqk9P2xH3IXI7rQPRyanWdoqK1QIzGje1oKF+kQudEStF93atyw==}
 
   fast-redact@3.5.0:
     resolution: {integrity: sha512-dwsoQlS7h9hMeYUq1W++23NDcBLV4KqONnITDV9DjfS3q1SgDGVrBdvvTLUotWtPSD7asWDV9/CmsZPy8Hf70A==}
@@ -593,8 +595,8 @@ packages:
     resolution: {integrity: sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==}
     engines: {node: '>= 0.4'}
 
-  glob@13.0.6:
-    resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
+  glob@13.0.7:
+    resolution: {integrity: sha512-wfsFgXQ8A3SEI9XGf7Nl3Y9l7ffSrGh7SUCT7vU/2CzYPep9kjxAn1S40F9OPKxAMGCVl7HtNlJhrCJUeUq83g==}
     engines: {node: 18 || 20 || >=22}
 
   gopd@1.2.0:
@@ -877,8 +879,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
 snapshots:
 
@@ -997,9 +999,9 @@ snapshots:
   '@img/sharp-win32-x64@0.35.3':
     optional: true
 
-  '@livekit/agents-plugin-lemonslice@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.4.3))(@livekit/rtc-node@0.13.34)':
+  '@livekit/agents-plugin-lemonslice@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.6.6))(@livekit/rtc-node@0.13.34)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.4.3)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.6.6)
       '@livekit/rtc-node': 0.13.34
       livekit-server-sdk: 2.18.0
       ws: 8.21.3
@@ -1007,7 +1009,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.4.3)':
+  '@livekit/agents@1.7.0(@livekit/rtc-node@0.13.34)(@types/node@22.18.6)(typescript@5.9.2)(zod@4.6.6)':
     dependencies:
       '@bufbuild/protobuf': 1.10.1
       '@livekit/av': 10.0.0
@@ -1038,14 +1040,14 @@ snapshots:
       jsonrepair: 3.15.0
       livekit-server-sdk: 2.18.0
       ofetch: 1.5.1
-      openai: 6.49.0(ws@8.21.3)(zod@4.4.3)
+      openai: 6.49.0(ws@8.21.3)(zod@4.6.6)
       pidusage: 4.0.1
       pino: 8.21.0
       pino-pretty: 11.3.0
       sharp: 0.35.3(@types/node@22.18.6)
       ws: 8.21.3
-      zod: 4.4.3
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
+      zod: 4.6.6
+      zod-to-json-schema: 3.25.2(zod@4.6.6)
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
       - '@smithy/hash-node'
@@ -1150,7 +1152,7 @@ snapshots:
 
   '@livekit/throws-transformer@0.1.8(typescript@5.9.2)':
     dependencies:
-      glob: 13.0.6
+      glob: 13.0.7
       typescript: 5.9.2
 
   '@livekit/typed-emitter@3.0.0': {}
@@ -1305,7 +1307,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  brace-expansion@5.0.9:
+  brace-expansion@5.1.0:
     dependencies:
       balanced-match: 4.0.4
 
@@ -1372,9 +1374,9 @@ snapshots:
 
   events@3.3.0: {}
 
-  fast-copy@3.0.2: {}
+  fast-copy@3.1.0: {}
 
-  fast-copy@4.0.4: {}
+  fast-copy@4.3.4: {}
 
   fast-redact@3.5.0: {}
 
@@ -1413,7 +1415,7 @@ snapshots:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.2
 
-  glob@13.0.6:
+  glob@13.0.7:
     dependencies:
       minimatch: 10.2.6
       minipass: 7.1.3
@@ -1471,7 +1473,7 @@ snapshots:
 
   minimatch@10.2.6:
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.1.0
 
   minimist@1.2.8: {}
 
@@ -1497,10 +1499,10 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
-  openai@6.49.0(ws@8.21.3)(zod@4.4.3):
+  openai@6.49.0(ws@8.21.3)(zod@4.6.6):
     optionalDependencies:
       ws: 8.21.3
-      zod: 4.4.3
+      zod: 4.6.6
 
   path-scurry@2.0.2:
     dependencies:
@@ -1528,7 +1530,7 @@ snapshots:
     dependencies:
       colorette: 2.0.20
       dateformat: 4.6.3
-      fast-copy: 3.0.2
+      fast-copy: 3.1.0
       fast-safe-stringify: 2.1.1
       help-me: 5.0.0
       joycon: 3.1.1
@@ -1545,7 +1547,7 @@ snapshots:
     dependencies:
       colorette: 2.0.20
       dateformat: 4.6.3
-      fast-copy: 4.0.4
+      fast-copy: 4.3.4
       fast-safe-stringify: 2.1.1
       help-me: 5.0.0
       joycon: 3.1.1
@@ -1705,8 +1707,8 @@ snapshots:
 
   ws@8.21.3: {}
 
-  zod-to-json-schema@3.25.2(zod@4.4.3):
+  zod-to-json-schema@3.25.2(zod@4.6.6):
     dependencies:
-      zod: 4.4.3
+      zod: 4.6.6
 
-  zod@4.4.3: {}
+  zod@4.6.6: {}
