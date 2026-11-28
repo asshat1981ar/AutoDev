@@ -1,0 +1,43 @@
+name: IDE Agent Android APK
+
+on:
+  push:
+    branches:
+      - feat/ide-agent-android-apk
+    paths:
+      - 'kotlin/ide-agent-android/**'
+      - 'kotlin/settings.gradle.kts'
+      - '.github/workflows/ide-agent-android-apk.yml'
+  pull_request:
+    paths:
+      - 'kotlin/ide-agent-android/**'
+      - 'kotlin/settings.gradle.kts'
+      - '.github/workflows/ide-agent-android-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build and test IDE Agent APK
+        working-directory: kotlin
+        run: |
+          chmod +x gradlew
+          ./gradlew :ide-agent-android:testDebugUnitTest :ide-agent-android:assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ide-agent-android-debug-apk
+          path: kotlin/ide-agent-android/build/outputs/apk/debug/ide-agent-android-debug.apk
+          if-no-files-found: error
