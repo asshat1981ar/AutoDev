@@ -12,7 +12,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use forge_core::TaskGraph;
+use forge_core::{
+    attest_gate_now, verify_attestation, GateAttestation, GateAttestationRequest, GateSigningKey,
+    TaskGraph,
+};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,7 +55,13 @@ pub struct AppState {
     github_webhook_secret: Option<String>,
     mcp_bearer_tag: Option<Arc<Vec<u8>>>,
     api_bearer_tag: Option<Arc<Vec<u8>>>,
+    gate_key: Option<Arc<GateSigningKey>>,
+    attestations: Arc<RwLock<BTreeMap<String, GateAttestation>>>,
 }
+
+/// Upper bound on attestations kept in memory. Persistence belongs to the
+/// evidence store (ADR-002); this cache only answers `recorded` on verify.
+pub const MAX_RECORDED_ATTESTATIONS: usize = 10_000;
 
 impl AppState {
     pub fn new(github_webhook_secret: Option<String>) -> Self {
@@ -63,7 +72,16 @@ impl AppState {
             github_webhook_secret: github_webhook_secret.filter(|value| !value.trim().is_empty()),
             mcp_bearer_tag: None,
             api_bearer_tag: None,
+            gate_key: None,
+            attestations: Arc::new(RwLock::new(BTreeMap::new())),
         }
+    }
+
+    /// Hold the gate-attestation signing key (ADR-007). Without it, the gate
+    /// routes fail closed with `503 Service Unavailable`.
+    pub fn with_gate_signing_key(mut self, key: GateSigningKey) -> Self {
+        self.gate_key = Some(Arc::new(key));
+        self
     }
 
     /// Configure the bearer token required for the public MCP route.
@@ -147,6 +165,16 @@ pub fn router(state: AppState) -> Router {
             require_api_bearer_if_configured,
         ));
 
+    // Gate attestation is never anonymous: unlike objective intake, these
+    // routes require the API bearer even on loopback (ADR-007).
+    let gate_api = Router::new()
+        .route("/api/v1/gate/attest", post(attest_gate_route))
+        .route("/api/v1/gate/verify", post(verify_gate_route))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_bearer_strict,
+        ));
+
     let api = Router::new()
         .route("/health", get(health))
         .route("/api/v1/objectives", get(list_objectives))
@@ -154,6 +182,7 @@ pub fn router(state: AppState) -> Router {
         .route("/events", get(event_stream))
         .route("/webhooks/github", post(github_webhook))
         .merge(mutating_api)
+        .merge(gate_api)
         // Bound the request body on the public-API surface. The default
         // Axum limit is 2 MiB, which is more than a webhook or an
         // objective description should ever be; the limit mirrors the
@@ -222,6 +251,92 @@ async fn require_api_bearer_if_configured(
             .into_response();
     }
     next.run(request).await
+}
+
+async fn require_api_bearer_strict(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state.api_bearer_tag.is_none() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "AUTODEV_API_BEARER_TOKEN is required for gate attestation"})),
+        )
+            .into_response();
+    }
+    require_api_bearer_if_configured(State(state), request, next).await
+}
+
+async fn attest_gate_route(
+    State(state): State<AppState>,
+    Json(request): Json<GateAttestationRequest>,
+) -> Response {
+    let Some(key) = state.gate_key.as_deref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "AUTODEV_GATE_SIGNING_KEY is not configured"})),
+        )
+            .into_response();
+    };
+    let attestation = match attest_gate_now(&request, key) {
+        Ok(attestation) => attestation,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": error.to_string()})),
+            )
+                .into_response()
+        }
+    };
+    {
+        let mut store = state.attestations.write().await;
+        while store.len() >= MAX_RECORDED_ATTESTATIONS {
+            store.pop_first();
+        }
+        store.insert(attestation.attestation_id.clone(), attestation.clone());
+    }
+    let _ = state.events.send(
+        json!({
+            "type": "gate_attested",
+            "data": {
+                "attestation_id": attestation.attestation_id,
+                "repository": attestation.repository,
+                "target_ref": attestation.target_ref,
+                "tool": attestation.tool,
+                "decision": attestation.decision,
+            }
+        })
+        .to_string(),
+    );
+    (StatusCode::CREATED, Json(attestation)).into_response()
+}
+
+async fn verify_gate_route(
+    State(state): State<AppState>,
+    Json(attestation): Json<GateAttestation>,
+) -> Response {
+    let Some(key) = state.gate_key.as_deref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "AUTODEV_GATE_SIGNING_KEY is not configured"})),
+        )
+            .into_response();
+    };
+    let valid = verify_attestation(&attestation, key);
+    let recorded = valid
+        && state
+            .attestations
+            .read()
+            .await
+            .get(&attestation.attestation_id)
+            .is_some_and(|stored| stored == &attestation);
+    Json(json!({
+        "valid": valid,
+        "recorded": recorded,
+        "attestation_id": attestation.attestation_id,
+    }))
+    .into_response()
 }
 
 /// Maximum body size accepted on the public API surface
@@ -539,5 +654,128 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    fn gate_state() -> AppState {
+        AppState::new(None)
+            .with_api_bearer_token("api-secret")
+            .with_gate_signing_key(GateSigningKey::new([5u8; 32]).expect("key"))
+    }
+
+    fn gate_post(uri: &str, bearer: Option<&str>, body: String) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(token) = bearer {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        builder.body(Body::from(body)).expect("request")
+    }
+
+    async fn json_body(response: Response) -> Value {
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .expect("body");
+        serde_json::from_slice(&bytes).expect("json")
+    }
+
+    const PROTECTED_PUSH: &str = r#"{"repository":"owner/repo","tool":"push_files","target_ref":"refs/heads/main","mode":"warn","session_id":"s-1"}"#;
+
+    #[tokio::test]
+    async fn gate_attest_fails_closed_without_key_or_api_bearer() {
+        let no_key = router(AppState::new(None).with_api_bearer_token("api-secret"));
+        let response = no_key
+            .oneshot(gate_post(
+                "/api/v1/gate/attest",
+                Some("api-secret"),
+                PROTECTED_PUSH.into(),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let no_bearer = router(
+            AppState::new(None).with_gate_signing_key(GateSigningKey::new([5u8; 32]).expect("key")),
+        );
+        let response = no_bearer
+            .oneshot(gate_post(
+                "/api/v1/gate/attest",
+                None,
+                PROTECTED_PUSH.into(),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn gate_attest_rejects_wrong_bearer() {
+        let response = router(gate_state())
+            .oneshot(gate_post(
+                "/api/v1/gate/attest",
+                Some("wrong"),
+                PROTECTED_PUSH.into(),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn gate_attest_blocks_protected_push_and_verifies_round_trip() {
+        let state = gate_state();
+        let response = router(state.clone())
+            .oneshot(gate_post(
+                "/api/v1/gate/attest",
+                Some("api-secret"),
+                PROTECTED_PUSH.into(),
+            ))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let attestation = json_body(response).await;
+        assert_eq!(attestation["decision"], "BLOCK");
+        assert_eq!(attestation["target_ref"], "main");
+
+        let verified = router(state.clone())
+            .oneshot(gate_post(
+                "/api/v1/gate/verify",
+                Some("api-secret"),
+                attestation.to_string(),
+            ))
+            .await
+            .expect("response");
+        let verdict = json_body(verified).await;
+        assert_eq!(verdict["valid"], true);
+        assert_eq!(verdict["recorded"], true);
+
+        let mut forged = attestation.clone();
+        forged["decision"] = json!("PASS");
+        let rejected = router(state)
+            .oneshot(gate_post(
+                "/api/v1/gate/verify",
+                Some("api-secret"),
+                forged.to_string(),
+            ))
+            .await
+            .expect("response");
+        let verdict = json_body(rejected).await;
+        assert_eq!(verdict["valid"], false);
+        assert_eq!(verdict["recorded"], false);
+    }
+
+    #[tokio::test]
+    async fn gate_attest_rejects_client_supplied_decision() {
+        let body = r#"{"repository":"owner/repo","tool":"push_files","target_ref":"feat/x","mode":"enforce","session_id":"s","decision":"PASS"}"#;
+        let response = router(gate_state())
+            .oneshot(gate_post(
+                "/api/v1/gate/attest",
+                Some("api-secret"),
+                body.into(),
+            ))
+            .await
+            .expect("response");
+        assert!(response.status().is_client_error());
     }
 }

@@ -324,6 +324,7 @@ name = "forge-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hmac",
  "serde",
  "serde_json",
  "sha2",
