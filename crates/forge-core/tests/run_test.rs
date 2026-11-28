@@ -26,8 +26,15 @@ fn run_test_reaches_the_fail_closed_process_boundary() {
     let dir = tempfile::tempdir().unwrap();
     let workspace = Workspace::new(dir.path(), 4096).unwrap();
 
-    let error =
-        forge_core::execute(&ExecutableAction::new(run_test_action(), workspace)).unwrap_err();
+    // RunTest carries a Medium risk floor under the canonical policy, so the
+    // fail-closed process boundary is reached behind a kernel-owned approval
+    // grant.
+    let error = forge_core::execute(&ExecutableAction::with_approval(
+        run_test_action(),
+        workspace,
+        "approval-1",
+    ))
+    .unwrap_err();
 
     assert!(matches!(error, ExecutionError::ProcessSandboxRequired));
 }
