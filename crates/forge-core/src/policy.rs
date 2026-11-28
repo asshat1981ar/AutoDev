@@ -5,7 +5,7 @@
 //! checks, and risk-based authorization. No privileged operation occurs until
 //! policy authorizes it.
 
-use crate::action::{AgentAction, Capability, RiskLevel};
+use crate::action::{ActionType, AgentAction, Capability, RiskLevel};
 use crate::error::ExecutionError;
 
 /// The outcome of policy evaluation for an action.
@@ -42,6 +42,50 @@ impl AuthorizationGrant {
         self.approval_ref
             .as_deref()
             .is_some_and(|reference| !reference.trim().is_empty())
+    }
+}
+
+/// Trusted minimum risk for an executable action.
+///
+/// Model-declared risk is advisory. This floor is derived from action semantics
+/// inside ForgeCore so an untrusted producer cannot downgrade an operation to
+/// bypass approval.
+pub fn minimum_risk_for_action(action: &AgentAction) -> RiskLevel {
+    match action.action_type {
+        ActionType::ReadFile | ActionType::RequestApproval => RiskLevel::Low,
+        ActionType::WriteFile | ActionType::PatchFile | ActionType::RunTest => RiskLevel::Medium,
+        ActionType::Execute | ActionType::Mcp => RiskLevel::High,
+        ActionType::Git => match action
+            .payload
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("repository_info" | "status" | "diff" | "branch" | "log") => RiskLevel::Low,
+            Some("checkpoint" | "prepare_commit") => RiskLevel::Medium,
+            Some("rollback") => RiskLevel::High,
+            // Never classify an absent or future Git command as harmless.
+            // The adapter still rejects unsupported operations independently.
+            _ => RiskLevel::Critical,
+        },
+    }
+}
+
+/// Effective authorization risk after applying the trusted semantic floor.
+pub fn effective_risk_for_action(action: &AgentAction) -> RiskLevel {
+    let minimum = minimum_risk_for_action(action);
+    if risk_rank(action.risk) >= risk_rank(minimum) {
+        action.risk
+    } else {
+        minimum
+    }
+}
+
+fn risk_rank(risk: RiskLevel) -> u8 {
+    match risk {
+        RiskLevel::Low => 0,
+        RiskLevel::Medium => 1,
+        RiskLevel::High => 2,
+        RiskLevel::Critical => 3,
     }
 }
 
@@ -94,7 +138,10 @@ pub fn required_capability(action: &AgentAction) -> Option<Capability> {
 pub fn evaluate_policy(action: &AgentAction) -> Result<PolicyDecision, ExecutionError> {
     validate_action(action)?;
 
-    Ok(match action.risk {
+    // Authorize on the trusted effective risk, never on the model-reported
+    // risk: the semantic floor in `minimum_risk_for_action` exists so an
+    // underreported operation cannot downgrade itself past approval.
+    Ok(match effective_risk_for_action(action) {
         RiskLevel::Low => PolicyDecision::Allow,
         RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical => {
             PolicyDecision::RequireApproval

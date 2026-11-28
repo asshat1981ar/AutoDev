@@ -255,8 +255,13 @@ mod tests {
             policy: PolicyBinding {
                 risk: RiskLevel::Low,
                 capabilities: vec![Capability::WriteFile],
-                requires_approval: false,
-                approval_ref: None,
+                // A WriteFile carries a Medium risk floor under the canonical
+                // policy, so the envelope must record that approval is
+                // required and carry the kernel-owned approval reference.
+                // Tests that exercise the approval gate itself override these
+                // fields (see `kernel_approval_requirement_cannot_be_disabled_by_envelope`).
+                requires_approval: true,
+                approval_ref: Some("test-approval".into()),
             },
             evidence: EvidenceBinding {
                 required: vec!["unit_tests".into()],
