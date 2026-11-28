@@ -180,6 +180,15 @@ jobs:
           node-version: '24'
       - name: Install Android SDK 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      # The frozen reference revisions predate kotlin/gradle.properties'
+      # -Xmx2g and run on Gradle's 512 MB default heap, which intermittently
+      # fails the debug APK's packageDebug split step. Gradle-user-home
+      # properties override project ones, so this raises the heap for every
+      # base/reference build without touching the pinned revisions.
+      - name: Give historical Gradle builds the current heap size
+        run: |
+          mkdir -p ~/.gradle
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError' >> ~/.gradle/gradle.properties
       - name: Validate evaluation corpus
         working-directory: crates
         run: cargo run --locked -p autodev-eval -- validate --fixtures autodev-eval/fixtures
