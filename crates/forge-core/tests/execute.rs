@@ -55,9 +55,42 @@ fn execute_process_is_fail_closed_by_default() {
     a.action_type = ActionType::Execute;
     a.capabilities = vec![Capability::Execute];
     a.payload = json!({ "command": "echo", "args": ["hello"], "timeout_secs": 5 });
-    let exec = ExecutableAction::new(a, ws);
+    // Approved, so this reaches the process sandbox, which is closed by default.
+    let exec = ExecutableAction::with_approval(a, ws, "approval-1");
     let err = forge_core::execute(&exec).unwrap_err();
     assert!(matches!(err, ExecutionError::ProcessSandboxRequired));
+}
+
+#[test]
+fn execute_process_without_approval_stops_at_the_policy_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut a = action("a.txt");
+    a.action_type = ActionType::Execute;
+    a.capabilities = vec![Capability::Execute];
+    a.payload = json!({ "command": "echo", "args": ["hello"], "timeout_secs": 5 });
+    // A model-declared Low risk must not let Execute skip the canonical floor.
+    let err = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap_err();
+    assert!(
+        matches!(err, ExecutionError::RequiresApproval),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn execute_process_without_capability_is_denied() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::new(dir.path(), 4096).unwrap();
+    let mut a = action("a.txt");
+    a.action_type = ActionType::Execute;
+    a.capabilities = vec![];
+    a.payload = json!({ "command": "echo", "args": ["hello"], "timeout_secs": 5 });
+    let exec = ExecutableAction::with_approval(a, ws, "approval-1");
+    let err = forge_core::execute(&exec).unwrap_err();
+    assert!(
+        matches!(err, ExecutionError::CapabilityDenied),
+        "got {err:?}"
+    );
 }
 
 #[test]
@@ -105,7 +138,10 @@ fn execute_writes_a_file_end_to_end() {
     a.capabilities = vec![Capability::WriteFile];
     a.payload = json!({ "path": "c.txt", "content": "new" });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    // WriteFile carries a Medium risk floor under the canonical policy, so
+    // the end-to-end write runs behind a kernel-owned approval grant.
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(a, ws, "approval-1")).unwrap();
     assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
@@ -130,7 +166,10 @@ fn execute_patches_a_file_end_to_end() {
         "patch": "--- a/p.txt\n+++ b/p.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2nd\n"
     });
 
-    let result = forge_core::execute(&ExecutableAction::new(a, ws)).unwrap();
+    // PatchFile carries a Medium risk floor under the canonical policy, so
+    // the end-to-end patch runs behind a kernel-owned approval grant.
+    let result =
+        forge_core::execute(&ExecutableAction::with_approval(a, ws, "approval-1")).unwrap();
     assert_eq!(result.status, forge_core::ExecutionStatus::Succeeded);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("p.txt")).unwrap(),
